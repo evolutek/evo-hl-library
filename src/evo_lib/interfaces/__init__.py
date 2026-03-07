@@ -15,6 +15,7 @@ from evo_lib.interfaces.pilot import (
     Pilot,
     PilotMoveStatus,
 )
+from evo_lib.interfaces.recal import RecalSensor
 from evo_lib.interfaces.servo import Servo
 from evo_lib.interfaces.smart_servo import SmartServo
 
@@ -29,6 +30,7 @@ __all__ = [
     "LedStrip",
     "Lidar2D",
     "PilotMoveStatus",
+    "RecalSensor",
     "Servo",
     "SmartServo",
 ]
