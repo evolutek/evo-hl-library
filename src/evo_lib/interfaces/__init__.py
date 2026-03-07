@@ -6,7 +6,7 @@ Robot code depends on these interfaces, never on concrete drivers.
 
 from evo_lib.interfaces.analog_input import AnalogInput
 from evo_lib.interfaces.color_sensor import ColorSensor
-from evo_lib.interfaces.gpio import GPIO, GPIOEdge
+from evo_lib.interfaces.gpio import GPIO, GPIODirection, GPIOEdge
 from evo_lib.interfaces.led_strip import LedStrip
 from evo_lib.interfaces.lidar import Lidar2D
 from evo_lib.interfaces.pilot import (
@@ -24,6 +24,7 @@ __all__ = [
     "DifferentialPilot",
     "HolonomicPilot",
     "Pilot",
+    "GPIODirection",
     "GPIOEdge",
     "GPIO",
     "LedStrip",
