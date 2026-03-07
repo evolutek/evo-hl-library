@@ -15,6 +15,7 @@ from evo_lib.interfaces.pilot import (
     Pilot,
     PilotMoveStatus,
 )
+from evo_lib.interfaces.magnet import Magnet
 from evo_lib.interfaces.servo import Servo
 from evo_lib.interfaces.smart_servo import SmartServo
 
@@ -28,6 +29,7 @@ __all__ = [
     "GPIO",
     "LedStrip",
     "Lidar2D",
+    "Magnet",
     "PilotMoveStatus",
     "Servo",
     "SmartServo",
