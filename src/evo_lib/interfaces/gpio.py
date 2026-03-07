@@ -11,6 +11,13 @@ if TYPE_CHECKING:
     from evo_lib.task import Task
 
 
+class GPIODirection(Enum):
+    """Pin direction."""
+
+    INPUT = "input"
+    OUTPUT = "output"
+
+
 class GPIOEdge(Enum):
     """Edge type for interrupt triggers."""
 
