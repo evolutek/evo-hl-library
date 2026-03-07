@@ -4,7 +4,7 @@ from abc import ABC, abstractmethod
 
 
 class I2CBus(ABC):
-    """A single I2C bus (real, fake, or a TCA9548A mux channel).
+    """A single I2C bus (real, virtual, or a TCA9548A mux channel).
 
     Drivers receive an I2CBus instead of creating their own busio.I2C.
     This decouples drivers from the transport and enables bus-level simulation.
@@ -19,9 +19,7 @@ class I2CBus(ABC):
         """Read count bytes from a device at the given 7-bit address."""
 
     @abstractmethod
-    def write_then_read(
-        self, address: int, out_data: bytes, in_count: int
-    ) -> bytes:
+    def write_then_read(self, address: int, out_data: bytes, in_count: int) -> bytes:
         """Write out_data then immediately read in_count bytes (repeated start).
 
         This is the most common I2C pattern: send a register address,

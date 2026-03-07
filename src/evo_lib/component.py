@@ -9,7 +9,7 @@ class Component(ABC):
     """
     Lifecycle contract shared by every hardware component.
 
-    Every driver (real or fake) inherits from this and implements
+    Every driver (real or virtual) inherits from this and implements
     ``init`` (acquire resources) and ``close`` (release them).
     """
 

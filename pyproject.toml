@@ -21,13 +21,7 @@ dependencies = [
 # Install on the robot: uv sync --extra rpi
 rpi = [
     "adafruit-blinka>=8.0",
-    "adafruit-circuitpython-pca9685>=3.4",
-    "adafruit-circuitpython-ads1x15>=2.4",
-    "adafruit-circuitpython-mcp230xx>=2.5",
-    "adafruit-circuitpython-tca9548a>=0.7",
-    "adafruit-circuitpython-tcs34725>=1.3",
-    "adafruit-circuitpython-neopixel>=6.1",
-    "RPi.GPIO>=0.7",
+    "gpiod>=2.0",
     "rplidar-roboticia>=0.9",
 ]
 

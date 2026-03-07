@@ -8,9 +8,9 @@ log = logging.getLogger(__name__)
 
 
 class I2CDeviceVirtual:
-    """A fake I2C device that responds to reads with injectable data.
+    """A virtual I2C device that responds to reads with injectable data.
 
-    Register a device on a fake bus to simulate hardware responses.
+    Register a device on a virtual bus to simulate hardware responses.
     The read buffer is consumed sequentially: each read_from pops bytes
     from the front.
     """
@@ -48,13 +48,13 @@ class I2CBusVirtual(I2CBus):
         self._devices: dict[int, I2CDeviceVirtual] = {}
 
     def add_device(self, address: int) -> I2CDeviceVirtual:
-        """Register a fake device at the given address and return it."""
+        """Register a virtual device at the given address and return it."""
         device = I2CDeviceVirtual(address)
         self._devices[address] = device
         return device
 
     def get_device(self, address: int) -> I2CDeviceVirtual:
-        """Retrieve a registered fake device."""
+        """Retrieve a registered virtual device."""
         if address not in self._devices:
             raise OSError(f"No device at address 0x{address:02x}")
         return self._devices[address]
@@ -67,9 +67,7 @@ class I2CBusVirtual(I2CBus):
         device = self.get_device(address)
         return device.consume_read(count)
 
-    def write_then_read(
-        self, address: int, out_data: bytes, in_count: int
-    ) -> bytes:
+    def write_then_read(self, address: int, out_data: bytes, in_count: int) -> bytes:
         device = self.get_device(address)
         device.written.append(out_data)
         return device.consume_read(in_count)
