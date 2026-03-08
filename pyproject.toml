@@ -1,0 +1,48 @@
+# -- Build system --
+# Hatchling: lightweight modern build backend (like setuptools but simpler).
+# This tells pip how to build and install the package.
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+# -- Project metadata --
+[project]
+name = "evo-hl"
+version = "0.1.0"
+description = "Shared reusable library for Evolutek robots"
+requires-python = ">=3.11"
+dependencies = [
+    "pydantic>=2.0",
+]
+
+# -- Optional dependency groups --
+# Install with: pip install -e ".[group]"
+[project.optional-dependencies]
+# Hardware libs for Raspberry Pi (and any blinka-supported SBC).
+# Install on the robot: pip install -e ".[rpi]"
+rpi = [
+    "adafruit-blinka>=8.0",
+    "adafruit-circuitpython-pca9685>=3.4",
+    "adafruit-circuitpython-ads1x15>=2.4",
+    "adafruit-circuitpython-mcp230xx>=2.5",
+    "adafruit-circuitpython-tca9548a>=0.7",
+    "adafruit-circuitpython-tcs34725>=1.3",
+    "adafruit-circuitpython-neopixel>=6.1",
+    "RPi.GPIO>=0.7",
+    "rplidar-roboticia>=0.9",
+]
+# Development tools.
+# Install on your laptop: pip install -e ".[dev]"
+dev = [
+    "pytest>=8.0",
+]
+
+# -- Build configuration --
+# Tells hatchling where the source code lives (src/ layout).
+[tool.hatch.build.targets.wheel]
+packages = ["src/evo_hl"]
+
+# -- Pytest configuration --
+# Equivalent to pytest.ini or setup.cfg [tool:pytest].
+[tool.pytest.ini_options]
+testpaths = ["tests"]
