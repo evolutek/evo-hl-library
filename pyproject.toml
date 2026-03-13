@@ -1,23 +1,51 @@
-# -- Build system --
-# Hatchling: lightweight modern build backend (like setuptools but simpler).
-# This tells pip how to build and install the package.
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
-
 # -- Project metadata --
+
 [project]
-name = "evo-hl"
+name = "evo_hl_library"
 version = "0.1.0"
 description = "Shared reusable library for Evolutek robots"
-requires-python = ">=3.11"
+requires-python = ">=3.14"
+
+# -- Dependencies --
+
 dependencies = [
     "pydantic>=2.0",
 ]
 
-# -- Optional dependency groups --
-# Install with: pip install -e ".[group]"
+# -- Development dependencies --
+
+# Development tools.
+# Install on your laptop: pip install -e ".[dev]"
 [project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+]
+
+# -- Build system --
+
+# Hatchling: lightweight modern build backend (like setuptools but simpler).
+# This tells pip how to build and install the package.
+# [build-system]
+# requires = ["hatchling"]
+# build-backend = "hatchling.build"
+
+# uv_build is a simple annd very fast very fast build backend, it's integrate
+# with uv for better performances (https://docs.astral.sh/uv/concepts/build-backend/)
+[build-system]
+requires = ["uv_build>=0.10.9,<0.11.0"]
+build-backend = "uv_build"
+
+# -- Build configuration --
+
+# Tells hatchling where the source code lives (src/ layout).
+[tool.hatch.build.targets.wheel]
+packages = ["src/evo_hl"]
+
+# Tell UV where the source code lives (src/ layout).
+[tool.uv.build-backend]
+module-name = "evo_hl"
+module-root = "src"
+
 # Hardware libs for Raspberry Pi (and any blinka-supported SBC).
 # Install on the robot: pip install -e ".[rpi]"
 rpi = [
@@ -31,18 +59,9 @@ rpi = [
     "RPi.GPIO>=0.7",
     "rplidar-roboticia>=0.9",
 ]
-# Development tools.
-# Install on your laptop: pip install -e ".[dev]"
-dev = [
-    "pytest>=8.0",
-]
-
-# -- Build configuration --
-# Tells hatchling where the source code lives (src/ layout).
-[tool.hatch.build.targets.wheel]
-packages = ["src/evo_hl"]
 
 # -- Pytest configuration --
+
 # Equivalent to pytest.ini or setup.cfg [tool:pytest].
 [tool.pytest.ini_options]
 testpaths = ["tests"]

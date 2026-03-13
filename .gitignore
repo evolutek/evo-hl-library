@@ -1,3 +1,4 @@
+# Python, UV, Ruff, Hatchling, PyTest things
 __pycache__/
 *.py[cod]
 *.egg-info/
@@ -9,4 +10,10 @@ build/
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/
+.coverage
+htmlcov/
+
+# There is not need to include the uv.lock file since versions and dependencies
+# version should be locked only for the application package, see:
+# https://github.com/astral-sh/uv/issues/10730
 uv.lock
