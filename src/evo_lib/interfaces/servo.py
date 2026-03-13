@@ -1,10 +1,12 @@
 """Abstract interface for angle-controlled servos."""
 
-from __future__ import annotations
-
 from abc import abstractmethod
 
 from evo_lib.component import Component
+
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from evo_lib.task import Task
 
 
 class Servo(Component):
@@ -14,13 +16,13 @@ class Servo(Component):
     """
 
     @abstractmethod
-    def set_angle(self, angle: float) -> None:
+    def move_to_angle(self, angle: float) -> Task[None]:
         """Move to the given angle (in degrees)."""
 
     @abstractmethod
-    def set_fraction(self, fraction: float) -> None:
+    def move_to_fraction(self, fraction: float) -> Task[None]:
         """Set position as a fraction of the full range (0.0 to 1.0)."""
 
     @abstractmethod
-    def free(self) -> None:
+    def free(self) -> Task[None]:
         """Disable PWM output (servo goes limp)."""

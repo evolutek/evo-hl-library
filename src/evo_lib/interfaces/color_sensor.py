@@ -1,19 +1,22 @@
 """Abstract interface for RGB color sensors."""
 
-from __future__ import annotations
-
 from abc import abstractmethod
 
 from evo_lib.component import Component
+
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from evo_lib.task import Task
+    from evo_lib.color import Color
 
 
 class ColorSensor(Component):
     """An RGB color sensor (e.g. TCS34725 behind a TCA9548A mux)."""
 
     @abstractmethod
-    def read_rgb(self) -> tuple[int, int, int]:
+    def read_color(self) -> Task[Color]:
         """Read raw RGB values."""
 
     @abstractmethod
-    def read_color(self) -> str:
-        """Read and classify the detected color (e.g. "red", "blue", "unknown")."""
+    def calibrate(self, power_color: float, min_color: float, max_color: float) -> None:
+        pass
