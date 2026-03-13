@@ -2,7 +2,7 @@ import queue
 from typing import Callable
 from abc import ABC, abstractmethod
 
-from evo_hl.task import Task, DelayedTask
+from evo_lib.task import Task, DelayedTask
 
 
 class Executor(ABC):

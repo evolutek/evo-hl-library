@@ -2,8 +2,9 @@ from threading import Thread, Lock, Event
 from queue import Queue
 from typing import Callable
 
-from evo_hl.task import Task, DelayedTask
-from evo_hl.executor import Executor
+from evo_lib.task import Task, DelayedTask
+from evo_lib.executor import Executor
+from evo_lib.logger import Logger
 
 
 class WorkerThread:
