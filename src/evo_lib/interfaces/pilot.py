@@ -11,9 +11,11 @@ if TYPE_CHECKING:
 
 
 class PilotMoveStatus(Enum):
-    MOVING = 0,
-    REACHED = 1,
-    # TODO
+    ERROR = 0
+    MOVING = 1
+    REACHED = 2
+    BLOCKED = 3
+    CANCELLED = 4
 
 
 class DifferentialPilot(Component):
