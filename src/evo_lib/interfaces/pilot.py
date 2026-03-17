@@ -5,6 +5,8 @@ from enum import Enum
 
 from evo_lib.component import Component
 
+from dataclasses import dataclass
+
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from evo_lib.task import Task
@@ -18,8 +20,52 @@ class PilotMoveStatus(Enum):
     CANCELLED = 4
 
 
-class DifferentialPilot(Component):
-    """Interface to control the movement of a differential robot.
+@dataclass(slots=True)
+class DifferentialPilotWaypoint:
+    """
+    Represent a waypoint on a path for a differential robot.
+
+    Attributes:
+        x           X coordinate of this waypoint.
+        y           Y coordinate of this waypoint.
+        heading     Orientation in radians the robot must have when it
+                    reached/leave this waypoint.
+        velocity    Velocity of the robot at this waypoint (positive).
+    """
+    x: float
+    y: float
+    heading: float
+    velocity: float
+
+
+@dataclass(slots=True)
+class HolonomicPilotWaypoint(DifferentialPilotWaypoint):
+    """
+    Represent a waypoint on a path for a holonomic robot.
+
+    Attributes:
+        tangent     Angle in radians of the tangent of this waypoint (ie. the
+                    direction of the velocity vector when the robot reache this
+                    waypoint)
+    """
+    tangent: float
+
+
+class Pilot(Component):
+    @abstractmethod
+    def stop(self) -> Task[None]:
+        """Immediately stop the current movement."""
+        pass
+
+    @abstractmethod
+    def free(self) -> Task[None]:
+        """Immediately stop motor and go into freewheel."""
+        pass
+
+
+class DifferentialPilot(Pilot):
+    """
+    Interface to control the movement of a differential robot.
     """
 
     @abstractmethod
@@ -27,15 +73,15 @@ class DifferentialPilot(Component):
         """Move to the given position. The returned Task can be cancelled."""
 
     @abstractmethod
-    def go_to_and_head_to(self, x: float, y: float, heading: float) -> Task[PilotMoveStatus]:
+    def go_to_then_head_to(self, x: float, y: float, heading: float) -> Task[PilotMoveStatus]:
         pass
 
     @abstractmethod
-    def go_to_and_rotate(self, x: float, y: float, angle: float) -> Task[PilotMoveStatus]:
+    def go_to_then_rotate(self, x: float, y: float, angle: float) -> Task[PilotMoveStatus]:
         pass
 
     @abstractmethod
-    def go_to_and_look_at(self, x: float, y: float, look_x: float, look_y: float) -> Task[PilotMoveStatus]:
+    def go_to_then_look_at(self, x: float, y: float, look_x: float, look_y: float) -> Task[PilotMoveStatus]:
         pass
 
     @abstractmethod
@@ -55,11 +101,29 @@ class DifferentialPilot(Component):
         pass
 
     @abstractmethod
-    def stop(self) -> Task[None]:
-        """Immediately stop the movement."""
+    def follow_path(self, waypoints: list[DifferentialPilotWaypoint]) -> Task[PilotMoveStatus]:
+        pass
+
+
+class HolonomicPilot(DifferentialPilot):
+    """
+    Interface to control the movement of a holonomic robot.
+    It's extends the DifferentialPilot interface, so it has all the features of
+    a differential robot plus some more.
+    """
+
+    @abstractmethod
+    def go_to_while_head_to(self, x: float, y: float, heading: float) -> Task[PilotMoveStatus]:
         pass
 
     @abstractmethod
-    def free(self) -> Task[None]:
-        """Immediately stop motor and go into freewheel."""
+    def go_to_while_rotate(self, x: float, y: float, angle: float) -> Task[PilotMoveStatus]:
+        pass
+
+    @abstractmethod
+    def go_to_while_look_at(self, x: float, y: float, look_x: float, look_y: float) -> Task[PilotMoveStatus]:
+        pass
+
+    @abstractmethod
+    def follow_holonomic_path(self, waypoints: list[HolonomicPilotWaypoint]) -> Task[PilotMoveStatus]:
         pass
