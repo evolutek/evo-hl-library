@@ -9,7 +9,6 @@ import sys
 import os
 from datetime import datetime, timedelta
 import re
-import atexit
 from abc import ABC, abstractmethod
 import logging
 import logging.handlers
@@ -30,7 +29,7 @@ if sys.platform == "win32":
 class LoggerLevel(Enum):
     DEBUG = logging.DEBUG
     INFO = logging.INFO
-    SUCCESS = 21
+    SUCCESS = logging.INFO + 1
     WARNING = logging.WARNING
     ERROR = logging.ERROR
     CRITICAL = logging.CRITICAL
@@ -301,6 +300,9 @@ class Logger:
 
     def __del__(self):
         self.close()
+
+    def get_stdlib_logger(self) -> logging.Logger:
+        return self._logger
 
     def set_level(self, level: LoggerLevel) -> None:
         self._logger.setLevel(level.value)
