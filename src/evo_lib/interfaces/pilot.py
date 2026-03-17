@@ -1,4 +1,4 @@
-"""Abstract interface for motor controllers (steppers, DC motors, etc.)."""
+"""Abstract interface for robot movement (differential and holonomic pilots)."""
 
 from abc import abstractmethod
 from enum import Enum

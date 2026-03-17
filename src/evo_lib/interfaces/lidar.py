@@ -35,7 +35,7 @@ class Lidar2D(Component):
         """Stop scanning."""
 
     @abstractmethod
-    def iter(self, duration: float = None) -> Generator[Lidar2DMeasure, None, None]:
+    def iter(self, duration: float | None = None) -> Generator[Lidar2DMeasure, None, None]:
         """Return a Python generator to iterate efficiently on lidar measurement."""
 
     @abstractmethod
