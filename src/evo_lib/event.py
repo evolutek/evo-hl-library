@@ -25,6 +25,8 @@ class Event[*T](Listeners[*T]):
     """
 
     def __init__(self):
+        super().__init__()
+        self._generation = 0
         self._condition = threading.Condition()
 
     def register(self, callback: Callable[[*T], None]) -> Listener:
@@ -43,21 +45,21 @@ class Event[*T](Listeners[*T]):
         If the event was already triggered in the past, this still
         waits for the *next* trigger (not a past one).
         """
-        start_timestamp = time.time()
-
         with self._condition:
             gen = self._generation
-
-            while self._generation == gen:
-                ellapsed_time = time.time() - start_timestamp
-                remaning_time = timeout - ellapsed_time
-                if remaning_time <= 0:
-                    return False # Timeout
-
-                if not self._condition.wait(remaning_time):
-                    return False # Timeout
-
-            return True # Event triggered
+            if timeout is None:
+                while self._generation == gen:
+                    self._condition.wait()
+                return True
+            else:
+                start_timestamp = time.time()
+                while self._generation == gen:
+                    remaining = timeout - (time.time() - start_timestamp)
+                    if remaining <= 0:
+                        return False
+                    if not self._condition.wait(remaining):
+                        return False
+                return True
 
     def trigger(self, *args: *T) -> None:
         """Fire the event: wake all waiters and invoke all callbacks."""

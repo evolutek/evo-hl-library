@@ -1,62 +1,68 @@
-"""Tests for Result, InstantResult, ErrorResult, DelayedResult, TaskRunner."""
-
-import time
+"""Tests for ImmediateResultTask and ImmediateErrorTask."""
 
 import pytest
 
-from evo_hl.result import (
-    DelayedResult,
-    ErrorResult,
-    InstantResult,
-    TaskRunner,
+from evo_lib.task import (
+    ImmediateErrorTask,
+    ImmediateResultTask,
+    TaskCancelledError,
 )
 
 
 class TestImmediateResultTask:
     def test_wait_returns_value(self):
-        r = InstantResult(42)
+        r = ImmediateResultTask(42)
         assert r.wait() == 42
 
-    def test_wait_default_none(self):
-        r = InstantResult()
-        assert r.wait() is None
-
     def test_is_done(self):
-        assert InstantResult(1).is_done() is True
+        assert ImmediateResultTask(1).is_done() is True
 
     def test_on_complete_called_immediately(self):
         received = []
-        InstantResult(42).on_complete(lambda v: received.append(v))
+        ImmediateResultTask(42).on_complete(lambda v: received.append(v))
         assert received == [42]
 
     def test_on_error_not_called(self):
         received = []
-        InstantResult(42).on_error(lambda e: received.append(e))
+        ImmediateResultTask(42).on_error(lambda e: received.append(e))
         assert received == []
 
     def test_chaining(self):
         received = []
-        InstantResult(1).on_complete(lambda v: received.append(v)).on_error(
+        ImmediateResultTask(1).on_complete(lambda v: received.append(v)).on_error(
             lambda e: received.append(e)
         )
         assert received == [1]
 
+    def test_cancel_then_wait_raises(self):
+        task = ImmediateResultTask(42)
+        task.cancel()
+        with pytest.raises(TaskCancelledError):
+            task.wait()
+
+    def test_cancel_then_on_complete_not_called(self):
+        received = []
+        task = ImmediateResultTask(42)
+        task.cancel()
+        task.on_complete(lambda v: received.append(v))
+        assert received == []
+
 
 class TestImmediateErrorTask:
     def test_wait_raises(self):
-        r = ErrorResult(ValueError("boom"))
+        r = ImmediateErrorTask(ValueError("boom"))
         with pytest.raises(ValueError, match="boom"):
             r.wait()
 
     def test_is_done(self):
-        assert ErrorResult(ValueError()).is_done() is True
+        assert ImmediateErrorTask(ValueError()).is_done() is True
 
     def test_on_error_called_immediately(self):
         received = []
-        ErrorResult(ValueError("x")).on_error(lambda e: received.append(str(e)))
+        ImmediateErrorTask(ValueError("x")).on_error(lambda e: received.append(str(e)))
         assert received == ["x"]
 
     def test_on_complete_not_called(self):
         received = []
-        ErrorResult(ValueError()).on_complete(lambda v: received.append(v))
+        ImmediateErrorTask(ValueError()).on_complete(lambda v: received.append(v))
         assert received == []

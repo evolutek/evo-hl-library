@@ -5,10 +5,10 @@ from __future__ import annotations
 from abc import abstractmethod
 from typing import TYPE_CHECKING
 
-from evo_hl.component import Component
+from evo_lib.component import Component
 
 if TYPE_CHECKING:
-    from evo_hl.task import Task
+    from evo_lib.task import Task
 
 
 class MotorController(Component):

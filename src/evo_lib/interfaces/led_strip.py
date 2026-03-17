@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from abc import abstractmethod
 
-from evo_hl.component import Component
+from evo_lib.component import Component
 
 
 class LedStrip(Component):
