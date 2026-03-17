@@ -2,7 +2,7 @@
 
 import threading
 
-from evo_hl.event import Event
+from evo_lib.event import Event
 
 
 class TestEvent:
@@ -33,43 +33,42 @@ class TestEvent:
 
     def test_unregister(self):
         received = []
-        cb = lambda v: received.append(v)
         ev = Event()
-        ev.register(cb)
+        listener = ev.register(lambda v: received.append(v))
         ev.trigger(1)
-        ev.unregister(cb)
+        ev.unregister(listener)
         ev.trigger(2)
         assert received == [1]
 
     def test_wait_blocks_until_trigger(self):
         ev = Event()
-        result = []
+        received = []
+        ev.register(lambda v: received.append(v))
 
         def waiter():
-            val = ev.wait()
-            result.append(val)
+            ev.wait()
 
         t = threading.Thread(target=waiter)
         t.start()
         ev.trigger(42)
         t.join(timeout=1.0)
-        assert result == [42]
+        assert received == [42]
 
     def test_wait_returns_next_trigger(self):
         ev = Event()
         ev.trigger(1)  # past trigger
 
-        result = []
+        received = []
+        ev.register(lambda v: received.append(v))
 
         def waiter():
-            val = ev.wait()  # should wait for NEXT, not past
-            result.append(val)
+            assert ev.wait() is True  # should wait for NEXT, not past
 
         t = threading.Thread(target=waiter)
         t.start()
         ev.trigger(2)
         t.join(timeout=1.0)
-        assert result == [2]
+        assert received == [2]
 
     def test_trigger_no_callbacks(self):
         ev = Event()

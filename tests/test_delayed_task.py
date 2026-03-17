@@ -4,7 +4,7 @@ import threading
 
 import pytest
 
-from evo_hl.task import TaskCancelledError, DelayedTask
+from evo_lib.task import TaskCancelledError, DelayedTask
 
 
 class TestDelayedTaskComplete:
@@ -41,7 +41,7 @@ class TestDelayedTaskComplete:
 class TestDelayedTaskError:
     def test_abort_and_wait_raises(self):
         task = DelayedTask()
-        task.DelayedTask(ValueError("boom"))
+        task.error(ValueError("boom"))
         with pytest.raises(ValueError, match="boom"):
             task.wait()
 
@@ -49,7 +49,7 @@ class TestDelayedTaskError:
         received = []
         task = DelayedTask()
         task.on_error(lambda e: received.append(str(e)))
-        task.DelayedTask(ValueError("oops"))
+        task.error(ValueError("oops"))
         assert received == ["oops"]
 
     def test_on_error_called_if_already_done(self):
@@ -63,7 +63,7 @@ class TestDelayedTaskError:
         received = []
         task = DelayedTask()
         task.on_complete(lambda v: received.append(v))
-        task.DelayedTask(ValueError())
+        task.error(ValueError())
         assert received == []
 
 

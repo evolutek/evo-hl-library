@@ -16,7 +16,8 @@ class Component(ABC):
     def __init__(self, name: str):
         self._name = name
 
-    def get_name(self) -> str:
+    @property
+    def name(self) -> str:
         """Return the name of this component instance."""
         return self._name
 

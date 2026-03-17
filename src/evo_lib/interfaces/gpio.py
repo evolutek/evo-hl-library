@@ -6,10 +6,10 @@ from abc import abstractmethod
 from enum import Enum
 from typing import TYPE_CHECKING
 
-from evo_hl.component import Component
+from evo_lib.component import Component
 
 if TYPE_CHECKING:
-    from evo_hl.event import Event
+    from evo_lib.event import Event
 
 
 class Edge(Enum):

@@ -5,7 +5,7 @@ from __future__ import annotations
 from abc import abstractmethod
 from typing import Callable
 
-from evo_hl.component import Component
+from evo_lib.component import Component
 
 
 class Lidar2D(Component):

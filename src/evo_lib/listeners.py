@@ -44,7 +44,9 @@ class Listeners[*T]:
             listener._callback(*args)
 
     def register(self, callback: Callable[[*T], None], onetime: bool = False) -> Listener:
-        self._listeners.append(Listener(callback, onetime))
+        listener = Listener(callback, onetime)
+        self._listeners.append(listener)
+        return listener
 
     def unregister(self, listener: Listener) -> None:
         self._listeners.remove(listener)
