@@ -7,7 +7,7 @@ from evo_lib.component import Component
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from evo_lib.task import Task
-    from evo_lib.color import Color
+    from evo_lib.types.color import Color
 
 
 class ColorSensor(Component):
@@ -19,4 +19,4 @@ class ColorSensor(Component):
 
     @abstractmethod
     def calibrate(self, power_color: float, min_color: float, max_color: float) -> None:
-        pass
+        """Calibrate sensor thresholds (LED power, min/max color range)."""

@@ -7,7 +7,7 @@ from evo_lib.component import Component
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from evo_lib.task import Task
-    from evo_lib.color import Color
+    from evo_lib.types.color import Color
 
 
 class LedStrip(Component):
@@ -27,11 +27,11 @@ class LedStrip(Component):
 
     @abstractmethod
     def set_brightness(self, brightness: float) -> None:
-        pass
+        """Set global brightness (0.0 to 1.0)."""
 
     @abstractmethod
     def get_brightness(self) -> float:
-        pass
+        """Get current global brightness (0.0 to 1.0)."""
 
     @abstractmethod
     def show(self) -> Task[None]:

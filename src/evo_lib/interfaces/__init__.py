@@ -9,7 +9,12 @@ from evo_lib.interfaces.color_sensor import ColorSensor
 from evo_lib.interfaces.gpio import GPIO, GPIOEdge
 from evo_lib.interfaces.led_strip import LedStrip
 from evo_lib.interfaces.lidar import Lidar2D
-from evo_lib.interfaces.pilot import DifferentialPilot, PilotMoveStatus
+from evo_lib.interfaces.pilot import (
+    DifferentialPilot,
+    HolonomicPilot,
+    Pilot,
+    PilotMoveStatus,
+)
 from evo_lib.interfaces.servo import Servo
 from evo_lib.interfaces.smart_servo import SmartServo
 
@@ -17,6 +22,8 @@ __all__ = [
     "AnalogInput",
     "ColorSensor",
     "DifferentialPilot",
+    "HolonomicPilot",
+    "Pilot",
     "GPIOEdge",
     "GPIO",
     "LedStrip",
