@@ -8,33 +8,43 @@ log rotation, colors, and module-specific logging contexts.
 import sys
 import os
 from datetime import datetime, timedelta
-import threading
 import re
-from abc import ABC, abstractmethod
 import atexit
+from abc import ABC, abstractmethod
+import logging
+import logging.handlers
+from enum import Enum
+from typing import TextIO
 
 # Here colorama is used to get a list of ANSI colors code
 from colorama import Fore, Style
 
-# Here colorama is used to pasively enable color support on Windows terminals
+
+# Here colorama is used to passively enable color support on Windows terminals
 if sys.platform == "win32":
     from colorama import just_fix_windows_console
     just_fix_windows_console()
 
 
-_logger_lock = threading.Lock()
+# Custom level number INFO is 20
+class LoggerLevel(Enum):
+    DEBUG = logging.DEBUG
+    INFO = logging.INFO
+    SUCCESS = 21
+    WARNING = logging.WARNING
+    ERROR = logging.ERROR
+    CRITICAL = logging.CRITICAL
 
 
 def _are_ansi_color_supported():
     plat = sys.platform
-    supported_platform = plat != 'Pocket PC' # and (plat != 'win32' or 'ANSICON' in os.environ)
+    supported_platform = plat != 'Pocket PC'
     is_a_tty = hasattr(sys.stdout, 'isatty') and sys.stdout.isatty()
     return supported_platform and is_a_tty
 
 
 class _CustomWriteIO:
     """Internal class to redirect stdout/stderr to the logger."""
-
     def __init__(self, write_func):
         self.write_func = write_func
 
@@ -48,17 +58,9 @@ class _CustomWriteIO:
         pass
 
 
-def _encode(s):
-    return s.encode('utf-8', errors='ignore')
-
-
 # Keep original sys.stdout and sys.stderr
 _base_stdout = sys.stdout
 _base_stderr = sys.stderr
-
-# Currently no good way to fix encoding errors
-_base_stdout._errors = "backslashreplace"
-_base_stderr._errors = "backslashreplace"
 
 
 ANSI_SEQUENCE_RE = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
@@ -66,239 +68,127 @@ def _remove_ansi_codes(sentence: str):
     return ANSI_SEQUENCE_RE.sub('', sentence)
 
 
-class ModuleLogger:
-    """
-    Logger wrapper for a specific module.
-
-    This class forwards log calls to the parent Logger instance, automatically
-    attaching the module name to the log record.
-    """
-
-    def __init__(self, logger: Logger, name: str) -> None:
-        self.logger = logger
-        self.name = name
-
-    def debug(self, *args, sep: str = ' ', end: str = '\n', flush: bool = False) -> None:
-        """Log a debug message."""
-        self.logger.debug(*args, sep=sep, end=end, flush=flush, module=self.name)
-
-    def info(self, *args, sep: str = ' ', end: str = '\n', flush: bool = False) -> None:
-        """Log an info message."""
-        self.logger.info(*args, sep=sep, end=end, flush=flush, module=self.name)
-
-    def success(self, *args, sep: str = ' ', end: str = '\n', flush: bool = False) -> None:
-        """Log a success message."""
-        self.logger.success(*args, sep=sep, end=end, flush=flush, module=self.name)
-
-    def warning(self, *args, sep: str = ' ', end: str = '\n', flush: bool = False) -> None:
-        """Log a warning message."""
-        self.logger.warning(*args, sep=sep, end=end, flush=flush, module=self.name)
-
-    def error(self, *args, sep: str = ' ', end: str = '\n', flush: bool = False) -> None:
-        """Log an error message."""
-        self.logger.error(*args, sep=sep, end=end, flush=flush, module=self.name)
-
-    def fatal(self, *args, sep: str = ' ', end: str = '\n', flush: bool = False) -> None:
-        """Log a fatal message."""
-        self.logger.fatal(*args, sep=sep, end=end, flush=flush, module=self.name)
-
-
-class LoggerLevel:
-    """
-    Represents a logging level configuration.
-
-    Attributes:
-        colored_prefix: The prefix string with ANSI colors.
-        prefix: The prefix string without ANSI colors.
-        colored_module_fmt: The module format string with ANSI colors.
-        module_fmt: The module format string without ANSI colors.
-        pipe: The IO stream (stdout or stderr) for this level.
-    """
-
-    def __init__(self, pipe, module_fmt: str, colored_prefix: str) -> None:
-        self.colored_prefix = colored_prefix
-        self.prefix = _remove_ansi_codes(colored_prefix)
-        self.colored_module_fmt = module_fmt
-        self.module_fmt = _remove_ansi_codes(module_fmt)
-        self.pipe = pipe
-
+COLORED_MODULE_FMT = Style.BRIGHT + Fore.BLACK + "[" + Style.RESET_ALL + Fore.CYAN + "%s" + Style.BRIGHT + Fore.BLACK + "] "
 
 _COMMON_PREFIX = Style.BRIGHT + Fore.BLACK + "[" + Style.RESET_ALL + Fore.WHITE + "%s" + Style.BRIGHT + Fore.BLACK + "] %s" + Style.RESET_ALL
-_MODULE_FORMAT = Style.BRIGHT + Fore.BLACK + "[" + Style.RESET_ALL + Fore.CYAN + "%s" + Style.BRIGHT + Fore.BLACK + "] "
+COLORED_PREFIXES_FMT = {
+    LoggerLevel.DEBUG.value: (_COMMON_PREFIX + Fore.BLACK + "Debug" + Style.DIM + Fore.WHITE + ": " + Style.RESET_ALL + Style.DIM + Fore.WHITE),
+    LoggerLevel.INFO.value: (_COMMON_PREFIX + Fore.BLUE + "Info" + Style.DIM + Fore.WHITE + ": " + Style.RESET_ALL + Fore.WHITE),
+    LoggerLevel.SUCCESS.value: (_COMMON_PREFIX + Style.BRIGHT + Fore.GREEN + "Success" + Style.RESET_ALL + Style.DIM + Fore.WHITE + ": " + Style.RESET_ALL + Fore.GREEN),
+    LoggerLevel.WARNING.value: (_COMMON_PREFIX + Style.BRIGHT + Fore.YELLOW + "Warning" + Style.RESET_ALL + Style.DIM + Fore.WHITE + ": " + Style.RESET_ALL + Fore.YELLOW),
+    LoggerLevel.ERROR.value: (_COMMON_PREFIX + Style.BRIGHT + Fore.RED + "Error" + Style.RESET_ALL + Style.DIM + Fore.WHITE + ": " + Style.RESET_ALL + Fore.RED),
+    LoggerLevel.CRITICAL.value: (_COMMON_PREFIX + Style.BRIGHT + Style.DIM + Fore.RED + "Fatal" + Style.RESET_ALL + Style.DIM + Fore.WHITE + ": " + Style.DIM + Fore.RED),
+}
 
-LVL_DEBUG   = LoggerLevel(_base_stdout, _MODULE_FORMAT, _COMMON_PREFIX + Fore.BLACK                          + "Debug"   + Style.DIM + Fore.WHITE                   + ": " + Style.RESET_ALL + Style.DIM + Fore.WHITE)
-LVL_INFO    = LoggerLevel(_base_stdout, _MODULE_FORMAT, _COMMON_PREFIX + Fore.BLUE                           + "Info"    + Style.DIM + Fore.WHITE                   + ": " + Style.RESET_ALL + Fore.WHITE)
-LVL_SUCCESS = LoggerLevel(_base_stdout, _MODULE_FORMAT, _COMMON_PREFIX + Style.BRIGHT + Fore.GREEN           + "Success" + Style.RESET_ALL + Style.DIM + Fore.WHITE + ": " + Style.RESET_ALL + Fore.GREEN)
-LVL_WARNING = LoggerLevel(_base_stdout, _MODULE_FORMAT, _COMMON_PREFIX + Style.BRIGHT + Fore.YELLOW          + "Warning" + Style.RESET_ALL + Style.DIM + Fore.WHITE + ": " + Style.RESET_ALL + Fore.YELLOW)
-LVL_ERROR   = LoggerLevel(_base_stderr, _MODULE_FORMAT, _COMMON_PREFIX + Style.BRIGHT + Fore.RED             + "Error"   + Style.RESET_ALL + Style.DIM + Fore.WHITE + ": " + Style.RESET_ALL + Fore.RED)
-LVL_FATAL   = LoggerLevel(_base_stderr, _MODULE_FORMAT, _COMMON_PREFIX + Style.BRIGHT + Style.DIM + Fore.RED + "Fatal"   + Style.RESET_ALL + Style.DIM + Fore.WHITE + ": " + Style.DIM + Fore.RED)
-
-
-_default_logger: "Logger" = None
-_loggers: list["Logger"] = []
-
-
-# Be sure to close all logger instances before exit
-def _close_loggers():
-    for logger in _loggers:
-        logger.close()
-
-atexit.register(_close_loggers)
+# Pre-calculate plain styles
+PLAIN_PREFIXES_FMT = {k: _remove_ansi_codes(v) for k, v in COLORED_PREFIXES_FMT.items()}
+PLAIN_MODULE_FMT = _remove_ansi_codes(COLORED_MODULE_FMT)
 
 
-class LoggerFormater:
+_default_logger: Logger = None
+
+
+class LoggerFormater(logging.Formatter):
     """
     Handles formatting of log messages.
 
     Manages timestamps, prefixes, module names, and indentation for multiline logs.
     """
-    def __init__(self):
-        self._last_line_level = None
-        self._last_is_newline = True
-        self._last_trailing_spaces = ""
+    def __init__(self, colored: bool = False):
+        super().__init__()
+        self._strftime_format: str = "%d-%m-%Y %H:%M:%S"
+        self._colored: bool = colored
+        self._next_reset_color: bool = False
 
-        self._strftime_format = "%d-%m-%Y %H:%M:%S"
+    def is_colored(self) -> bool:
+        return self._colored
+
+    def set_colored(self, colored: bool) -> None:
+        if not colored:
+            self._next_reset_color = True
+        self._colored = colored
 
     def set_time_format(self, format: str) -> None:
         """Set the format string for timestamps (strftime format)."""
         self._strftime_format = format
 
-    def format(self, lvl: LoggerLevel, module: str, s: str, colored: bool) -> str:
-        """
-        Format a log message.
+    def format(self, record: logging.LogRecord) -> str:
+        # Determine prefix and formatting based on level and color settings
+        prefixes_fmt = COLORED_PREFIXES_FMT if self._colored else PLAIN_PREFIXES_FMT
+        module_fmt = COLORED_MODULE_FMT if self._colored else PLAIN_MODULE_FMT
 
-        Args:
-            lvl: The logging level.
-            module: The module name.
-            s: The message string.
-            colored: Whether to include ANSI colors.
+        # Get the format string for the current level (default to INFO if unknown)
+        prefix_fmt = prefixes_fmt.get(record.levelno, prefixes_fmt[logging.INFO])
 
-        Returns:
-            The formatted log string.
-        """
-        strtime = datetime.now().strftime(self._strftime_format)
-        module_str = (lvl.colored_module_fmt if colored else lvl.module_fmt) % module if module else ""
-        prefix = (lvl.colored_prefix if colored else lvl.prefix) % (strtime, module_str)
+        # Format time part of the prefix
+        strtime = datetime.fromtimestamp(record.created).strftime(self._strftime_format)
 
-        out = ""
-        trailing_spaces = self._last_trailing_spaces
-        last_is_newline = self._last_is_newline
+        # Format module part of the prefix
+        module_name = record.name
+        module_str = (module_fmt % module_name) if module_name else ""
 
-        if self._last_line_level != lvl and not last_is_newline:
-            out += "\n"
-            last_is_newline = True
+        # Format prefix
+        prefix = prefix_fmt % (strtime, module_str)
 
-        for i in range(len(s)):
-            c = s[i]
-            if c == '\r' or c == '\n':
-                last_is_newline = True
-                out += trailing_spaces
-                trailing_spaces = ""
-                out += c
-            elif last_is_newline and c.isspace():
-                trailing_spaces += c
-            else:
-                if last_is_newline:
-                    out += prefix
-                    out += trailing_spaces
-                    trailing_spaces = ""
-                    last_is_newline = False
-                out += c
+        # Add prefix in front of every non empty line
+        lines = record.getMessage().split('\n')
+        for i, line in enumerate(lines):
+            line = line.rstrip()
+            if line:
+                line = prefix + line
+            lines[i] = line
 
-        self._last_is_newline = last_is_newline
-        self._last_trailing_spaces = trailing_spaces
-        self._last_line_level = lvl
+        output = '\n'.join(lines)
 
-        return out
+        if self._next_reset_color:
+            self._next_reset_color = False
+            output = Style.RESET_ALL + output
+
+        return output
 
 
 class LoggerSink(ABC):
     """
     Abstract base class for log sinks.
-
-    A sink is a destination for log messages (e.g., console, file).
     """
-    def __init__(self):
-        super().__init__()
-        self.formater = LoggerFormater()
-
     @abstractmethod
-    def write(self, lvl: LoggerLevel, module: str, s: str, flush: bool) -> None:
-        """
-        Write a log message to the sink.
-
-        Args:
-            lvl: The logging level.
-            module: The module name.
-            s: The message content.
-            flush: Whether to flush the stream.
-        """
-        pass
+    def get_handler() -> logging.Handler:
+        ...
 
     @abstractmethod
     def close(self) -> None:
-        """Close the sink and release resources."""
-        pass
-
-    def get_formater(self) -> LoggerFormater:
-        """Get the formatter used by this sink."""
-        return self.formater
+        ...
 
 
-class LoggerFileSink(LoggerSink):
-    """
-    Logger sink that writes to a file.
+class _LoggingFileHandler(logging.handlers.TimedRotatingFileHandler):
+    def __init__(self, folder: str, latest_filename: str, filename_format: str, interval: int):
+        super().__init__(self, latest_filename, "s", interval)
 
-    Supports log rotation based on time intervals.
-    """
-    def __init__(self):
-        super().__init__()
+        # Add possibility to enable/disable rotation
+        self._rotation_enable: bool = False
 
-        # The opened file
-        self._file = None
+        # Settings reative to files name
+        self._rotation_filename_format = filename_format # %i is a counter to avoid two files with the same name
+        self._rotation_folder = folder
 
-        # Rotation filename is: FILENAME_PREFIX + FILENAME_FORMAT + FILENAME_SUFFIX
-        self._rotation_enable = False
-        self._rotation_interval = timedelta(days = 1) # Default to 1 day interval
-        self._rotation_format = "%Y-%m-%d-%i.log" # %i is a counter to avoid two files with the same name
-        self._rotation_folder = "logs/"
-        self._rotation_latest = "latest.log"
-        self._rotation_next = None # Datetime of the next rotation
+        # See: https://docs.python.org/3/library/logging.handlers.html#logging.handlers.BaseRotatingHandler.namer
+        self.namer = self._get_next_rotation_filename
 
-    def write(self, lvl: LoggerLevel, module: str, s: str, flush: bool) -> None:
-        """Write a log message to the file."""
-        self.check_rotation()
-        raw = self.formater.format(lvl, module, s, False)
-        self._file.write(_encode(raw))
-        if flush:
-            self._file.flush()
+    # Override the super shouldRollover to disable rotation if needed
+    def shouldRollover(self, record: logging.LogRecord) -> bool:
+        if not self._rotation_enable:
+            return False
+        return super().shouldRollover(record)
 
-    def open(self, filename: str, append: bool =True) -> None:
-        """
-        Open the log file.
-
-        Args:
-            filename: Path to the log file.
-            append: Whether to append to existing file or overwrite.
-        """
-        pdir = os.path.dirname(filename)
-        if pdir and not os.path.isdir(pdir):
-            os.makedirs(pdir)
-        self._file = open(filename, 'ab' if append else 'wb')
-
-    def close(self) -> None:
-        """Close the log file."""
-        if self._file is not None:
-            if not self._file.closed:
-                self._file.close()
-            self._file = None
-
-    def enable_rotation(self, enable: bool) -> None:
-        """Enable or disable log rotation."""
+    def set_rotation_enable(self, enable: bool) -> None:
         self._rotation_enable = enable
 
-    def _get_next_rotation_filename(self) -> None:
-        base_filename = datetime.now().strftime(self._rotation_format)
+    def set_rotation_interval(self, seconds: int) -> None:
+        """Set the time interval for log rotation."""
+        self.interval = seconds
+
+    def _get_next_rotation_filename(self, default) -> str:
+        base_filename = datetime.now().strftime(self._rotation_filename_format)
 
         if not os.path.isdir(self._rotation_folder):
             return base_filename.replace("%i", "000")
@@ -314,79 +204,76 @@ class LoggerFileSink(LoggerSink):
                 return filename
 
         # Can't find proper filename
-        return None
+        raise Exception("Failed to find a valid rotation file name")
+
+
+class LoggerFileSink(LoggerSink):
+    """
+    Logger sink that writes to a file (wrapping logging.TimedRotatingFileHandler).
+
+    Supports log rotation based on time intervals.
+    """
+    def __init__(self, folder: str, latest_filename: str = "latest.log", filename_format: str = "%Y-%m-%d-%i.log", interval = 24*3600):
+        self.handler = _LoggingFileHandler(folder, latest_filename, filename_format, interval)
+
+    def get_handler(self) -> logging.Handler:
+        return self.handler
+
+    def set_rotation_enable(self, enable: bool) -> None:
+        """Enable or disable log rotation."""
+        self.handler.set_rotation_enable(enable)
 
     def set_rotation_interval(self, interval: timedelta) -> None:
         """Set the time interval for log rotation."""
-        self._rotation_interval = interval
+        self.handler.set_rotation_interval(interval.seconds)
 
-    def set_rotation_filename(self, format: str) -> None:
-        """Set the filename format for rotated logs."""
-        self._rotation_format = format.replace("%i", "%%i")
 
-    def set_rotation_folder(self, folder: str) -> None:
-        """Set the folder where rotated logs will be stored."""
-        self._rotation_folder = folder
+class _LoggingConsoleHandler(logging.Handler):
+    def __init__(self, stdout: TextIO, stderr: TextIO):
+        super().__init__()
+        self.stdout = stdout
+        self.stderr = stderr
 
-    def set_rotation_latest_filename(self, filename: str) -> None:
-        """Set the filename for the 'latest' log file."""
-        self._rotation_latest = filename
+    def emit(self, record: logging.LogRecord) -> None:
+        try:
+            msg = self.format(record)
+            stream = self.stderr if record.levelno >= logging.ERROR else self.stdout
+            stream.write(msg)
+            stream.flush()
+        except Exception:
+            self.handleError(record)
 
-    def create_rotation_latest_file(self) -> None:
-        """Create or reset the 'latest' log file."""
-        self.close()
-        self.open(self._rotation_latest, False)
-
-    def do_rotation(self) -> None:
-        """Perform the log rotation process."""
-        self._rotation_next = datetime.now() + self._rotation_interval
-        if os.path.isfile(self._rotation_latest):
-            filename = self._get_next_rotation_filename()
-            if filename is None:
-                self.close()
-                return
-            if not os.path.isdir(self._rotation_folder):
-                os.makedirs(self._rotation_folder)
-            os.rename(self._rotation_latest, os.path.join(self._rotation_folder, filename))
-        self.create_rotation_latest_file()
-
-    def check_rotation(self) -> None:
-        """Check if rotation is needed and perform it if necessary."""
-        if self._rotation_enable:
-            if self._rotation_next is None or datetime.now() >= self._rotation_next:
-                self.do_rotation()
+    def close(self) -> None:
+        """Flush console streams."""
+        self.stdout.flush()
+        self.stderr.flush()
+        super().close()
 
 
 class LoggerConsoleSink(LoggerSink):
     """
     Logger sink that writes to the console (stdout/stderr).
     """
-    def __init__(self):
-        super().__init__()
-        self._allow_color = _are_ansi_color_supported()
+    def __init__(self, stdout: TextIO | None = None, stderr: TextIO | None = None):
+        if stdout is None:
+            stdout = _base_stdout
+        if stderr is None:
+            stderr = _base_stderr
 
-    def write(self, lvl: LoggerLevel, module: str, s: str, flush: bool) -> None:
-        """Write a log message to the console."""
-        raw = self.formater.format(lvl, module, s, self._allow_color)
-        lvl.pipe.write(raw)
-        if flush:
-            lvl.pipe.flush()
+        self.formater = LoggerFormater(_are_ansi_color_supported())
+
+        self.handler = _LoggingConsoleHandler(stdout, stderr)
+        self.handler.setFormatter(self.formater)
+
+    def get_handler(self) -> logging.Handler:
+        return self.handler
 
     def close(self) -> None:
-        """Flush console streams."""
-        _base_stdout.flush()
-        _base_stderr.flush()
+        self.handler.close()
 
-    def set_allow_color(self, allow: bool) -> None:
+    def set_colored(self, colored: bool) -> None:
         """Enable or disable ANSI color output."""
-        if allow != self._allow_color:
-            self._allow_color = allow
-            if not allow:
-                # Reset color in terminal
-                _base_stderr.write(Style.RESET_ALL)
-                _base_stdout.write(Style.RESET_ALL)
-                _base_stderr.flush()
-                _base_stdout.flush()
+        self.formater.set_colored(colored)
 
 
 class Logger:
@@ -395,36 +282,35 @@ class Logger:
 
     Manages multiple sinks and module-specific loggers.
     """
-    def __init__(self) -> None:
-        self._default_stdout_level = LVL_DEBUG
-        self._default_stderr_level = LVL_ERROR
+    def __init__(self, name: str, *, parent: Logger = None) -> None:
+        if parent is None:
+            self._logger = logging.getLogger(name)
+            self._logger.setLevel(logging.DEBUG)
+            # Don't propagate to root logger to avoid double logging
+            self._logger.propagate = False
+        else:
+            self._logger = parent._logger.getChild(name)
+            self._logger.setLevel(parent._logger.level)
 
-        self._default_module = ""
-        self._modules: dict[str, ModuleLogger] = {}
+        self._parent = parent
+
+        self._default_stdout_level = logging.DEBUG
+        self._default_stderr_level = logging.ERROR
 
         self._sinks: list[LoggerSink] = []
 
-        """
-        # Shortcuts
-        self.dbg  = self.debug
-        self.inf  = se>lf.info
-        self.succ = self.success
-        self.warn = self.warning
-        self.err  = self.error
-        self.crit = self.fatal
-        """
-
-        _loggers.append(self)
-
     def __del__(self):
-        self.close_file()
-        self.allow_color(False)
+        self.close()
+
+    def set_level(self, level: LoggerLevel) -> None:
+        self._logger.setLevel(level.value)
 
     def add_sink(self, sink: LoggerSink) -> None:
         """Add a sink to the logger."""
         self._sinks.append(sink)
+        self._logger.addHandler(sink.get_handler())
 
-    def use_as_default(self, default_stdout_level = LVL_DEBUG, default_stderr_level = LVL_ERROR):
+    def use_as_default(self, default_stdout_level = logging.DEBUG, default_stderr_level = logging.ERROR):
         """
         Set this logger as the system default.
 
@@ -436,78 +322,64 @@ class Logger:
         """
         global _default_logger
         _default_logger = self
+
         self._default_stdout_level = default_stdout_level
         self._default_stderr_level = default_stderr_level
-        # Replace Python default sys.stdout and sys.stderr with ou custom function
+
+        # Replace Python default sys.stdout and sys.stderr with our custom function
         # so every call to ``print`` will be redirected to the logger
         sys.stdout = _CustomWriteIO(self._io_info)
         sys.stderr = _CustomWriteIO(self._io_error)
 
+        # Currently no good way to fix encoding errors
+        _base_stdout._errors = "backslashreplace"
+        _base_stderr._errors = "backslashreplace"
+
     def _io_info(self, data):
-        self._write(self._default_stdout_level, data, None, self._default_module)
+        self.info(data, end='', module=self._default_module)
 
     def _io_error(self, data):
-        self._write(self._default_stderr_level, data, None, self._default_module)
-
-    def set_default_module_name(self, name: str) -> None:
-        """Set the default module name for logs without a specific module."""
-        self._default_module = name
+        self.error(data, end='', module=self._default_module)
 
     def close(self):
         """Close all sinks."""
         for sink in self._sinks:
+            self._logger.removeHandler(sink)
             sink.close()
-        self._sinks = []
+        self._sinks.clear()
 
     def _merge_args(self, args: list, sep=' ') -> str:
-        out = ""
-        first = True
-        for a in args:
-            if first:
-                first = False
-            else:
-                out += sep
-            out += str(a)
-        return out
+        return sep.join(str(a) for a in args)
 
-    def _write(self, lvl: LoggerLevel, s: str, flush: bool | None, module: str) -> None:
-        if flush is None:
-            flush = s.find('\n') != -1
+    def _log(self, lvl: LoggerLevel, *args, sep: str, end: str, flush: bool | None) -> None:
+        msg = self._merge_args(args, sep) + end
+        self._logger.log(lvl.value, msg)
 
-        with _logger_lock:
-            for sink in self._sinks:
-                sink.write(lvl, module, s, flush)
-
-    def _log(self, lvl: LoggerLevel, *args, sep: str, end: str, flush: bool | None, module: str) -> None:
-        if module is None:
-            module = self._default_module
-        self._write(lvl, self._merge_args(args, sep) + end, flush, module)
-
-    def debug(self, *args, sep: str = ' ', end: str = '\n', flush: bool | None = None, module: str = None) -> None:
+    def debug(self, *args, sep: str = ' ', end: str = '\n', flush: bool | None = None) -> None:
         """Log a debug message."""
-        self._log(LVL_DEBUG, *args, sep=sep, end=end, flush=flush, module=module)
+        self._log(LoggerLevel.DEBUG, *args, sep=sep, end=end, flush=flush)
 
-    def info(self, *args, sep: str = ' ', end: str = '\n', flush: bool | None = None, module: str = None) -> None:
+    def info(self, *args, sep: str = ' ', end: str = '\n', flush: bool | None = None) -> None:
         """Log an info message."""
-        self._log(LVL_INFO, *args, sep=sep, end=end, flush=flush, module=module)
+        self._log(LoggerLevel.INFO, *args, sep=sep, end=end, flush=flush)
 
-    def success(self, *args, sep: str = ' ', end: str = '\n', flush: bool | None = None, module: str = None) -> None:
+    def success(self, *args, sep: str = ' ', end: str = '\n', flush: bool | None = None) -> None:
         """Log a success message."""
-        self._log(LVL_SUCCESS, *args, sep=sep, end=end, flush=flush, module=module)
+        self._log(LoggerLevel.SUCCESS, *args, sep=sep, end=end, flush=flush)
 
-    def warning(self, *args, sep: str = ' ', end: str = '\n', flush: bool | None = None, module: str = None) -> None:
+    def warning(self, *args, sep: str = ' ', end: str = '\n', flush: bool | None = None) -> None:
         """Log a warning message."""
-        self._log(LVL_WARNING, *args, sep=sep, end=end, flush=flush, module=module)
+        self._log(LoggerLevel.WARNING, *args, sep=sep, end=end, flush=flush)
 
-    def error(self, *args, sep: str = ' ', end: str = '\n', flush: bool | None = None, module: str = None) -> None:
+    def error(self, *args, sep: str = ' ', end: str = '\n', flush: bool | None = None) -> None:
         """Log an error message."""
-        self._log(LVL_ERROR, *args, sep=sep, end=end, flush=flush, module=module)
+        self._log(LoggerLevel.ERROR, *args, sep=sep, end=end, flush=flush)
 
-    def fatal(self, *args, sep: str = ' ', end: str = '\n', flush: bool | None = None, module: str = None) -> None:
+    def fatal(self, *args, sep: str = ' ', end: str = '\n', flush: bool | None = None) -> None:
         """Log a fatal message."""
-        self._log(LVL_FATAL, *args, sep=sep, end=end, flush=flush, module=module)
+        self._log(LoggerLevel.CRITICAL, *args, sep=sep, end=end, flush=flush)
 
-    def get_module_logger(self, name: str) -> ModuleLogger:
+    def get_sublogger(self, name: str) -> Logger:
         """
         Get a logger instance for a specific module.
 
@@ -517,20 +389,12 @@ class Logger:
         Returns:
             A ModuleLogger instance.
         """
-        if name not in self._modules:
-            self._modules[name] = ModuleLogger(self, name)
-        return self._modules[name]
+        return Logger(name, parent=self)
 
 
 def get_default_logger() -> Logger:
     """Get or create the global default logger instance."""
     global _default_logger
-    _default_logger = None
     if _default_logger is None:
         _default_logger = Logger()
     return _default_logger
-
-
-def get_default_module_logger(name: str) -> ModuleLogger:
-    """Get a ModuleLogger from the default global logger."""
-    return get_default_logger().get_module_logger(name)

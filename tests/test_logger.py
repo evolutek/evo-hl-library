@@ -1,40 +1,44 @@
+from evo_hl.logger import Logger, LoggerSink, LoggerConsoleSink
 import sys
 
-from evo_hl.logger import Logger, LoggerConsoleSink
+
+def _get_test_sink() -> LoggerSink:
+      return LoggerConsoleSink(sys.stdout, sys.stderr)
 
 
-def test_logger():
-    logger = Logger()
-    logger.use_as_default()
-
-    # Test console sink
-    logger.add_sink(LoggerConsoleSink())
-    #logger.open_file("test.log")
-
-    # Test multiline logs
-    logger.info("Multiline\nstring\nEOL")
-
-    # Test different log leveld
-    logger.debug("test")
-    logger.info("test 1")
-    logger.info("test 2")
-    logger.info("test 3")
-    logger.success("test")
-    logger.warning("test")
-    logger.error("test")
-    logger.fatal("test")
-
-    # Print to stdout
-    print("test")
-
-    # Print to stderr
-    print("test", file=sys.stderr)
-
-    # Create a division by zero exception
-    _ = 42 / 0
+def test_logger_levels(capsys):
+      logger = Logger("Robot")
+      logger.add_sink(_get_test_sink())
+      logger.debug("dbg msg")
+      logger.info("info msg")
+      logger.success("success msg")
+      logger.warning("warn msg")
+      logger.error("err msg")
+      logger.fatal("fatal msg")
+      captured = capsys.readouterr()
+      assert "dbg msg" in captured.out
+      assert "info msg" in captured.out
+      assert "success msg" in captured.out
+      assert "warn msg" in captured.out
+      assert "err msg" in captured.err
+      assert "fatal msg" in captured.err
 
 
-# Test code
-if __name__ == "__main__":
-    test_logger()
+def test_multiline(capsys):
+      logger = Logger("Robot")
+      logger.add_sink(_get_test_sink())
+      logger.info("line1\nline2\nline3")
+      captured = capsys.readouterr()
+      assert "line1" in captured.out
+      assert "line2" in captured.out
+      assert "line3" in captured.out
 
+
+def test_sublogger(capsys):
+      logger = Logger("Robot")
+      logger.add_sink(_get_test_sink())
+      sublogger = logger.get_sublogger("MyModule")
+      sublogger.info("hello from a sublogger")
+      captured = capsys.readouterr()
+      assert "hello from a sublogger" in captured.out
+      assert "MyModule" in captured.out
