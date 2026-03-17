@@ -213,7 +213,9 @@ class LoggerFileSink(LoggerSink):
     Supports log rotation based on time intervals.
     """
     def __init__(self, folder: str, latest_filename: str = "latest.log", filename_format: str = "%Y-%m-%d-%i.log", interval = 24*3600):
+        self.formater = LoggerFormater(False)
         self.handler = _LoggingFileHandler(folder, latest_filename, filename_format, interval)
+        self.handler.setFormatter(self.formater)
 
     def get_handler(self) -> logging.Handler:
         return self.handler
@@ -258,9 +260,7 @@ class LoggerConsoleSink(LoggerSink):
             stdout = _base_stdout
         if stderr is None:
             stderr = _base_stderr
-
         self.formater = LoggerFormater(_are_ansi_color_supported())
-
         self.handler = _LoggingConsoleHandler(stdout, stderr)
         self.handler.setFormatter(self.formater)
 
