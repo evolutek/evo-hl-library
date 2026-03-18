@@ -398,5 +398,5 @@ def get_default_logger() -> Logger:
     """Get or create the global default logger instance."""
     global _default_logger
     if _default_logger is None:
-        _default_logger = Logger()
+        _default_logger = Logger("evo_hl")
     return _default_logger
