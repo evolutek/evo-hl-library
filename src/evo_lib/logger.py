@@ -346,7 +346,7 @@ class Logger:
     def close(self):
         """Close all sinks."""
         for sink in self._sinks:
-            self._logger.removeHandler(sink)
+            self._logger.removeHandler(sink.get_handler())
             sink.close()
         self._sinks.clear()
 
