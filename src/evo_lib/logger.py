@@ -353,33 +353,33 @@ class Logger:
     def _merge_args(self, args: list, sep=' ') -> str:
         return sep.join(str(a) for a in args)
 
-    def _log(self, lvl: LoggerLevel, *args, sep: str, end: str, flush: bool | None) -> None:
+    def _log(self, lvl: LoggerLevel, *args, sep: str, end: str) -> None:
         msg = self._merge_args(args, sep) + end
         self._logger.log(lvl.value, msg)
 
-    def debug(self, *args, sep: str = ' ', end: str = '\n', flush: bool | None = None) -> None:
+    def debug(self, *args, sep: str = ' ', end: str = '\n') -> None:
         """Log a debug message."""
-        self._log(LoggerLevel.DEBUG, *args, sep=sep, end=end, flush=flush)
+        self._log(LoggerLevel.DEBUG, *args, sep=sep, end=end)
 
-    def info(self, *args, sep: str = ' ', end: str = '\n', flush: bool | None = None) -> None:
+    def info(self, *args, sep: str = ' ', end: str = '\n') -> None:
         """Log an info message."""
-        self._log(LoggerLevel.INFO, *args, sep=sep, end=end, flush=flush)
+        self._log(LoggerLevel.INFO, *args, sep=sep, end=end)
 
-    def success(self, *args, sep: str = ' ', end: str = '\n', flush: bool | None = None) -> None:
+    def success(self, *args, sep: str = ' ', end: str = '\n') -> None:
         """Log a success message."""
-        self._log(LoggerLevel.SUCCESS, *args, sep=sep, end=end, flush=flush)
+        self._log(LoggerLevel.SUCCESS, *args, sep=sep, end=end)
 
-    def warning(self, *args, sep: str = ' ', end: str = '\n', flush: bool | None = None) -> None:
+    def warning(self, *args, sep: str = ' ', end: str = '\n') -> None:
         """Log a warning message."""
-        self._log(LoggerLevel.WARNING, *args, sep=sep, end=end, flush=flush)
+        self._log(LoggerLevel.WARNING, *args, sep=sep, end=end)
 
-    def error(self, *args, sep: str = ' ', end: str = '\n', flush: bool | None = None) -> None:
+    def error(self, *args, sep: str = ' ', end: str = '\n') -> None:
         """Log an error message."""
-        self._log(LoggerLevel.ERROR, *args, sep=sep, end=end, flush=flush)
+        self._log(LoggerLevel.ERROR, *args, sep=sep, end=end)
 
-    def fatal(self, *args, sep: str = ' ', end: str = '\n', flush: bool | None = None) -> None:
+    def fatal(self, *args, sep: str = ' ', end: str = '\n') -> None:
         """Log a fatal message."""
-        self._log(LoggerLevel.CRITICAL, *args, sep=sep, end=end, flush=flush)
+        self._log(LoggerLevel.CRITICAL, *args, sep=sep, end=end)
 
     def get_sublogger(self, name: str) -> Logger:
         """
