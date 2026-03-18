@@ -236,7 +236,7 @@ class LoggerFileSink(LoggerSink):
     def set_rotation_interval(self, interval: timedelta) -> None:
         """Set the time interval for log rotation."""
         self.handler.set_rotation_interval(interval.seconds)
-        
+
     def close(self) -> None:
       self.handler.close()
 
