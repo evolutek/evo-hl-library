@@ -14,6 +14,7 @@ import logging
 import logging.handlers
 from enum import Enum
 from typing import TextIO, Any
+import traceback
 
 # Here colorama is used to get a list of ANSI colors code
 from colorama import Fore, Style
@@ -324,6 +325,10 @@ class Logger:
         self._sinks.append(sink)
         self._logger.addHandler(sink.get_handler())
 
+    def _excepthook(self, *exc_info) -> None:
+        text = "".join(traceback.format_exception(*exc_info()))
+        self.critical(f"Unhandled exception:\n{text}")
+
     def use_as_default(self) -> None:
         """
         Set this logger as the system default.
@@ -336,6 +341,8 @@ class Logger:
         """
         global _default_logger
         _default_logger = self
+
+        sys.excepthook = self._excepthook
 
     def override_sys_streams(self, stdout_level = logging.DEBUG, stderr_level = logging.ERROR) -> None:
         self._stdout_level = stdout_level
@@ -392,7 +399,7 @@ class Logger:
         """Log an error message."""
         self._log(LoggerLevel.ERROR, *args, sep=sep, end=end)
 
-    def fatal(self, *args, sep: str = ' ', end: str = '\n') -> None:
+    def critical(self, *args, sep: str = ' ', end: str = '\n') -> None:
         """Log a fatal message."""
         self._log(LoggerLevel.CRITICAL, *args, sep=sep, end=end)
 
