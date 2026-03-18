@@ -13,7 +13,7 @@ from abc import ABC, abstractmethod
 import logging
 import logging.handlers
 from enum import Enum
-from typing import TextIO
+from typing import TextIO, Any
 
 # Here colorama is used to get a list of ANSI colors code
 from colorama import Fore, Style
@@ -42,19 +42,28 @@ def _are_ansi_color_supported():
     return supported_platform and is_a_tty
 
 
-class _CustomWriteIO:
+class _LoggedWriteIO:
     """Internal class to redirect stdout/stderr to the logger."""
-    def __init__(self, write_func):
-        self.write_func = write_func
+    def __init__(self, write_func, parent: Any):
+        self._logged_write_io_write_func = write_func
+        self._logged_write_io_parent = parent
 
     def write(self, data):
         """Write data to the logger."""
-        self.write_func(data)
+        self._logged_write_io_write_func(data)
         return len(data)
 
     def flush(self):
         """Flush the stream (no-op)."""
         pass
+
+    def __getattr__(self, name: str) -> Any:
+        """Redirect unknown attribute access to the parent stream object."""
+        return getattr(self._logged_write_io_parent, name)
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        """Redirect unknown attribute access to the parent stream object."""
+        setattr(self._logged_write_io_parent, name, value)
 
 
 # Keep original sys.stdout and sys.stderr
@@ -87,7 +96,7 @@ PLAIN_MODULE_FMT = _remove_ansi_codes(COLORED_MODULE_FMT)
 _default_logger: Logger = None
 
 
-class LoggerFormater(logging.Formatter):
+class LoggerFormatter(logging.Formatter):
     """
     Handles formatting of log messages.
 
@@ -213,7 +222,7 @@ class LoggerFileSink(LoggerSink):
     Supports log rotation based on time intervals.
     """
     def __init__(self, folder: str, latest_filename: str = "latest.log", filename_format: str = "%Y-%m-%d-%i.log", interval = 24*3600):
-        self.formater = LoggerFormater(False)
+        self.formater = LoggerFormatter(False)
         self.handler = _LoggingFileHandler(folder, latest_filename, filename_format, interval)
         self.handler.setFormatter(self.formater)
 
@@ -263,7 +272,7 @@ class LoggerConsoleSink(LoggerSink):
             stdout = _base_stdout
         if stderr is None:
             stderr = _base_stderr
-        self.formater = LoggerFormater(_are_ansi_color_supported())
+        self.formater = LoggerFormatter(_are_ansi_color_supported())
         self.handler = _LoggingConsoleHandler(stdout, stderr)
         self.handler.setFormatter(self.formater)
 
@@ -296,8 +305,8 @@ class Logger:
 
         self._parent = parent
 
-        self._default_stdout_level = logging.DEBUG
-        self._default_stderr_level = logging.ERROR
+        self._stdout_level = logging.DEBUG
+        self._stderr_level = logging.ERROR
 
         self._sinks: list[LoggerSink] = []
 
@@ -315,7 +324,7 @@ class Logger:
         self._sinks.append(sink)
         self._logger.addHandler(sink.get_handler())
 
-    def use_as_default(self, default_stdout_level = logging.DEBUG, default_stderr_level = logging.ERROR):
+    def use_as_default(self) -> None:
         """
         Set this logger as the system default.
 
@@ -328,13 +337,16 @@ class Logger:
         global _default_logger
         _default_logger = self
 
-        self._default_stdout_level = default_stdout_level
-        self._default_stderr_level = default_stderr_level
+    def override_sys_streams(self, stdout_level = logging.DEBUG, stderr_level = logging.ERROR) -> None:
+        self._stdout_level = stdout_level
+        self._stderr_level = stderr_level
 
         # Replace Python default sys.stdout and sys.stderr with our custom function
         # so every call to ``print`` will be redirected to the logger
-        sys.stdout = _CustomWriteIO(self._io_info)
-        sys.stderr = _CustomWriteIO(self._io_error)
+        if not isinstance(sys.stdout, _LoggedWriteIO):
+            sys.stdout = _LoggedWriteIO(self._io_info, _base_stdout)
+        if not isinstance(sys.stderr, _LoggedWriteIO):
+            sys.stderr = _LoggedWriteIO(self._io_error, _base_stderr)
 
         # Currently no good way to fix encoding errors
         _base_stdout._errors = "backslashreplace"
@@ -346,7 +358,7 @@ class Logger:
     def _io_error(self, data):
         self.error(data, end='', module=self._default_module)
 
-    def close(self):
+    def close(self) -> None:
         """Close all sinks."""
         for sink in self._sinks:
             self._logger.removeHandler(sink.get_handler())
