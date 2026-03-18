@@ -151,7 +151,7 @@ class LoggerSink(ABC):
     Abstract base class for log sinks.
     """
     @abstractmethod
-    def get_handler() -> logging.Handler:
+    def get_handler(self) -> logging.Handler:
         ...
 
     @abstractmethod
