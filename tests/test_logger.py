@@ -14,7 +14,7 @@ def test_logger_levels(capsys):
       logger.success("success msg")
       logger.warning("warn msg")
       logger.error("err msg")
-      logger.fatal("fatal msg")
+      logger.critical("fatal msg")
       captured = capsys.readouterr()
       assert "dbg msg" in captured.out
       assert "info msg" in captured.out
