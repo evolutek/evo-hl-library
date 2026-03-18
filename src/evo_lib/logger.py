@@ -161,7 +161,7 @@ class LoggerSink(ABC):
 
 class _LoggingFileHandler(logging.handlers.TimedRotatingFileHandler):
     def __init__(self, folder: str, latest_filename: str, filename_format: str, interval: int):
-        super().__init__(self, latest_filename, "s", interval)
+        super().__init__(latest_filename, "s", interval)
 
         # Add possibility to enable/disable rotation
         self._rotation_enable: bool = False
