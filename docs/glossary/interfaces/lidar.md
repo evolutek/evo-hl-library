@@ -1,20 +1,18 @@
 # Lidar2D
 
-A **Lidar2D** is a 2D rotating laser scanner that produces distance measurements at
-multiple angles.
+A **Lidar2D** is a 2D rotating laser scanner that produces distance measurements at multiple angles.
 
 ## Class: `Lidar2D`
 
 **Module:** `evo_lib.interfaces.lidar`
-**Extends:** [Component](component.md)
-**Locatable:** Yes (mounted at a specific position and height on the robot)
+**Extends:** [Component](../architecture/component.md)
 
 | Method | Returns | Description |
 |--------|---------|-------------|
-| `start()` | [Task](task.md)\[None\] | Start continuous scanning |
-| `stop()` | [Task](task.md)\[None\] | Stop scanning |
+| `start()` | [Task](../concurrency/task.md)\[None\] | Start continuous scanning |
+| `stop()` | [Task](../concurrency/task.md)\[None\] | Stop scanning |
 | `iter(duration?)` | Generator\[Lidar2DMeasure\] | Iterate over individual measurements |
-| `on_scan()` | [Event](event.md)\[list\[Lidar2DMeasure\]\] | Event that fires on each complete scan |
+| `on_scan()` | [Event](../concurrency/event.md)\[list\[Lidar2DMeasure\]\] | Event that fires on each complete scan |
 
 ### Scanning modes
 
@@ -45,5 +43,5 @@ Uses `__slots__` for memory efficiency (thousands of measurements per scan).
 
 ## See also
 
-- [Component](component.md) — lifecycle base class
-- [Event](event.md) — `on_scan()` returns an Event
+- [Component](../architecture/component.md) — lifecycle base class
+- [Event](../concurrency/event.md) — `on_scan()` returns an Event

@@ -1,7 +1,6 @@
 # Listener
 
-A **Listener** is a callback entry, and **Listeners** is a registry that manages a
-collection of them.
+A **Listener** is a callback entry, and **Listeners** is a registry that manages a collection of them.
 
 ## Purpose
 
@@ -12,8 +11,7 @@ Listeners is **not** thread-safe — it is a simple building block.
 
 **Module:** `evo_lib.listeners`
 
-A single callback entry. Holds a reference to the callback function and a flag indicating
-whether it should fire only once.
+A single callback entry. Holds a reference to the callback function and a flag indicating whether it should fire only once.
 
 | Field | Description |
 |-------|-------------|
@@ -34,8 +32,7 @@ A registry of Listener entries with register, unregister, and trigger operations
 
 ### One-time listeners
 
-When `onetime=True`, the listener fires once on the next `trigger()` call, then is
-automatically removed from the registry.
+When `onetime=True`, the listener fires once on the next `trigger()` call, then is automatically removed from the registry.
 
 ## Thread safety
 
