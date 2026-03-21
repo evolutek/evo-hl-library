@@ -5,20 +5,19 @@ This module provides a flexible logging system with support for multiple sinks (
 log rotation, colors, and module-specific logging contexts.
 """
 
-import sys
-import os
-from datetime import datetime, timedelta
-import re
-from abc import ABC, abstractmethod
 import logging
 import logging.handlers
-from enum import Enum
-from typing import TextIO, Any
+import os
+import re
+import sys
 import traceback
+from abc import ABC, abstractmethod
+from datetime import datetime, timedelta
+from enum import Enum
+from typing import Any, TextIO
 
 # Here colorama is used to get a list of ANSI colors code
 from colorama import Fore, Style
-
 
 # Here colorama is used to passively enable color support on Windows terminals
 if sys.platform == "win32":
@@ -64,7 +63,10 @@ class _LoggedWriteIO:
 
     def __setattr__(self, name: str, value: Any) -> None:
         """Redirect unknown attribute access to the parent stream object."""
-        setattr(self._logged_write_io_parent, name, value)
+        if name.startswith("_logged_write_io_"):
+            object.__setattr__(self, name, value)
+        else:
+            setattr(self._logged_write_io_parent, name, value)
 
 
 # Keep original sys.stdout and sys.stderr
@@ -77,16 +79,44 @@ def _remove_ansi_codes(sentence: str):
     return ANSI_SEQUENCE_RE.sub('', sentence)
 
 
-COLORED_MODULE_FMT = Style.BRIGHT + Fore.BLACK + "[" + Style.RESET_ALL + Fore.CYAN + "%s" + Style.BRIGHT + Fore.BLACK + "] "
+COLORED_MODULE_FMT = (
+    Style.BRIGHT + Fore.BLACK + "["
+    + Style.RESET_ALL + Fore.CYAN + "%s"
+    + Style.BRIGHT + Fore.BLACK + "] "
+)
 
-_COMMON_PREFIX = Style.BRIGHT + Fore.BLACK + "[" + Style.RESET_ALL + Fore.WHITE + "%s" + Style.BRIGHT + Fore.BLACK + "] %s" + Style.RESET_ALL
+_COMMON_PREFIX = (
+    Style.BRIGHT + Fore.BLACK + "["
+    + Style.RESET_ALL + Fore.WHITE + "%s"
+    + Style.BRIGHT + Fore.BLACK + "] %s"
+    + Style.RESET_ALL
+)
+_SEP = Style.DIM + Fore.WHITE + ": "
 COLORED_PREFIXES_FMT = {
-    LoggerLevel.DEBUG.value: (_COMMON_PREFIX + Fore.BLACK + "Debug" + Style.DIM + Fore.WHITE + ": " + Style.RESET_ALL + Style.DIM + Fore.WHITE),
-    LoggerLevel.INFO.value: (_COMMON_PREFIX + Fore.BLUE + "Info" + Style.DIM + Fore.WHITE + ": " + Style.RESET_ALL + Fore.WHITE),
-    LoggerLevel.SUCCESS.value: (_COMMON_PREFIX + Style.BRIGHT + Fore.GREEN + "Success" + Style.RESET_ALL + Style.DIM + Fore.WHITE + ": " + Style.RESET_ALL + Fore.GREEN),
-    LoggerLevel.WARNING.value: (_COMMON_PREFIX + Style.BRIGHT + Fore.YELLOW + "Warning" + Style.RESET_ALL + Style.DIM + Fore.WHITE + ": " + Style.RESET_ALL + Fore.YELLOW),
-    LoggerLevel.ERROR.value: (_COMMON_PREFIX + Style.BRIGHT + Fore.RED + "Error" + Style.RESET_ALL + Style.DIM + Fore.WHITE + ": " + Style.RESET_ALL + Fore.RED),
-    LoggerLevel.CRITICAL.value: (_COMMON_PREFIX + Style.BRIGHT + Style.DIM + Fore.RED + "Fatal" + Style.RESET_ALL + Style.DIM + Fore.WHITE + ": " + Style.DIM + Fore.RED),
+    LoggerLevel.DEBUG.value: (
+        _COMMON_PREFIX + Fore.BLACK + "Debug"
+        + _SEP + Style.RESET_ALL + Style.DIM + Fore.WHITE
+    ),
+    LoggerLevel.INFO.value: (
+        _COMMON_PREFIX + Fore.BLUE + "Info"
+        + _SEP + Style.RESET_ALL + Fore.WHITE
+    ),
+    LoggerLevel.SUCCESS.value: (
+        _COMMON_PREFIX + Style.BRIGHT + Fore.GREEN + "Success"
+        + Style.RESET_ALL + _SEP + Style.RESET_ALL + Fore.GREEN
+    ),
+    LoggerLevel.WARNING.value: (
+        _COMMON_PREFIX + Style.BRIGHT + Fore.YELLOW + "Warning"
+        + Style.RESET_ALL + _SEP + Style.RESET_ALL + Fore.YELLOW
+    ),
+    LoggerLevel.ERROR.value: (
+        _COMMON_PREFIX + Style.BRIGHT + Fore.RED + "Error"
+        + Style.RESET_ALL + _SEP + Style.RESET_ALL + Fore.RED
+    ),
+    LoggerLevel.CRITICAL.value: (
+        _COMMON_PREFIX + Style.BRIGHT + Style.DIM + Fore.RED + "Fatal"
+        + Style.RESET_ALL + _SEP + Style.DIM + Fore.RED
+    ),
 }
 
 # Pre-calculate plain styles
@@ -177,7 +207,8 @@ class _LoggingFileHandler(logging.handlers.TimedRotatingFileHandler):
         self._rotation_enable: bool = False
 
         # Settings reative to files name
-        self._rotation_filename_format = filename_format # %i is a counter to avoid two files with the same name
+        # %i is a counter to avoid two files with the same name
+        self._rotation_filename_format = filename_format
         self._rotation_folder = folder
 
         # See: https://docs.python.org/3/library/logging.handlers.html#logging.handlers.BaseRotatingHandler.namer
@@ -222,7 +253,10 @@ class LoggerFileSink(LoggerSink):
 
     Supports log rotation based on time intervals.
     """
-    def __init__(self, folder: str, latest_filename: str = "latest.log", filename_format: str = "%Y-%m-%d-%i.log", interval = 24*3600):
+    def __init__(
+        self, folder: str, latest_filename: str = "latest.log",
+        filename_format: str = "%Y-%m-%d-%i.log", interval=24 * 3600,
+    ):
         self.formater = LoggerFormatter(False)
         self.handler = _LoggingFileHandler(folder, latest_filename, filename_format, interval)
         self.handler.setFormatter(self.formater)
@@ -326,7 +360,7 @@ class Logger:
         self._logger.addHandler(sink.get_handler())
 
     def _excepthook(self, *exc_info) -> None:
-        text = "".join(traceback.format_exception(*exc_info()))
+        text = "".join(traceback.format_exception(*exc_info))
         self.critical(f"Unhandled exception:\n{text}")
 
     def use_as_default(self) -> None:
@@ -344,7 +378,9 @@ class Logger:
 
         sys.excepthook = self._excepthook
 
-    def override_sys_streams(self, stdout_level = logging.DEBUG, stderr_level = logging.ERROR) -> None:
+    def override_sys_streams(
+        self, stdout_level=logging.DEBUG, stderr_level=logging.ERROR,
+    ) -> None:
         self._stdout_level = stdout_level
         self._stderr_level = stderr_level
 
@@ -360,10 +396,10 @@ class Logger:
         _base_stderr._errors = "backslashreplace"
 
     def _io_info(self, data):
-        self.info(data, end='', module=self._default_module)
+        self.info(data, end='')
 
     def _io_error(self, data):
-        self.error(data, end='', module=self._default_module)
+        self.error(data, end='')
 
     def close(self) -> None:
         """Close all sinks."""
@@ -420,5 +456,5 @@ def get_default_logger() -> Logger:
     """Get or create the global default logger instance."""
     global _default_logger
     if _default_logger is None:
-        _default_logger = Logger("evo_hl")
+        _default_logger = Logger("evo_lib")
     return _default_logger
