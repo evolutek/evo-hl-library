@@ -40,3 +40,5 @@ Each file documents a single concept. Files are self-contained but link to relat
 | Type | File | Summary |
 |------|------|---------|
 | [Color](types/color.md) | `types/color.md` | RGBA value object (normalized floats) |
+| [Vector Types](types/vect.md) | `types/vect.md` | Vect2D, Vect3D, oriented variants (SE(2)/SE(3) poses) |
+| [Locatable Components](types/locatable-components.md) | `types/locatable-components.md` | Proposal: config-driven pose for components |
