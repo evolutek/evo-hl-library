@@ -1,6 +1,6 @@
 import sys
 
-from evo_lib.logger import Logger, LoggerConsoleSink, LoggerSink
+from evo_lib.logger import Logger, LoggerConsoleSink, LoggerLevel, LoggerSink
 
 
 def _get_test_sink() -> LoggerSink:
@@ -43,3 +43,19 @@ def test_sublogger(capsys):
     captured = capsys.readouterr()
     assert "hello from a sublogger" in captured.out
     assert "MyModule" in captured.out
+
+
+def test_set_level(capsys):
+    logger = Logger("Robot")
+    logger.add_sink(_get_test_sink())
+    logger.set_level(LoggerLevel.WARNING)
+    logger.debug("should not appear")
+    logger.info("should not appear")
+    logger.success("should not appear")
+    logger.warning("visible warning")
+    logger.error("visible error")
+    captured = capsys.readouterr()
+    assert "should not appear" not in captured.out
+    assert "should not appear" not in captured.err
+    assert "visible warning" in captured.out
+    assert "visible error" in captured.err
