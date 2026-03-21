@@ -1,12 +1,10 @@
 # Event
 
-An **Event** is a multi-shot, thread-safe notification mechanism. Unlike [Task](task.md)
-(which completes once), an Event can fire repeatedly.
+An **Event** is a multi-shot, thread-safe notification mechanism. Unlike [Task](task.md) (which completes once), an Event can fire repeatedly.
 
 ## Purpose
 
-Some hardware produces recurring signals: a GPIO interrupt fires every time a sensor
-triggers, a lidar completes a new scan every 100ms. Event models these patterns.
+Some hardware produces recurring signals: a GPIO interrupt fires every time a sensor triggers, a lidar completes a new scan every 100ms. Event models these patterns.
 
 ```python
 event = gpio.interrupt(GPIOEdge.RISING)
@@ -31,21 +29,17 @@ Extends [Listeners](listener.md) with thread-safe trigger and blocking wait.
 
 ### Multi-shot
 
-`trigger()` can be called any number of times. Each call wakes all current waiters and
-invokes all registered callbacks.
+`trigger()` can be called any number of times. Each call wakes all current waiters and invokes all registered callbacks.
 
 ### Wait is forward-looking
 
-`wait()` always waits for the **next** trigger, not a past one. If the event was triggered
-5 seconds ago, `wait()` still blocks until the next trigger.
+`wait()` always waits for the **next** trigger, not a past one. If the event was triggered 5 seconds ago, `wait()` still blocks until the next trigger.
 
-This is implemented via a generation counter: each `trigger()` increments the counter,
-and `wait()` blocks until the counter changes.
+This is implemented via a generation counter: each `trigger()` increments the counter, and `wait()` blocks until the counter changes.
 
 ### Callbacks outside the lock
 
-Callbacks are collected under the lock, then invoked **outside** the lock. This prevents
-a slow callback from blocking other threads that need to register/unregister or wait.
+Callbacks are collected under the lock, then invoked **outside** the lock. This prevents a slow callback from blocking other threads that need to register/unregister or wait.
 
 ## Thread safety
 
@@ -60,5 +54,5 @@ Uses `threading.Condition` internally.
 
 - [Task](task.md) — one-shot async operation (Event is multi-shot)
 - [Listener](listener.md) — the non-thread-safe callback registry that Event extends
-- [GPIO](gpio.md) — `interrupt()` returns an Event
-- [Lidar2D](lidar.md) — `on_scan()` returns an Event
+- [GPIO](../interfaces/gpio.md) — `interrupt()` returns an Event
+- [Lidar2D](../interfaces/lidar.md) — `on_scan()` returns an Event

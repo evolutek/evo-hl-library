@@ -1,7 +1,6 @@
 # Pilot
 
-A **Pilot** is the movement controller for the robot. It abstracts away the drive type
-(differential or holonomic) and communicates with the motion control board (carte asserv).
+A **Pilot** is the movement controller for the robot. It abstracts away the drive type (differential or holonomic) and communicates with the motion control board (carte asserv).
 
 ## Class hierarchy
 
@@ -12,7 +11,6 @@ Pilot  (Component)
 ```
 
 **Module:** `evo_lib.interfaces.pilot`
-**Locatable:** Yes (the pilot *is* the robot's position on the table)
 
 ## Class: `Pilot`
 
@@ -20,13 +18,12 @@ Base class with emergency controls.
 
 | Method | Returns | Description |
 |--------|---------|-------------|
-| `stop()` | [Task](task.md)\[None\] | Immediately stop current movement (motors brake) |
-| `free()` | [Task](task.md)\[None\] | Stop motors and go into freewheel (no braking) |
+| `stop()` | [Task](../concurrency/task.md)\[None\] | Immediately stop current movement (motors brake) |
+| `free()` | [Task](../concurrency/task.md)\[None\] | Stop motors and go into freewheel (no braking) |
 
 ## Class: `DifferentialPilot`
 
-For robots with two driven wheels (left/right). The robot can move forward and rotate in
-place, but cannot strafe sideways.
+For robots with two driven wheels (left/right). The robot can move forward and rotate in place, but cannot strafe sideways.
 
 | Method | Returns | Description |
 |--------|---------|-------------|
@@ -93,5 +90,5 @@ Plus all fields from DifferentialPilotWaypoint.
 
 ## See also
 
-- [Component](component.md) — lifecycle base class
-- [Task](task.md) — all movement methods return Task\[PilotMoveStatus\]
+- [Component](../architecture/component.md) — lifecycle base class
+- [Task](../concurrency/task.md) — all movement methods return Task\[PilotMoveStatus\]

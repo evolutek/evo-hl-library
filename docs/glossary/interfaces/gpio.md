@@ -5,20 +5,17 @@ A **GPIO** (General-Purpose Input/Output) represents a single digital I/O pin.
 ## Class: `GPIO`
 
 **Module:** `evo_lib.interfaces.gpio`
-**Extends:** [Component](component.md)
-**Locatable:** No
+**Extends:** [Component](../architecture/component.md)
 
 | Method | Returns | Description |
 |--------|---------|-------------|
-| `read()` | [Task](task.md)\[bool\] | Read current pin state (True = high) |
-| `write(state)` | [Task](task.md)\[None\] | Set output state (True = high) |
-| `interrupt(edge)` | [Event](event.md)\[bool\] | Get an Event that triggers on the given edge |
+| `read()` | [Task](../concurrency/task.md)\[bool\] | Read current pin state (True = high) |
+| `write(state)` | [Task](../concurrency/task.md)\[None\] | Set output state (True = high) |
+| `interrupt(edge=GPIOEdge.BOTH)` | [Event](../concurrency/event.md)\[bool\] | Get an Event that triggers on the given edge |
 
 ### Interrupt
 
-The `interrupt()` method returns an [Event](event.md) that fires every time the pin
-transitions on the specified edge. The event value is the new pin state after the
-transition.
+The `interrupt()` method returns an [Event](../concurrency/event.md) that fires every time the pin transitions on the specified edge. The event value is the new pin state after the transition.
 
 ## Enum: `GPIOEdge`
 
@@ -45,6 +42,6 @@ Specifies which transitions trigger an interrupt.
 
 ## See also
 
-- [Component](component.md) — lifecycle base class
-- [Event](event.md) — returned by `interrupt()`
+- [Component](../architecture/component.md) — lifecycle base class
+- [Event](../concurrency/event.md) — returned by `interrupt()`
 - [AnalogInput](analog-input.md) — for voltage readings instead of digital state

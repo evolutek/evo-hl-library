@@ -1,12 +1,10 @@
 # Task
 
-A **Task** represents an asynchronous operation that may complete later, fail, or be
-cancelled. It is the primary return type of [Interface](interface.md) methods.
+A **Task** represents an asynchronous operation that may complete later, fail, or be cancelled. It is the primary return type of [Interface](../architecture/interface.md) methods.
 
 ## Purpose
 
-Hardware operations take time (a servo moves, a sensor samples, a lidar scans). Instead
-of blocking the caller, interface methods return a Task. The caller can then:
+Hardware operations take time (a servo moves, a sensor samples, a lidar scans). Instead of blocking the caller, interface methods return a Task. The caller can then:
 
 - **Wait** synchronously: `task.wait(timeout=2.0)`
 - **Register callbacks**: `task.on_complete(lambda v: ...)`
@@ -41,8 +39,7 @@ Abstract base. Defines the consumer API.
 
 The result is already known when the Task is created. No thread synchronization needed.
 
-Typical use: operations that complete instantly (e.g. reading a cached value, setting a
-buffer pixel on a [LedStrip](led-strip.md)).
+Typical use: operations that complete instantly (e.g. reading a cached value, setting a buffer pixel on a [LedStrip](../interfaces/led-strip.md)).
 
 ```python
 return ImmediateResultTask(3.3)  # voltage already known
@@ -62,8 +59,7 @@ return ImmediateErrorTask(HardwareError("bus timeout"))
 
 ## Class: `DelayedTask[T]`
 
-Thread-safe Task for operations that complete in a background thread. This is the most
-common variant for real hardware operations.
+Thread-safe Task for operations that complete in a background thread. This is the most common variant for real hardware operations.
 
 ### Consumer API
 
@@ -82,9 +78,7 @@ Same as Task (wait, is_done, on_complete, on_error, cancel).
 DelayedTask(on_cancel: Callable[[], None] = None)
 ```
 
-The optional `on_cancel` callback is invoked when `cancel()` is called, before the Task
-is marked as cancelled. Use this to stop the underlying hardware operation (e.g. halt a
-motor).
+The optional `on_cancel` callback is invoked when `cancel()` is called, before the Task is marked as cancelled. Use this to stop the underlying hardware operation (e.g. halt a motor).
 
 ## Exceptions
 
@@ -100,12 +94,12 @@ Raised by `wait(timeout=...)` when the timeout elapses before completion.
 
 | Class | Thread-safe |
 |-------|-------------|
-| `ImmediateResultTask` | Yes (immutable after construction) |
-| `ImmediateErrorTask` | Yes (immutable after construction) |
+| `ImmediateResultTask` | Yes (no synchronization needed, only `cancel()` mutates state) |
+| `ImmediateErrorTask` | Yes (no synchronization needed, only `cancel()` mutates state) |
 | `DelayedTask` | Yes (uses `threading.Lock` + `threading.Event`) |
 
 ## See also
 
 - [Event](event.md) — multi-shot notifications (Task is one-shot)
-- [Interface](interface.md) — all interface methods return Task or Event
+- [Interface](../architecture/interface.md) — all interface methods return Task or Event
 - [Listener](listener.md) — callback mechanism used internally

@@ -32,5 +32,5 @@ blue = Color.from_rgb_int(0x0000FF)
 
 ## Used by
 
-- [ColorSensor](color-sensor.md) — `read_color()` returns a Color
-- [LedStrip](led-strip.md) — `set_pixel()` and `fill()` take a Color
+- [ColorSensor](../interfaces/color-sensor.md) — `read_color()` returns a Color
+- [LedStrip](../interfaces/led-strip.md) — `set_pixel()` and `fill()` take a Color
