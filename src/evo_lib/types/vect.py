@@ -1,16 +1,14 @@
-"""2D and 3D vector types with orientation variants.
+"""2D and 3D vector types with pose variants.
 
 Provides four concrete types organized under two abstract bases:
 
 VectBase types (Vect2D, Vect3D) are true vectors: addition, subtraction,
 scaling, norm, and dot product all make mathematical sense.
 
-OrientedBase types (Vect2DOriented, Vect3DOriented) represent a position plus
-an orientation (an element of the SE(2) or SE(3) group). Vector arithmetic does
-not apply to them, but they support coordinate-frame transforms.
+PoseBase types (Pose2D, Pose3D) represent a position plus an orientation.
+Vector arithmetic does not apply to them, but they support coordinate-frame
+transforms. Pose3D uses quaternions internally for gimbal-lock-free rotation.
 """
-
-from __future__ import annotations
 
 import math
 from abc import ABC, abstractmethod
@@ -91,8 +89,8 @@ class VectBase(ABC):
         return f"{type(self).__name__}({fields})"
 
 
-class OrientedBase(ABC):
-    """Abstract base for oriented types (position + orientation).
+class PoseBase(ABC):
+    """Abstract base for pose types (position + orientation).
 
     These are elements of SE(n), not vectors. Addition, scaling, and norm
     are intentionally not defined.
@@ -102,8 +100,8 @@ class OrientedBase(ABC):
 
     @property
     @abstractmethod
-    def _fields(self) -> tuple[tuple[str, float], ...]:
-        """All fields as (name, value) pairs."""
+    def _comparison_key(self) -> tuple[float, ...]:
+        """Values used for equality and hashing."""
         ...
 
     # -- Comparison ---------------------------------------------------------
@@ -112,17 +110,11 @@ class OrientedBase(ABC):
         if type(self) is not type(other):
             return NotImplemented
         return all(
-            math.isclose(a, b) for (_, a), (_, b) in zip(self._fields, other._fields)  # type: ignore[union-attr]
+            math.isclose(a, b) for a, b in zip(self._comparison_key, other._comparison_key)  # type: ignore[union-attr]
         )
 
     def __hash__(self) -> int:
-        return hash(tuple(round(v, 9) for _, v in self._fields))
-
-    # -- Display ------------------------------------------------------------
-
-    def __repr__(self) -> str:
-        fields = ", ".join(f"{name}={val}" for name, val in self._fields)
-        return f"{type(self).__name__}({fields})"
+        return hash(tuple(round(v, 9) for v in self._comparison_key))
 
 
 # ---------------------------------------------------------------------------
@@ -243,11 +235,11 @@ class Vect3D(VectBase):
 
 
 # ---------------------------------------------------------------------------
-# Concrete oriented types
+# Concrete pose types
 # ---------------------------------------------------------------------------
 
 
-class Vect2DOriented(OrientedBase):
+class Pose2D(PoseBase):
     """2D position with orientation (x, y, theta).
 
     Represents a rigid-body pose in the plane: where something is and which
@@ -263,8 +255,8 @@ class Vect2DOriented(OrientedBase):
         self.theta = float(theta)
 
     @property
-    def _fields(self) -> tuple[tuple[str, float], ...]:
-        return (("x", self.x), ("y", self.y), ("theta", self.theta))
+    def _comparison_key(self) -> tuple[float, ...]:
+        return (self.x, self.y, self.theta)
 
     @property
     def position(self) -> Vect2D:
@@ -280,20 +272,20 @@ class Vect2DOriented(OrientedBase):
         """
         return self.position + point.rotate(self.theta)
 
-    def inverse(self) -> Vect2DOriented:
+    def inverse(self) -> Pose2D:
         """The inverse transform (parent frame -> this frame)."""
         p = Vect2D(-self.x, -self.y).rotate(-self.theta)
-        return Vect2DOriented(p.x, p.y, -self.theta)
+        return Pose2D(p.x, p.y, -self.theta)
 
-    def compose(self, other: Vect2DOriented) -> Vect2DOriented:
+    def compose(self, other: Pose2D) -> Pose2D:
         """Compose two transforms: self then other (in the local frame of self)."""
         p = self.transform(other.position)
-        return Vect2DOriented(p.x, p.y, self.theta + other.theta)
+        return Pose2D(p.x, p.y, self.theta + other.theta)
 
     @staticmethod
-    def from_dict(d: dict) -> Vect2DOriented:
+    def from_dict(d: dict) -> Pose2D:
         """Build from a config dict (e.g. {"x": 0, "y": 85, "theta": 0})."""
-        return Vect2DOriented(d["x"], d["y"], d.get("theta", 0.0))
+        return Pose2D(d["x"], d["y"], d.get("theta", 0.0))
 
     def to_dict(self) -> dict[str, float]:
         """Serialize to a dict."""
@@ -301,19 +293,27 @@ class Vect2DOriented(OrientedBase):
 
     # -- Conversion ---------------------------------------------------------
 
-    def to_3d_oriented(self, z: float = 0.0) -> Vect3DOriented:
+    def to_3d(self, z: float = 0.0) -> Pose3D:
         """Promote to 3D with the given Z and yaw = theta."""
-        return Vect3DOriented(self.x, self.y, z, yaw=self.theta)
+        return Pose3D(self.x, self.y, z, yaw=self.theta)
+
+    # -- Display ------------------------------------------------------------
+
+    def __repr__(self) -> str:
+        return f"Pose2D(x={self.x}, y={self.y}, theta={self.theta})"
 
 
-class Vect3DOriented(OrientedBase):
-    """3D position with orientation (x, y, z, roll, pitch, yaw).
+class Pose3D(PoseBase):
+    """3D position with orientation (x, y, z, quaternion).
 
-    Full 6-DOF pose for articulated arms or 3D sensors. For ground robots,
-    use Vect2DOriented instead (only yaw matters).
+    Full 6-DOF pose for articulated arms or 3D sensors. Orientation is stored
+    as a unit quaternion internally, avoiding gimbal lock. Constructor accepts
+    Euler angles (roll, pitch, yaw) for convenience.
+
+    For ground robots, use Pose2D instead (only yaw matters).
     """
 
-    __slots__ = ("x", "y", "z", "roll", "pitch", "yaw")
+    __slots__ = ("x", "y", "z", "_qw", "_qx", "_qy", "_qz")
 
     def __init__(
         self,
@@ -327,102 +327,134 @@ class Vect3DOriented(OrientedBase):
         self.x = float(x)
         self.y = float(y)
         self.z = float(z)
-        self.roll = float(roll)
-        self.pitch = float(pitch)
-        self.yaw = float(yaw)
+        qw, qx, qy, qz = Pose3D._euler_to_quat(roll, pitch, yaw)
+        self._qw, self._qx, self._qy, self._qz = Pose3D._canonical_sign(qw, qx, qy, qz)
+
+    @classmethod
+    def from_quaternion(cls, x: float, y: float, z: float,
+                        qw: float, qx: float, qy: float, qz: float) -> Pose3D:
+        """Construct directly from a unit quaternion (no Euler conversion)."""
+        obj = object.__new__(cls)
+        obj.x = float(x)
+        obj.y = float(y)
+        obj.z = float(z)
+        obj._qw, obj._qx, obj._qy, obj._qz = Pose3D._canonical_sign(qw, qx, qy, qz)
+        return obj
+
+    # -- Quaternion access --------------------------------------------------
 
     @property
-    def _fields(self) -> tuple[tuple[str, float], ...]:
-        return (
-            ("x", self.x),
-            ("y", self.y),
-            ("z", self.z),
-            ("roll", self.roll),
-            ("pitch", self.pitch),
-            ("yaw", self.yaw),
-        )
+    def qw(self) -> float:
+        return self._qw
+
+    @property
+    def qx(self) -> float:
+        return self._qx
+
+    @property
+    def qy(self) -> float:
+        return self._qy
+
+    @property
+    def qz(self) -> float:
+        return self._qz
+
+    @property
+    def quaternion(self) -> tuple[float, float, float, float]:
+        """(w, x, y, z) quaternion components."""
+        return (self._qw, self._qx, self._qy, self._qz)
+
+    # -- Euler access (computed from quaternion) ----------------------------
+
+    @property
+    def roll(self) -> float:
+        sinr = 2 * (self._qw * self._qx + self._qy * self._qz)
+        cosr = 1 - 2 * (self._qx * self._qx + self._qy * self._qy)
+        return math.atan2(sinr, cosr)
+
+    @property
+    def pitch(self) -> float:
+        sinp = 2 * (self._qw * self._qy - self._qz * self._qx)
+        return math.asin(max(-1.0, min(1.0, sinp)))
+
+    @property
+    def yaw(self) -> float:
+        siny = 2 * (self._qw * self._qz + self._qx * self._qy)
+        cosy = 1 - 2 * (self._qy * self._qy + self._qz * self._qz)
+        return math.atan2(siny, cosy)
+
+    # -- PoseBase interface -------------------------------------------------
+
+    @property
+    def _comparison_key(self) -> tuple[float, ...]:
+        return (self.x, self.y, self.z, self._qw, self._qx, self._qy, self._qz)
 
     @property
     def position(self) -> Vect3D:
         """The translation part as a Vect3D."""
         return Vect3D(self.x, self.y, self.z)
 
-    def _rotation_matrix(self) -> tuple[float, ...]:
-        """ZYX rotation matrix as 9 floats in row-major order.
-
-        R = Rx(roll) @ Ry(pitch) @ Rz(yaw)
-        """
-        cy, sy = math.cos(self.yaw), math.sin(self.yaw)
-        cp, sp = math.cos(self.pitch), math.sin(self.pitch)
-        cr, sr = math.cos(self.roll), math.sin(self.roll)
-        return (
-            cp * cy,               -cp * sy,               sp,
-            sr * sp * cy + cr * sy, -sr * sp * sy + cr * cy, -sr * cp,
-            -cr * sp * cy + sr * sy, cr * sp * sy + sr * cy,  cr * cp,
-        )
-
-    @staticmethod
-    def _euler_from_matrix(r: tuple[float, ...]) -> tuple[float, float, float]:
-        """Extract (roll, pitch, yaw) from a ZYX rotation matrix (row-major)."""
-        pitch = math.asin(max(-1.0, min(1.0, r[2])))
-        if abs(math.cos(pitch)) > 1e-10:
-            roll = math.atan2(-r[5], r[8])
-            yaw = math.atan2(-r[1], r[0])
-        else:
-            # Gimbal lock: pitch = +/-pi/2, assign all rotation to yaw
-            roll = 0.0
-            yaw = math.atan2(r[3], r[4])
-        return roll, pitch, yaw
-
     def transform(self, point: Vect3D) -> Vect3D:
         """Transform *point* from this frame into the parent frame.
 
-        Applies the ZYX rotation then translation.
+        Uses the quaternion cross-product formula:
+        p' = p + 2w * (q_xyz x p) + 2 * (q_xyz x (q_xyz x p))
         """
-        r = self._rotation_matrix()
         px, py, pz = point.x, point.y, point.z
+        qw, qx, qy, qz = self._qw, self._qx, self._qy, self._qz
+
+        # t = 2 * cross(q.xyz, p)
+        tx = 2 * (qy * pz - qz * py)
+        ty = 2 * (qz * px - qx * pz)
+        tz = 2 * (qx * py - qy * px)
+
+        # p' = p + qw * t + cross(q.xyz, t)
         return Vect3D(
-            self.x + r[0] * px + r[1] * py + r[2] * pz,
-            self.y + r[3] * px + r[4] * py + r[5] * pz,
-            self.z + r[6] * px + r[7] * py + r[8] * pz,
+            self.x + px + qw * tx + (qy * tz - qz * ty),
+            self.y + py + qw * ty + (qz * tx - qx * tz),
+            self.z + pz + qw * tz + (qx * ty - qy * tx),
         )
 
-    def inverse(self) -> Vect3DOriented:
+    def inverse(self) -> Pose3D:
         """The inverse transform (parent frame -> this frame)."""
-        r = self._rotation_matrix()
-        # Transpose (R^T = R^-1 for orthogonal matrices)
-        rt = (r[0], r[3], r[6], r[1], r[4], r[7], r[2], r[5], r[8])
-        # Inverse translation: R^T @ (-t)
-        tx, ty, tz = -self.x, -self.y, -self.z
-        px = rt[0] * tx + rt[1] * ty + rt[2] * tz
-        py = rt[3] * tx + rt[4] * ty + rt[5] * tz
-        pz = rt[6] * tx + rt[7] * ty + rt[8] * tz
-        roll, pitch, yaw = Vect3DOriented._euler_from_matrix(rt)
-        return Vect3DOriented(px, py, pz, roll, pitch, yaw)
+        # Inverse rotation = conjugate for unit quaternions
+        iqw, iqx, iqy, iqz = self._qw, -self._qx, -self._qy, -self._qz
 
-    def compose(self, other: Vect3DOriented) -> Vect3DOriented:
+        # Rotate -t by the inverse quaternion
+        tx, ty, tz = -self.x, -self.y, -self.z
+        ttx = 2 * (iqy * tz - iqz * ty)
+        tty = 2 * (iqz * tx - iqx * tz)
+        ttz = 2 * (iqx * ty - iqy * tx)
+        px = tx + iqw * ttx + (iqy * ttz - iqz * tty)
+        py = ty + iqw * tty + (iqz * ttx - iqx * ttz)
+        pz = tz + iqw * ttz + (iqx * tty - iqy * ttx)
+
+        return Pose3D.from_quaternion(px, py, pz, iqw, iqx, iqy, iqz)
+
+    def compose(self, other: Pose3D) -> Pose3D:
         """Compose two transforms: self then other (in the local frame of self)."""
         p = self.transform(other.position)
-        r1 = self._rotation_matrix()
-        r2 = other._rotation_matrix()
-        # Matrix multiply R1 @ R2
-        r = tuple(
-            sum(r1[i * 3 + k] * r2[k * 3 + j] for k in range(3))
-            for i in range(3) for j in range(3)
-        )
-        roll, pitch, yaw = Vect3DOriented._euler_from_matrix(r)
-        return Vect3DOriented(p.x, p.y, p.z, roll, pitch, yaw)
+
+        # Quaternion multiplication: q1 * q2
+        w1, x1, y1, z1 = self._qw, self._qx, self._qy, self._qz
+        w2, x2, y2, z2 = other._qw, other._qx, other._qy, other._qz
+        qw = w1 * w2 - x1 * x2 - y1 * y2 - z1 * z2
+        qx = w1 * x2 + x1 * w2 + y1 * z2 - z1 * y2
+        qy = w1 * y2 - x1 * z2 + y1 * w2 + z1 * x2
+        qz = w1 * z2 + x1 * y2 - y1 * x2 + z1 * w2
+
+        return Pose3D.from_quaternion(p.x, p.y, p.z, qw, qx, qy, qz)
 
     @staticmethod
-    def from_dict(d: dict) -> Vect3DOriented:
-        """Build from a config dict."""
-        return Vect3DOriented(
+    def from_dict(d: dict) -> Pose3D:
+        """Build from a config dict (Euler angles)."""
+        return Pose3D(
             d["x"], d["y"], d["z"],
             d.get("roll", 0.0), d.get("pitch", 0.0), d.get("yaw", 0.0),
         )
 
     def to_dict(self) -> dict[str, float]:
-        """Serialize to a dict."""
+        """Serialize to a dict (Euler angles for human readability)."""
         return {
             "x": self.x, "y": self.y, "z": self.z,
             "roll": self.roll, "pitch": self.pitch, "yaw": self.yaw,
@@ -430,6 +462,37 @@ class Vect3DOriented(OrientedBase):
 
     # -- Conversion ---------------------------------------------------------
 
-    def to_2d_oriented(self) -> Vect2DOriented:
+    def to_2d(self) -> Pose2D:
         """Project onto 2D (Z, roll, pitch are discarded, yaw becomes theta)."""
-        return Vect2DOriented(self.x, self.y, self.yaw)
+        return Pose2D(self.x, self.y, self.yaw)
+
+    # -- Display ------------------------------------------------------------
+
+    def __repr__(self) -> str:
+        r, p, y = self.roll, self.pitch, self.yaw
+        return f"Pose3D(x={self.x}, y={self.y}, z={self.z}, roll={r}, pitch={p}, yaw={y})"
+
+    # -- Internal -----------------------------------------------------------
+
+    @staticmethod
+    def _euler_to_quat(roll: float, pitch: float, yaw: float) -> tuple[float, float, float, float]:
+        """Convert ZYX Euler angles to unit quaternion (w, x, y, z)."""
+        cr, sr = math.cos(roll / 2), math.sin(roll / 2)
+        cp, sp = math.cos(pitch / 2), math.sin(pitch / 2)
+        cy, sy = math.cos(yaw / 2), math.sin(yaw / 2)
+        return (
+            cr * cp * cy + sr * sp * sy,
+            sr * cp * cy - cr * sp * sy,
+            cr * sp * cy + sr * cp * sy,
+            cr * cp * sy - sr * sp * cy,
+        )
+
+    @staticmethod
+    def _canonical_sign(qw: float, qx: float, qy: float, qz: float) -> tuple[float, float, float, float]:
+        """Ensure canonical sign so q and -q (same rotation) have identical repr."""
+        for c in (qw, qx, qy, qz):
+            if c > 1e-15:
+                return (qw, qx, qy, qz)
+            if c < -1e-15:
+                return (-qw, -qx, -qy, -qz)
+        return (qw, qx, qy, qz)
