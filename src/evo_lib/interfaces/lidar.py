@@ -13,11 +13,20 @@ if TYPE_CHECKING:
 class Lidar2DMeasure:
     __slots__ = ("angle", "distance", "timestamp", "quality")
 
+    angle: float
+    """Angle in radians."""
+    distance: float
+    """Distance in mm."""
+    timestamp: float
+    """Monotonic timestamp (seconds)."""
+    quality: float
+    """Signal quality, 0-255."""
+
     def __init__(self, angle: float, distance: float, timestamp: float, quality: float):
-        self.distance = distance # Shall be given in mm
-        self.angle = angle # Shall be given in rads
+        self.distance = distance
+        self.angle = angle
         self.timestamp = timestamp
-        self.quality = quality # Shall be between 0 and 255
+        self.quality = quality
 
 
 class Lidar2D(Component):
