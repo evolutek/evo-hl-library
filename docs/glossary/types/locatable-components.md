@@ -63,10 +63,10 @@ At boot, the Orchestrator builds a mapping from component name to pose:
 
 ```python
 # Pseudo-code
-poses: dict[str, Vect2DOriented] = {}
+poses: dict[str, Pose2D] = {}
 for name, cfg in all_component_configs.items():  # merged from platform + assemblies
     if "pose" in cfg:
-        poses[name] = Vect2DOriented.from_dict(cfg["pose"])
+        poses[name] = Pose2D.from_dict(cfg["pose"])
 ```
 
 Briques that need poses (Trajman for lidar transforms, Action for recal computation) receive the relevant poses at construction.
