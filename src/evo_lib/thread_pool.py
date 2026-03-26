@@ -1,32 +1,28 @@
-from threading import Thread, Lock, Event
 from queue import Queue
+from threading import Event, Lock, Thread
 from typing import Callable
 
-from evo_lib.task import Task, DelayedTask
 from evo_lib.executor import Executor
 from evo_lib.logger import Logger
+from evo_lib.task import DelayedTask, Task
 
 
 class WorkerThread:
     """Represent a thread in a thread pool.
-    Should not be used directly, use ``ThreadPool`` instead.
+    Should not be used directly, use ``ThreadPoolExecutor`` instead.
     """
 
     def __init__(self, pool: ThreadPoolExecutor):
         self.pool = pool
         self.thread: Thread = None
         self.busy = Event()
-        self.queue: Queue[None | tuple[DelayedTask, Callable, list, dict]] = Queue()
 
     def start(self) -> None:
         if self.thread is not None:
             return
         self.busy.clear()
-        self.thread = Thread(target = self._loop)
+        self.thread = Thread(target=self._loop)
         self.thread.start()
-
-    def stop(self) -> None:
-        self.queue.put_nowait(None)
 
     def wait_stopped(self) -> None:
         self.thread.join()
@@ -34,18 +30,9 @@ class WorkerThread:
 
     def _loop(self) -> None:
         while True:
-            task = None
-
-            # Try to steal from pool queue (non-blocking, under lock)
-            with self.pool.lock:
-                if self.queue.empty() and len(self.pool.queue) > 0:
-                    task = self.pool.queue.pop()
-
-            # Nothing stolen, wait on its own queue (blocking, outside lock)
+            task = self.pool.queue.get()
             if task is None:
-                task = self.queue.get()
-                if task is None:
-                    break
+                break
 
             self.busy.set()
             result, func, args, kwargs = task
@@ -56,22 +43,18 @@ class WorkerThread:
             finally:
                 self.busy.clear()
 
-    def run[T](self, func: Callable[...,T], *args, **kwargs) -> DelayedTask[T]:
-        result = DelayedTask()
-        self.queue.put_nowait((result, func, args, kwargs))
-        return result
 
-
-# This is basically a thread pool
 class ThreadPoolExecutor(Executor):
-    """A thread pool (used to run callbacks in workers threads)."""
+    """A thread pool (used to run callbacks in workers threads).
+
+    All workers share a single queue. Tasks are dispatched to whichever
+    worker picks them up first, avoiding per-worker queues and
+    work-stealing complexity.
+    """
 
     def __init__(self, logger: Logger, max_workers: int = 0):
-        if max_workers == 1:
-            err_msg = "max_workers=1 is not supported, use SimpleExecutor instead"
-            raise ValueError(err_msg)
         self.workers: list[WorkerThread] = []
-        self.queue: list[None | tuple[DelayedTask, Callable, list, dict]] = []
+        self.queue: Queue[None | tuple[DelayedTask, Callable, list, dict]] = Queue()
         self.lock = Lock()
         self.logger = logger
         self.max_workers = max_workers
@@ -85,25 +68,28 @@ class ThreadPoolExecutor(Executor):
         self.workers.append(worker)
         return worker
 
-    def exec[T](self, callback: Callable[...,T], *args, **kwargs) -> Task[T]:
+    def exec[T](self, callback: Callable[..., T], *args, **kwargs) -> Task[T]:
+        result = DelayedTask()
+        self.queue.put((result, callback, args, kwargs))
+
         with self.lock:
+            # If any worker is idle, it will pick up the task from the queue
             for worker in self.workers:
-                if not worker.busy.is_set() and worker.queue.empty():
-                    return worker.run(callback, *args, **kwargs)
+                if not worker.busy.is_set():
+                    return result
 
-            if self.max_workers > 0 and len(self.workers) >= self.max_workers:
+            # All workers are busy, create a new one if allowed
+            if self.max_workers == 0 or len(self.workers) < self.max_workers:
+                self._create_worker()
+            else:
                 self.logger.warning("Maximum number of workers reached, the task will be queued")
-                result = DelayedTask()
-                self.queue.append((result, callback, args, kwargs))
-                return result
 
-        # Create a new worker thread to run the task
-        worker = self._create_worker()
-        return worker.run(callback, *args, **kwargs)
+        return result
 
     def stop(self) -> None:
-        for worker in self.workers:
-            worker.stop()
+        # Send one sentinel per worker so each one exits its loop
+        for _ in self.workers:
+            self.queue.put(None)
 
         for worker in self.workers:
             worker.wait_stopped()
