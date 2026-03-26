@@ -20,7 +20,9 @@ class SimpleExecutor(Executor):
     """
 
     def __init__(self):
-        self._pending_callbacks: queue.Queue[tuple[DelayedTask, Callable, tuple, dict[str,]]] = queue.Queue()
+        self._pending_callbacks: queue.Queue[
+            tuple[DelayedTask, Callable, tuple, dict[str, object]] | None
+        ] = queue.Queue()
 
     def handle(self) -> None:
         """Execute all queued callback sequentially (return after all callbacks
@@ -28,7 +30,10 @@ class SimpleExecutor(Executor):
         """
         try:
             while True:
-                task, callback, args, kwargs = self._pending_callbacks.get(block = False)
+                item = self._pending_callbacks.get(block = False)
+                if item is None:
+                    break
+                task, callback, args, kwargs = item
                 try:
                     task.complete(callback(*args, **kwargs))
                 except Exception as e:
@@ -41,8 +46,18 @@ class SimpleExecutor(Executor):
         """Like running ``handle`` in a loop but is blocking until there is a
         new queued callback so it's not cpu intensive."""
         while True:
-            callback, args, kwargs = self._pending_callbacks.get(block = True)
-            callback(*args, **kwargs)
+            item = self._pending_callbacks.get(block = True)
+            if item is None:
+                break
+            task, callback, args, kwargs = item
+            try:
+                task.complete(callback(*args, **kwargs))
+            except Exception as e:
+                task.error(e)
+
+    def stop(self) -> None:
+        """Stop the run loop."""
+        self._pending_callbacks.put(None)
 
     def exec[T](self, callback: Callable[...,T], *args, **kwargs) -> Task[T]:
         """Add a calback to the queue. The callback will be called the next time

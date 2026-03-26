@@ -34,17 +34,27 @@ class WorkerThread:
 
     def _loop(self) -> None:
         while True:
+            task = None
+
+            # Try to steal from pool queue (non-blocking, under lock)
             with self.pool.lock:
                 if self.queue.empty() and len(self.pool.queue) > 0:
                     task = self.pool.queue.pop()
-                else:
-                    task = self.queue.get()
-                    if task is None:
-                        break
-                self.busy.set()
+
+            # Nothing stolen, wait on its own queue (blocking, outside lock)
+            if task is None:
+                task = self.queue.get()
+                if task is None:
+                    break
+
+            self.busy.set()
             result, func, args, kwargs = task
-            result.complete(func(*args, **kwargs))
-            self.busy.clear()
+            try:
+                result.complete(func(*args, **kwargs))
+            except Exception as e:
+                result.error(e)
+            finally:
+                self.busy.clear()
 
     def run[T](self, func: Callable[...,T], *args, **kwargs) -> DelayedTask[T]:
         result = DelayedTask()
@@ -57,6 +67,9 @@ class ThreadPoolExecutor(Executor):
     """A thread pool (used to run callbacks in workers threads)."""
 
     def __init__(self, logger: Logger, max_workers: int = 0):
+        if max_workers == 1:
+            err_msg = "max_workers=1 is not supported, use SimpleExecutor instead"
+            raise ValueError(err_msg)
         self.workers: list[WorkerThread] = []
         self.queue: list[None | tuple[DelayedTask, Callable, list, dict]] = []
         self.lock = Lock()
@@ -73,20 +86,16 @@ class ThreadPoolExecutor(Executor):
         return worker
 
     def exec[T](self, callback: Callable[...,T], *args, **kwargs) -> Task[T]:
-        self.lock.acquire()
+        with self.lock:
+            for worker in self.workers:
+                if not worker.busy.is_set() and worker.queue.empty():
+                    return worker.run(callback, *args, **kwargs)
 
-        for worker in self.workers:
-            if not worker.busy.is_set() and worker.queue.empty():
-                return worker.run(callback, *args, **kwargs)
-
-        if self.max_workers > 0 and len(self.workers) >= self.max_workers:
-            self.logger.warning("Maximum number of workers reached, the task will be queued")
-            result = DelayedTask()
-            self.queue.append((result, callback, args, kwargs))
-            self.lock.release()
-            return result
-
-        self.lock.release()
+            if self.max_workers > 0 and len(self.workers) >= self.max_workers:
+                self.logger.warning("Maximum number of workers reached, the task will be queued")
+                result = DelayedTask()
+                self.queue.append((result, callback, args, kwargs))
+                return result
 
         # Create a new worker thread to run the task
         worker = self._create_worker()
