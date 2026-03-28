@@ -48,6 +48,6 @@ class ConfigPydanticSchema(ConfigSchema):
         try:
             result = self.model(**config)
         except pydantic.ValidationError as e:
-            raise ConfigValidationError(e.title)
+            raise ConfigValidationError(str(e)) from e
 
         return result
