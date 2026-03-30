@@ -58,6 +58,7 @@ class ThreadPoolExecutor(Executor):
         self.lock = Lock()
         self.logger = logger
         self.max_workers = max_workers
+        self._stopping = False
 
     def set_max_workers(self, max_workers: int) -> None:
         self.max_workers = max_workers
@@ -69,6 +70,9 @@ class ThreadPoolExecutor(Executor):
         return worker
 
     def exec[T](self, callback: Callable[..., T], *args, **kwargs) -> Task[T]:
+        if self._stopping:
+            raise RuntimeError("ThreadPoolExecutor is stopping, cannot submit new tasks")
+
         result = DelayedTask()
         self.queue.put((result, callback, args, kwargs))
 
@@ -87,6 +91,7 @@ class ThreadPoolExecutor(Executor):
         return result
 
     def stop(self) -> None:
+        self._stopping = True
         # Send one sentinel per worker so each one exits its loop
         for _ in self.workers:
             self.queue.put(None)
