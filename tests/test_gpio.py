@@ -1,15 +1,15 @@
-"""Tests for GPIO driver using fake implementation."""
+"""Tests for GPIO driver using virtual implementation."""
 
 import pytest
 
-from evo_lib.drivers.gpio.fake import GPIOPinFake
+from evo_lib.drivers.gpio.virtual import GPIOPinVirtual
 from evo_lib.interfaces.gpio import GPIODirection, GPIOEdge
 from evo_lib.task import ImmediateErrorTask
 
 
 @pytest.fixture
 def gpio_in():
-    drv = GPIOPinFake(name="test-in", pin=17, direction=GPIODirection.INPUT)
+    drv = GPIOPinVirtual(name="test-in", pin=17, direction=GPIODirection.INPUT)
     drv.init()
     yield drv
     drv.close()
