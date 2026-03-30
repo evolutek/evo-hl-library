@@ -2,10 +2,10 @@ import sched
 import time
 from typing import Callable
 
-from evo_lib.executor import BaseExecutor
+from evo_lib.executor import Executor
 
 
-class SchedulerExecutor(BaseExecutor):
+class SchedulerExecutor(Executor):
     def __init__(self, scheduler: "Scheduler", priority: int):
         self.scheduler: "Scheduler" = scheduler
         self.priority: int = priority
