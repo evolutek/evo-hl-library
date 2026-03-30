@@ -4,7 +4,32 @@ from typing import Any
 import json5
 import pydantic
 
-type ConfigValue = None | bool | str | int | float | list[ConfigValue] | dict[str,ConfigValue]
+from evo_lib.argtypes import ArgTypes
+
+type ConfigValue = None | bool | str | int | float | list[ConfigValue] | ConfigObject
+
+
+class ConfigObject(dict[str, ConfigValue]):
+    def __init__(self, parent: ConfigObject | None):
+        self._parent = parent
+
+    def get_str(self, key: str, default: str | None = None, argtype: ArgTypes.String | None = None) -> str:
+        pass # TODO
+
+    def get_int(self, key: str, default: int | None = None, argtype: ArgTypes.I64 | None = None) -> int:
+        pass # TODO
+
+    def get_float(self, key: str, default: float | None = None, argtype: ArgTypes.F64 | None = None) -> float:
+        pass # TODO
+
+    def get_bool(self, key: str, default: bool | None = None) -> bool:
+        pass # TODO
+
+    def get_array(self, key: str, default: list | None = None, argtype: ArgTypes.Array | None = None) -> list[ConfigValue]:
+        pass # TODO
+
+    def get_object(self, key: str, default: ConfigObject | None = None, argtype: ArgTypes.Struct | None = None) -> ConfigObject:
+        pass # TODO
 
 
 class ConfigValidationError(ValueError):
