@@ -9,6 +9,10 @@ from evo_lib.argtypes import ArgType, ArgTypes
 type ConfigValue = None | bool | str | int | float | list[ConfigValue] | ConfigObject
 
 
+class ConfigValidationError(ValueError):
+    pass
+
+
 class ConfigObject(dict[str, ConfigValue]):
     def __init__(
         self,
@@ -79,10 +83,6 @@ class ConfigObject(dict[str, ConfigValue]):
 
     def get_object_or(self, key: str, default: float, argtype: ArgTypes.Float | None = None) -> ConfigObject:
         return self._get_optional(key, default, argtype, self.get_object)
-
-
-class ConfigValidationError(ValueError):
-    pass
 
 
 class ConfigParser(ABC):
