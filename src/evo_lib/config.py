@@ -13,23 +13,29 @@ class ConfigObject(dict[str, ConfigValue]):
     def __init__(self, parent: ConfigObject | None):
         self._parent = parent
 
-    def get_str(self, key: str, default: str | None = None, argtype: ArgTypes.String | None = None) -> str:
+    def get_bool(self, key: str) -> bool:
         pass # TODO
 
-    def get_int(self, key: str, default: int | None = None, argtype: ArgTypes.I64 | None = None) -> int:
+    def get_str(self, key: str, argtype: ArgTypes.String | None = None) -> str:
         pass # TODO
 
-    def get_float(self, key: str, default: float | None = None, argtype: ArgTypes.F64 | None = None) -> float:
+    def get_int(self, key: str, argtype: ArgTypes.I64 | None = None) -> int:
         pass # TODO
 
-    def get_bool(self, key: str, default: bool | None = None) -> bool:
+    def get_float(self, key: str, argtype: ArgTypes.F64 | None = None) -> float:
         pass # TODO
 
-    def get_array(self, key: str, default: list | None = None, argtype: ArgTypes.Array | None = None) -> list[ConfigValue]:
+    def get_array(self, key: str, argtype: ArgTypes.Array | None = None) -> list[ConfigValue]:
         pass # TODO
 
-    def get_object(self, key: str, default: ConfigObject | None = None, argtype: ArgTypes.Struct | None = None) -> ConfigObject:
+    def get_object(self, key: str, argtype: ArgTypes.Struct | None = None) -> ConfigObject:
         pass # TODO
+
+    def get_float_or(self, key: str, default: float, argtype: ArgTypes.Struct | None = None) -> float:
+        if key in self:
+            return self.get_float(key, argtype)
+        else:
+            return default
 
 
 class ConfigValidationError(ValueError):
