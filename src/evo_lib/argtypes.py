@@ -54,6 +54,11 @@ class ArgType(ABC):
         """Parse self type from a config."""
         pass
 
+    @abstractmethod
+    def self_to_config(self, c: ConfigObject) -> None:
+        """Dump sel type into a config."""
+        pass
+
 
 class ArgTypes:
     class Struct(ArgType):
@@ -155,6 +160,11 @@ class ArgTypes:
             if "element_type" in c:
                 self.element_type = argtype_from_config(c.get_object("element_type"))
 
+        def self_to_config(self, c: ConfigObject) -> None:
+            if self.max_size != 0:
+                c["max_size"] = self.max_size
+            c["element_type"] = argtype_to_config(self.element_type)
+
     class Bytes(ArgType):
         def __init__(self, max_size: int = 0):
             self.max_size = max_size
@@ -184,6 +194,10 @@ class ArgTypes:
         def self_from_config(self, c: ConfigObject) -> None:
             if "max_size" in c:
                 self.max_size = c.get_int("max_size")
+
+        def self_to_config(self, c: ConfigObject) -> None:
+            if self.max_size != 0:
+                c["max_size"] = self.max_size
 
     class String(ArgType):
         def __init__(
@@ -270,6 +284,15 @@ class ArgTypes:
             if "regex" in c:
                 self.regex = re.compile(c.get_str("regex"))
 
+        def self_to_config(self, c: ConfigObject) -> None:
+            if self.encoding != "utf-8":
+                c["encoding"] = self.encoding
+            if self.max_size != 0:
+                c["max_size"] = self.max_size
+            if self.choices is not None:
+                c["choices"] = self.choices
+            if self.regex is not None:
+                c["regex"] = self.regex.pattern
     class Bool(ArgType):
         def value_from_config(self, v: ConfigValue) -> bool:
             if isinstance(v, bool):
@@ -299,6 +322,9 @@ class ArgTypes:
         def self_from_config(self, c: ConfigObject) -> None:
             pass
 
+        def self_to_config(self, c: ConfigObject) -> None:
+            pass # No specific attributes to dump
+
     class Numeric(ArgType, ABC):
         def __init__(
             self,
@@ -320,33 +346,62 @@ class ArgTypes:
 
     class Float(Numeric, ABC):
         def value_from_config(self, v: ConfigValue) -> float:
+            # self.min and self.max are guaranteed to be non-None after __init__
             if not isinstance(v, (int, float)):
                 raise ConfigValidationError(f"{type(self).__name__} value must be a number")
             if v < self.min or v > self.max:
                 raise ConfigValidationError(f"{type(self).__name__} value must be between {self.min} and {self.max}")
             return float(v)
 
+        def __init__(self, help = None, min: float | None = None, max: float | None = None):
+            super().__init__(help, min, max)
+            if self.min is None:
+                self.min = -math.inf
+            if self.max is None:
+                self.max = math.inf
+
         def self_from_config(self, c: ConfigObject) -> None:
-            self.min = c.get_float_or("min", None)
-            self.max = c.get_float_or("max", None)
+            self.min = c.get_float_or("min", -math.inf)
+            self.max = c.get_float_or("max", math.inf)
+
+        def self_to_config(self, c: ConfigObject) -> None:
+            if self.min != -math.inf:
+                c["min"] = self.min
+            if self.max != math.inf:
+                c["max"] = self.max
 
         def value_from_str(self, v: str) -> float:
             return float(v)
 
     class Int(Numeric, ABC):
+        _default_min: int = None
+        _default_max: int = None
+
+        def __init__(self, help, min, max):
+            super().__init__(help, min, max)
+            assert(self._default_min is not None)
+            assert(self._default_max is not None)
+
         def value_from_config(self, v: ConfigValue) -> int:
             if not isinstance(v, int):
+            # self.min and self.max are guaranteed to be non-None after __init__
                 raise ConfigValidationError(f"{type(self).__name__} value must be an integer")
             if v < self.min or v > self.max:
                 raise ConfigValidationError(f"{type(self).__name__} value must be between {self.min} and {self.max}")
             return v
 
         def self_from_config(self, c: ConfigObject) -> None:
-            self.min = c.get_int_or("min", None)
-            self.max = c.get_int_or("max", None)
+            self.min = c.get_int_or("min", self._default_min)
+            self.max = c.get_int_or("max", self._default_max)
 
         def value_from_str(self, v: str) -> int:
             return int(v)
+
+        def self_to_config(self, c: ConfigObject) -> None:
+            if self.min != self._default_min:
+                c["min"] = self.min
+            if self.max != self._default_max:
+                c["max"] = self.max
 
     class F16(Float):
         def __init__(self, help = None, min: float | None = None, max: float | None = None):
@@ -360,7 +415,7 @@ class ArgTypes:
 
     class F32(Float):
         def __init__(self, help = None, min: float | None = None, max: float | None = None):
-            super().__init__(help, min or -math.inf, max or math.inf)
+            super().__init__(help, min, max)
 
         def value_from_stream(self, s: io.RawIOBase) -> float:
             return struct.unpack("f", s.read(4))[0]
@@ -370,7 +425,7 @@ class ArgTypes:
 
     class F64(Float):
         def __init__(self, help = None, min: float | None = None, max: float | None = None):
-            super().__init__(min or -math.inf, max or math.inf, help)
+            super().__init__(help, min, max)
 
         def value_from_stream(self, s: io.RawIOBase) -> float:
             return struct.unpack("d", s.read(8))[0]
@@ -380,7 +435,9 @@ class ArgTypes:
 
     class U8(Int):
         def __init__(self, help = None, min_value: float | None = None, max_value: float | None = None):
-            super().__init__(max(0, min_value or 0), min(0xFF, max_value or 0xFF), help)
+            self._default_min = 0
+            self._default_max = 0xFF
+            super().__init__(help, min_value, max_value)
 
         def value_from_stream(self, s: io.RawIOBase) -> int:
             return struct.unpack("B", s.read(1))[0]
@@ -390,7 +447,9 @@ class ArgTypes:
 
     class U16(Int):
         def __init__(self, help = None, min_value: float | None = None, max_value: float | None = None):
-            super().__init__(max(0, min_value or 0), min(0xFFFF, max_value or 0xFFFF), help)
+            self._default_min = 0
+            self._default_max = 0xFFFF
+            super().__init__(help, min_value, max_value)
 
         def value_from_stream(self, s: io.RawIOBase) -> int:
             return struct.unpack("H", s.read(2))[0]
@@ -400,11 +459,9 @@ class ArgTypes:
 
     class U32(Int):
         def __init__(self, help = None, min_value: float | None = None, max_value: float | None = None):
-            super().__init__(
-                max(0, min_value or 0),
-                min(0xFFFFFFFF, max_value or 0xFFFFFFFF),
-                help
-            )
+            self._default_min = 0
+            self._default_max = 0xFFFFFFFF
+            super().__init__(help, min_value, max_value)
 
         def value_from_stream(self, s: io.RawIOBase) -> int:
             return struct.unpack("I", s.read(4))[0]
@@ -414,11 +471,9 @@ class ArgTypes:
 
     class U64(Int):
         def __init__(self, help = None, min_value: float | None = None, max_value: float | None = None):
-            super().__init__(
-                max(0, min_value or 0),
-                min(0xFFFFFFFFFFFFFFFF, max_value or 0xFFFFFFFFFFFFFFFF),
-                help
-            )
+            self._default_min = 0
+            self._default_max = 0xFFFFFFFFFFFFFFFF
+            super().__init__(help, min_value, max_value)
 
         def value_from_stream(self, s: io.RawIOBase) -> int:
             return struct.unpack("Q", s.read(8))[0]
@@ -428,11 +483,9 @@ class ArgTypes:
 
     class I8(Int):
         def __init__(self, help = None, min_value: float | None = None, max_value: float | None = None):
-            super().__init__(
-                max(0, min_value or 0),
-                min(0xFF, max_value or 0xFF),
-                help
-            )
+            self._default_min = -0x8F
+            self._default_max = 0x7F
+            super().__init__(help, min_value, max_value)
 
         def value_from_stream(self, s: io.RawIOBase) -> int:
             return struct.unpack("b", s.read(1))[0]
@@ -442,14 +495,9 @@ class ArgTypes:
 
     class I16(Int):
         def __init__(self, help = None, min_value: float | None = None, max_value: float | None = None):
-            super().__init__(
-                max(0, min_value or 0),
-                min(0xFFFF, max_value or 0xFFFF),
-                help
-            )
-
-        def value_from_str(self, v: str) -> float:
-            return int(v)
+            self._default_min = -0x8FFF
+            self._default_max = 0x7FFF
+            super().__init__(help, min_value, max_value)
 
         def value_from_stream(self, s: io.RawIOBase) -> int:
             return struct.unpack("h", s.read(2))[0]
@@ -459,11 +507,9 @@ class ArgTypes:
 
     class I32(Int):
         def __init__(self, help = None, min_value: float | None = None, max_value: float | None = None):
-            super().__init__(
-                max(0, min_value or 0),
-                min(0xFFFFFFFF, max_value or 0xFFFFFFFF),
-                help
-            )
+            self._default_min = -0x8FFFFFFF
+            self._default_max = 0x7FFFFFFF
+            super().__init__(help, min_value, max_value)
 
         def value_from_stream(self, s: io.RawIOBase) -> int:
             return struct.unpack("i", s.read(4))[0]
@@ -473,11 +519,9 @@ class ArgTypes:
 
     class I64(Int):
         def __init__(self, help = None, min_value: float | None = None, max_value: float | None = None):
-            super().__init__(
-                max(0, min_value or 0),
-                min(0xFFFFFFFFFFFFFFFF, max_value or 0xFFFFFFFFFFFFFFFF),
-                help
-            )
+            self._default_min = -0x8FFFFFFFFFFFFFFF
+            self._default_max = 0x7FFFFFFFFFFFFFFF
+            super().__init__(help, min_value, max_value)
 
         def value_from_stream(self, s: io.RawIOBase) -> int:
             return struct.unpack("q", s.read(8))[0]
@@ -541,6 +585,9 @@ class ArgTypes:
             # Enum type should be provided in constructor, nothing to do here
             pass
 
+        def self_to_config(self, c: ConfigObject) -> None:
+            pass # Enum type is provided at construction, not serialized to config
+
     # Reference to a device
     class Component(ArgType):
         def __init__(self, base_type: type[Component], components: Registry[Component]):
@@ -585,6 +632,9 @@ class ArgTypes:
             # Component references don't have configuration
             pass
 
+        def self_to_config(self, c: ConfigObject) -> None:
+            pass
+
 
 ID_TO_ARGTYPE: list[type[ArgType]] = [
     ArgTypes.I64,
@@ -604,9 +654,7 @@ ID_TO_ARGTYPE: list[type[ArgType]] = [
     ArgTypes.Bool
 ]
 
-
 ARGTYPE_TO_ID: dict[type[ArgType], int] = {(t, i) for i, t in enumerate(ID_TO_ARGTYPE)}
-
 
 NAME_TO_ARGTYPE: dict[str, type[ArgType]] = {
     "int":    ArgTypes.I64,
@@ -628,6 +676,8 @@ NAME_TO_ARGTYPE: dict[str, type[ArgType]] = {
     "bool":   ArgTypes.Bool,
 }
 
+ARGTYPE_TO_NAME: dict[type[ArgType], str] = {(t, n) for n, t in NAME_TO_ARGTYPE.items()}
+
 
 def argtype_from_config(config: ConfigObject) -> ArgType:
     type_name = config.get_str("type")
@@ -636,6 +686,13 @@ def argtype_from_config(config: ConfigObject) -> ArgType:
     argtype = NAME_TO_ARGTYPE[type_name]()
     argtype.self_from_config(config)
     return argtype
+
+
+def argtype_to_config(argtype: ArgType) -> ConfigObject:
+    config = ConfigObject()
+    config["type"] = ARGTYPE_TO_NAME[type(argtype)]
+    argtype.self_to_config(config)
+    return config
 
 
 def argtype_from_stream(s: io.RawIOBase) -> ArgType:
