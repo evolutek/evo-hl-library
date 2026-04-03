@@ -16,13 +16,23 @@ class ConfigValidationError(ValueError):
 class ConfigObject(dict[str, ConfigValue]):
     def __init__(
         self,
-        parent_key: str | None,
-        parent_object: ConfigObject | None,
+        parent_key: str | None = None,
+        parent_object: ConfigObject | None = None,
         map: dict[str, ConfigValue] = dict()
     ):
         super().__init__(map)
         self._parent_object = parent_object
         self._parent_key = parent_key
+
+    def create_object(self, key: str) -> ConfigObject:
+        r = ConfigObject(key, self)
+        self[key] = r
+        return r
+
+    def create_list(self, key: str) -> list:
+        r = []
+        self[key] = r
+        return r
 
     def _get_key_path(self, key: str) -> str:
         path = [key]
