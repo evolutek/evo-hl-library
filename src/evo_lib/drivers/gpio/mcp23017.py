@@ -11,10 +11,13 @@ hardware access and virtual bus testing without any Adafruit dependency.
 import logging
 import threading
 
+from evo_lib.argtypes import ArgTypes
 from evo_lib.component import Component, ComponentHolder
+from evo_lib.driver_definition import DriverDefinition, DriverInitArgs, DriverInitArgsDefinition
 from evo_lib.event import Event
 from evo_lib.interfaces.gpio import GPIO, GPIODirection, GPIOEdge
 from evo_lib.interfaces.i2c import I2CBus
+from evo_lib.logger import Logger
 from evo_lib.task import ImmediateErrorTask, ImmediateResultTask, Task
 
 NUM_PINS = 16
@@ -168,3 +171,30 @@ class MCP23017Chip(ComponentHolder):
             else:
                 current &= ~(1 << bit)
             self._bus.write_to(self._address, bytes([register, current]))
+
+
+class MCP23017ChipDefinition(DriverDefinition):
+    """Factory for MCP23017Chip from config args.
+
+    The I2C bus and logger are construction-time dependencies (not config args),
+    because buses and logging are infrastructure managed by the ComponentsManager.
+    """
+
+    def __init__(self, bus: I2CBus, logger: Logger):
+        self._bus = bus
+        self._logger = logger
+
+    def get_init_args_definition(self) -> DriverInitArgsDefinition:
+        defn = DriverInitArgsDefinition()
+        defn.add_required("name", ArgTypes.String())
+        defn.add_optional("address", ArgTypes.U8(), 0x20)
+        return defn
+
+    def create(self, args: DriverInitArgs) -> MCP23017Chip:
+        name = args.get("name")
+        return MCP23017Chip(
+            name=name,
+            bus=self._bus,
+            address=args.get("address"),
+            logger=self._logger.get_sublogger(name).get_stdlib_logger(),
+        )

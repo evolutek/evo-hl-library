@@ -1,11 +1,11 @@
 from abc import ABC, abstractmethod
-from typing import Any, Callable, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Callable
 
 import json5
 import pydantic
 
 if TYPE_CHECKING:
-  from evo_lib.argtypes import ArgType, ArgTypes
+    from evo_lib.argtypes import ArgType, ArgTypes
 
 type ConfigValue = None | bool | str | int | float | list[ConfigValue] | ConfigObject
 
