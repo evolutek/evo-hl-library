@@ -5,8 +5,11 @@ import os
 import selectors
 import threading
 
+from evo_lib.argtypes import ArgTypes
+from evo_lib.driver_definition import DriverDefinition, DriverInitArgs, DriverInitArgsDefinition
 from evo_lib.event import Event
 from evo_lib.interfaces.gpio import GPIO, GPIODirection, GPIOEdge
+from evo_lib.logger import Logger
 from evo_lib.task import ImmediateErrorTask, ImmediateResultTask, Task
 
 # Lazy-loaded in init() so this module can be imported without gpiod installed
@@ -142,3 +145,32 @@ class RpiGPIO(GPIO):
                             self._events[GPIOEdge.BOTH].trigger(is_rising)
         finally:
             sel.close()
+
+
+class RpiGPIODefinition(DriverDefinition):
+    """Factory for RpiGPIO from config args."""
+
+    def __init__(self, logger: Logger):
+        self._logger = logger
+
+    def get_init_args_definition(self) -> DriverInitArgsDefinition:
+        defn = DriverInitArgsDefinition()
+        defn.add_required("name", ArgTypes.String())
+        defn.add_required("pin", ArgTypes.U8())
+        defn.add_optional(
+            "direction",
+            ArgTypes.String(choices=["input", "output"]),
+            "input",
+        )
+        defn.add_optional("chip", ArgTypes.String(), DEFAULT_CHIP)
+        return defn
+
+    def create(self, args: DriverInitArgs) -> RpiGPIO:
+        name = args.get("name")
+        return RpiGPIO(
+            name=name,
+            pin=args.get("pin"),
+            direction=GPIODirection(args.get("direction")),
+            chip=args.get("chip"),
+            logger=self._logger.get_sublogger(name).get_stdlib_logger(),
+        )

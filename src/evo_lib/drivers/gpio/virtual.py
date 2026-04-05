@@ -3,9 +3,12 @@
 import logging
 import threading
 
+from evo_lib.argtypes import ArgTypes
 from evo_lib.component import Component, ComponentHolder
+from evo_lib.driver_definition import DriverDefinition, DriverInitArgs, DriverInitArgsDefinition
 from evo_lib.event import Event
 from evo_lib.interfaces.gpio import GPIO, GPIODirection, GPIOEdge
+from evo_lib.logger import Logger
 from evo_lib.task import ImmediateErrorTask, ImmediateResultTask, Task
 
 NUM_MCP23017_PINS = 16
@@ -134,3 +137,24 @@ class GPIOChipVirtual(ComponentHolder):
         virtual_pin = GPIOPinVirtual(name, pin, direction, pull_up, logger=self._log)
         self._pins[pin] = virtual_pin
         return virtual_pin
+
+
+class GPIOChipVirtualDefinition(DriverDefinition):
+    """Factory for GPIOChipVirtual from config args."""
+
+    def __init__(self, logger: Logger):
+        self._logger = logger
+
+    def get_init_args_definition(self) -> DriverInitArgsDefinition:
+        defn = DriverInitArgsDefinition()
+        defn.add_required("name", ArgTypes.String())
+        defn.add_optional("address", ArgTypes.U8(), 0x20)
+        return defn
+
+    def create(self, args: DriverInitArgs) -> GPIOChipVirtual:
+        name = args.get("name")
+        return GPIOChipVirtual(
+            name=name,
+            address=args.get("address"),
+            logger=self._logger.get_sublogger(name).get_stdlib_logger(),
+        )
