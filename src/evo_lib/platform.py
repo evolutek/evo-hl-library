@@ -4,13 +4,13 @@ from enum import Enum
 
 class PlatformOS(Enum):
     UNKNOWN = "unknown"
-    LINUX = "linux",
+    LINUX = "linux"
     WINDOWS = "windows"
 
 
 class PlatformHardware(Enum):
     UNKNOWN = "unknown"
-    RASPBERRY_PI = "rpi",
+    RASPBERRY_PI = "rpi"
     COMPUTER = "computer"
 
 
@@ -41,7 +41,11 @@ class Platform:
             self.hardware = PlatformHardware.COMPUTER
 
 
+_platform: Platform | None = None
+
 def get_platform() -> Platform:
-    platform = Platform()
-    platform.detect()
-    return platform
+    global _platform
+    if _platform is None:
+      _platform = Platform()
+      _platform.detect()
+    return _platform

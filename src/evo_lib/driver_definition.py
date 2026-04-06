@@ -55,8 +55,8 @@ class DriverInitArgs:
 
     def get_all(self) -> list[tuple[str, Any, ArgType]]:
         r: list[tuple[str, Any, ArgType]] = []
-        for name, type in self.definition.get_args().values():
-            r.append(name, self.get(name), type)
+        for name, arg_def in self.definition.get_args().items():
+            r.append((name, self.get(name), arg_def.get_type()))
         return r
 
 
