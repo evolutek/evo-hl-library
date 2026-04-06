@@ -30,6 +30,7 @@ rpi = [
     "pyserial>=3.5",
     # RPLidar A-series driver.
     "adafruit-circuitpython-rplidar>=1.2.20",
+    "rpi-ws281x>=5.0",
 ]
 
 # -- Development dependencies --
