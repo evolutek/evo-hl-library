@@ -12,12 +12,12 @@ import logging
 import threading
 
 from evo_lib.argtypes import ArgTypes
-from evo_lib.component import Component, ComponentHolder
 from evo_lib.driver_definition import DriverDefinition, DriverInitArgs, DriverInitArgsDefinition
 from evo_lib.event import Event
 from evo_lib.interfaces.gpio import GPIO, GPIODirection, GPIOEdge
-from evo_lib.interfaces.i2c import I2CBus
+from evo_lib.interfaces.i2c import I2C
 from evo_lib.logger import Logger
+from evo_lib.peripheral import InterfaceHolder, Peripheral
 from evo_lib.task import ImmediateErrorTask, ImmediateResultTask, Task
 
 NUM_PINS = 16
@@ -97,7 +97,7 @@ class MCP23017Pin(GPIO):
         raise NotImplementedError("MCP23017 interrupt is not yet supported")
 
 
-class MCP23017Chip(ComponentHolder):
+class MCP23017Chip(InterfaceHolder):
     """Manages the I2C connection to one MCP23017 chip.
 
     Pins are numbered 0-15 (GPA0-GPA7 = 0-7, GPB0-GPB7 = 8-15).
@@ -106,7 +106,7 @@ class MCP23017Chip(ComponentHolder):
     def __init__(
         self,
         name: str,
-        bus: I2CBus,
+        bus: I2C,
         address: int = 0x20,
         logger: logging.Logger | None = None,
     ):
@@ -131,7 +131,7 @@ class MCP23017Chip(ComponentHolder):
         self._pins.clear()
         self._log.info("MCP23017 '%s' closed", self.name)
 
-    def get_subcomponents(self) -> list[Component]:
+    def get_subcomponents(self) -> list[Peripheral]:
         """Return all pins that have been created via get_pin."""
         return list(self._pins.values())
 
@@ -180,7 +180,7 @@ class MCP23017ChipDefinition(DriverDefinition):
     because buses and logging are infrastructure managed by the ComponentsManager.
     """
 
-    def __init__(self, bus: I2CBus, logger: Logger):
+    def __init__(self, bus: I2C, logger: Logger):
         self._bus = bus
         self._logger = logger
 

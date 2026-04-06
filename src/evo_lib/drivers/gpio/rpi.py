@@ -82,18 +82,18 @@ class RpiGPIO(GPIO):
         os.close(self._stop_w)
         self._stop_r, self._stop_w = -1, -1
 
-    def _check_init(self) -> None:
+    def _check_ready(self) -> None:
         if self._request is None:
             raise RuntimeError("GPIO not initialized, call init() first")
 
     def read(self) -> Task[bool]:
-        self._check_init()
+        self._check_ready()
         if self._direction != GPIODirection.INPUT:
             return ImmediateErrorTask(NotImplementedError("read() requires INPUT direction"))
         return ImmediateResultTask(self._request.get_value(self._pin) == _gpiod.line.Value.ACTIVE)
 
     def write(self, state: bool) -> Task[None]:
-        self._check_init()
+        self._check_ready()
         if self._direction != GPIODirection.OUTPUT:
             return ImmediateErrorTask(NotImplementedError("write() requires OUTPUT direction"))
         value = _gpiod.line.Value.ACTIVE if state else _gpiod.line.Value.INACTIVE
@@ -101,7 +101,7 @@ class RpiGPIO(GPIO):
         return ImmediateResultTask(None)
 
     def interrupt(self, edge: GPIOEdge = GPIOEdge.BOTH) -> Event[bool]:
-        self._check_init()
+        self._check_ready()
         if self._direction != GPIODirection.INPUT:
             raise NotImplementedError("interrupt() requires INPUT direction")
 

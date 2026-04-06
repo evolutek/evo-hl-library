@@ -1,15 +1,15 @@
 """Abstract interface for analog input channels."""
 
 from abc import abstractmethod
-
-from evo_lib.component import Component
-
 from typing import TYPE_CHECKING
+
+from evo_lib.peripheral import Placable
+
 if TYPE_CHECKING:
     from evo_lib.task import Task
 
 
-class AnalogInput(Component):
+class AnalogInput(Placable):
     """A single analog input channel (e.g. ADS1115 channel)."""
 
     @abstractmethod

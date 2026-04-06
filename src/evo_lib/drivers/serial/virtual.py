@@ -1,18 +1,19 @@
-"""Serial bus driver: in-memory virtual implementation for testing and simulation."""
+"""Serial driver: in-memory virtual implementation for testing and simulation."""
 
 import threading
 
-from evo_lib.interfaces.serial import SerialBus
+from evo_lib.interfaces.serial import Serial
 
 
-class SerialBusVirtual(SerialBus):
+class SerialVirtual(Serial):
     """In-memory serial bus for testing.
 
     Reads consume from an injectable buffer. Writes are recorded in a list
     for assertions. Thread-safe so it can be used with async reader threads.
     """
 
-    def __init__(self, timeout: float = 1.0):
+    def __init__(self, name: str = "virtual", timeout: float = 1.0):
+        super().__init__(name)
         self._timeout = timeout
         self._lock = threading.Lock()
         self._read_buffer = bytearray()
@@ -20,24 +21,24 @@ class SerialBusVirtual(SerialBus):
         self.written: list[bytes] = []
         self._opened = False
 
-    def open(self) -> None:
+    def init(self) -> None:
         self._opened = True
 
     def close(self) -> None:
         self._opened = False
         self._read_event.set()  # Unblock any waiting reads
 
-    def _require_open(self) -> None:
+    def _check_ready(self) -> None:
         if not self._opened:
-            raise RuntimeError("Virtual serial not opened, call open() first")
+            raise RuntimeError("Virtual serial not opened, call init() first")
 
     def write(self, data: bytes) -> None:
-        self._require_open()
+        self._check_ready()
         with self._lock:
             self.written.append(bytes(data))
 
     def read(self, count: int) -> bytes:
-        self._require_open()
+        self._check_ready()
         # Wait until enough bytes are available
         while True:
             with self._lock:
@@ -54,18 +55,18 @@ class SerialBusVirtual(SerialBus):
                 )
 
     def read_available(self) -> bytes:
-        self._require_open()
+        self._check_ready()
         with self._lock:
             data = bytes(self._read_buffer)
             self._read_buffer.clear()
             return data
 
     def flush(self) -> None:
-        self._require_open()
+        self._check_ready()
 
     @property
     def in_waiting(self) -> int:
-        self._require_open()
+        self._check_ready()
         with self._lock:
             return len(self._read_buffer)
 

@@ -1,15 +1,15 @@
 """Abstract interface for angle-controlled servos."""
 
 from abc import abstractmethod
-
-from evo_lib.component import Component
-
 from typing import TYPE_CHECKING
+
+from evo_lib.peripheral import Placable
+
 if TYPE_CHECKING:
     from evo_lib.task import Task
 
 
-class Servo(Component):
+class Servo(Placable):
     """A servo that can move to an angle or be set as a fraction of its range.
 
     Abstracts away the underlying hardware (PCA9685 channel, direct PWM, etc.).

@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING, Any
 from evo_lib.argtypes import ArgType
 
 if TYPE_CHECKING:
-    from evo_lib.component import Component
+    from evo_lib.peripheral import Peripheral
 
 
 # Description of one initialization argument
@@ -62,7 +62,7 @@ class DriverInitArgs:
 
 class DriverDefinition(ABC):
     @abstractmethod
-    def create(self, args: DriverInitArgs) -> Component:
+    def create(self, args: DriverInitArgs) -> Peripheral:
         pass
 
     @abstractmethod

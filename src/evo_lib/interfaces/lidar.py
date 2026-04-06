@@ -1,13 +1,13 @@
 """Abstract interface for 2D scanning lidars."""
 
 from abc import abstractmethod
-
-from evo_lib.component import Component
-
 from typing import TYPE_CHECKING, Generator
+
+from evo_lib.peripheral import Placable
+
 if TYPE_CHECKING:
-    from evo_lib.task import Task
     from evo_lib.event import Event
+    from evo_lib.task import Task
 
 
 class Lidar2DMeasure:
@@ -20,7 +20,7 @@ class Lidar2DMeasure:
         self.quality = quality # Shall be between 0 and 255
 
 
-class Lidar2D(Component):
+class Lidar2D(Placable):
     """A 2D rotating lidar (e.g. RPLidar A2, SICK TIM).
 
     Produces periodic scan data as a list of (angle_deg, distance_mm) points.

@@ -1,12 +1,14 @@
 """Abstract interface for an I2C bus."""
 
-from abc import ABC, abstractmethod
+from abc import abstractmethod
+
+from evo_lib.peripheral import Interface
 
 
-class I2CBus(ABC):
+class I2C(Interface):
     """A single I2C bus (real, virtual, or a TCA9548A mux channel).
 
-    Drivers receive an I2CBus instead of creating their own busio.I2C.
+    Drivers receive an I2C instead of creating their own busio.I2C.
     This decouples drivers from the transport and enables bus-level simulation.
     """
 

@@ -1,24 +1,18 @@
 """Abstract interface for a serial bus (UART)."""
 
-from abc import ABC, abstractmethod
+from abc import abstractmethod
+
+from evo_lib.peripheral import Interface
 
 
-class SerialBus(ABC):
+class Serial(Interface):
     """A serial bus (UART) abstraction.
 
-    Drivers receive a SerialBus instead of creating their own serial.Serial.
+    Drivers receive a Serial instead of creating their own serial.Serial.
     This decouples drivers from the transport and enables bus-level simulation.
 
     Used by: carte-asserv (Pilot), USB2AX (AX-12 SmartServo), RPLidar, etc.
     """
-
-    @abstractmethod
-    def open(self) -> None:
-        """Open the serial port. Must be called before any read/write."""
-
-    @abstractmethod
-    def close(self) -> None:
-        """Close the serial port and release the underlying resource."""
 
     @abstractmethod
     def write(self, data: bytes) -> None:
