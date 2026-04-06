@@ -92,7 +92,7 @@ class ArgTypes:
             s.write(struct.pack("I", len(self.fields)))
             for fname, ftype in self.fields:
                 fname_bytes = fname.encode("utf-8")
-                s.write(struct.pack("I", fname_bytes))
+                s.write(struct.pack("I", len(fname_bytes)))
                 s.write(fname_bytes)
                 argtype_to_stream(ftype, s)
 
@@ -483,7 +483,7 @@ class ArgTypes:
 
     class I8(Int):
         def __init__(self, help = None, min_value: float | None = None, max_value: float | None = None):
-            self._default_min = -0x8F
+            self._default_min = -0x80
             self._default_max = 0x7F
             super().__init__(help, min_value, max_value)
 
@@ -495,7 +495,7 @@ class ArgTypes:
 
     class I16(Int):
         def __init__(self, help = None, min_value: float | None = None, max_value: float | None = None):
-            self._default_min = -0x8FFF
+            self._default_min = -0x8000
             self._default_max = 0x7FFF
             super().__init__(help, min_value, max_value)
 
@@ -507,7 +507,7 @@ class ArgTypes:
 
     class I32(Int):
         def __init__(self, help = None, min_value: float | None = None, max_value: float | None = None):
-            self._default_min = -0x8FFFFFFF
+            self._default_min = -0x80000000
             self._default_max = 0x7FFFFFFF
             super().__init__(help, min_value, max_value)
 
@@ -519,7 +519,7 @@ class ArgTypes:
 
     class I64(Int):
         def __init__(self, help = None, min_value: float | None = None, max_value: float | None = None):
-            self._default_min = -0x8FFFFFFFFFFFFFFF
+            self._default_min = -0x8000000000000000
             self._default_max = 0x7FFFFFFFFFFFFFFF
             super().__init__(help, min_value, max_value)
 
@@ -654,7 +654,7 @@ ID_TO_ARGTYPE: list[type[ArgType]] = [
     ArgTypes.Bool
 ]
 
-ARGTYPE_TO_ID: dict[type[ArgType], int] = {(t, i) for i, t in enumerate(ID_TO_ARGTYPE)}
+ARGTYPE_TO_ID: dict[type[ArgType], int] = {t: i for i, t in enumerate(ID_TO_ARGTYPE)}
 
 NAME_TO_ARGTYPE: dict[str, type[ArgType]] = {
     "int":    ArgTypes.I64,
@@ -676,7 +676,7 @@ NAME_TO_ARGTYPE: dict[str, type[ArgType]] = {
     "bool":   ArgTypes.Bool,
 }
 
-ARGTYPE_TO_NAME: dict[type[ArgType], str] = {(t, n) for n, t in NAME_TO_ARGTYPE.items()}
+ARGTYPE_TO_NAME: dict[type[ArgType], str] = {t: n for n, t in NAME_TO_ARGTYPE.items()}
 
 
 def argtype_from_config(config: ConfigObject) -> ArgType:
