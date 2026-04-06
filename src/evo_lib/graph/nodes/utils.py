@@ -1,0 +1,24 @@
+"""Built-in utility nodes: Wait."""
+
+from evo_lib.graph.graph import Node, NodeDefinition, Graph
+from evo_lib.argtypes import ArgTypes
+
+
+class WaitNode(Node):
+    def __init__(self, definition: NodeDefinition, name: str, graph: Graph):
+        super().__init__(definition, name, graph)
+
+    def run(self) -> None:
+        delay_input = self.get_value_input("delay")
+        delay = delay_input.get_value() if delay_input else 0
+        output = self.get_flow_output("flow")
+        if output is not None:
+            self._graph._runner._scheduler.schedule_after(delay, 0, output.run)
+
+
+class WaitNodeDefinition(NodeDefinition[WaitNode]):
+    def __init__(self):
+        super().__init__(WaitNode, "wait", "Wait")
+        self.add_flow_input("flow")
+        self.add_flow_output("flow")
+        self.add_value_input("delay", ArgTypes.F32, 0)
