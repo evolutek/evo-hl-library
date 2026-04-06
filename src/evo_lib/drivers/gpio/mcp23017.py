@@ -1,10 +1,10 @@
 """MCP23017 driver: register-level I2C implementation.
 
 The MCP23017 is a 16-pin I2C GPIO expander. This module exposes it as:
-- MCP23017Chip (ComponentHolder): manages I2C connection to the chip
+- MCP23017Chip (InterfaceHolder): manages I2C connection to the chip
 - MCP23017Pin (GPIO): one instance per physical pin
 
-Uses the I2CBus abstraction for all I2C operations, enabling both real
+Uses the I2C abstraction for all I2C operations, enabling both real
 hardware access and virtual bus testing without any Adafruit dependency.
 """
 
