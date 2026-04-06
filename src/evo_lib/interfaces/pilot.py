@@ -1,13 +1,12 @@
 """Abstract interface for robot movement (differential and holonomic pilots)."""
 
 from abc import abstractmethod
-from enum import Enum
-
-from evo_lib.component import Component
-
 from dataclasses import dataclass
-
+from enum import Enum
 from typing import TYPE_CHECKING
+
+from evo_lib.peripheral import Placable
+
 if TYPE_CHECKING:
     from evo_lib.task import Task
 
@@ -51,7 +50,7 @@ class HolonomicPilotWaypoint(DifferentialPilotWaypoint):
     tangent: float
 
 
-class Pilot(Component):
+class Pilot(Placable):
     @abstractmethod
     def stop(self) -> Task[None]:
         """Immediately stop the current movement."""

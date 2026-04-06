@@ -4,11 +4,11 @@ import logging
 import threading
 
 from evo_lib.argtypes import ArgTypes
-from evo_lib.component import Component, ComponentHolder
 from evo_lib.driver_definition import DriverDefinition, DriverInitArgs, DriverInitArgsDefinition
 from evo_lib.event import Event
 from evo_lib.interfaces.gpio import GPIO, GPIODirection, GPIOEdge
 from evo_lib.logger import Logger
+from evo_lib.peripheral import InterfaceHolder, Peripheral
 from evo_lib.task import ImmediateErrorTask, ImmediateResultTask, Task
 
 NUM_MCP23017_PINS = 16
@@ -36,7 +36,7 @@ class GPIOPinVirtual(GPIO):
         self._event: Event[bool] | None = None
         self._edge: GPIOEdge = GPIOEdge.BOTH
 
-    def _check_init(self) -> None:
+    def _check_ready(self) -> None:
         if not self._initialized:
             raise RuntimeError("GPIO not initialized, call init() first")
 
@@ -57,20 +57,20 @@ class GPIOPinVirtual(GPIO):
         self._event = None
 
     def read(self) -> Task[bool]:
-        self._check_init()
+        self._check_ready()
         if self._direction != GPIODirection.INPUT:
             return ImmediateErrorTask(NotImplementedError("read() requires INPUT direction"))
         return ImmediateResultTask(self._state)
 
     def write(self, state: bool) -> Task[None]:
-        self._check_init()
+        self._check_ready()
         if self._direction != GPIODirection.OUTPUT:
             return ImmediateErrorTask(NotImplementedError("write() requires OUTPUT direction"))
         self._state = state
         return ImmediateResultTask(None)
 
     def interrupt(self, edge: GPIOEdge = GPIOEdge.BOTH) -> Event[bool]:
-        self._check_init()
+        self._check_ready()
         if self._direction != GPIODirection.INPUT:
             raise NotImplementedError("interrupt() requires INPUT direction")
         self._edge = edge
@@ -94,7 +94,7 @@ class GPIOPinVirtual(GPIO):
                 event.trigger(value)
 
 
-class GPIOChipVirtual(ComponentHolder):
+class GPIOChipVirtual(InterfaceHolder):
     """In-memory virtual for the MCP23017 chip, for tests and simulation.
 
     Creates GPIOPinVirtual instances for each pin, sharing the same GPIO interface.
@@ -118,7 +118,7 @@ class GPIOChipVirtual(ComponentHolder):
         self._pins.clear()
         self._log.info("MCP23017 virtual '%s' closed", self.name)
 
-    def get_subcomponents(self) -> list[Component]:
+    def get_subcomponents(self) -> list[Peripheral]:
         """Return all pins that have been created via get_pin."""
         return list(self._pins.values())
 

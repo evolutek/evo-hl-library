@@ -1,11 +1,11 @@
-"""I2C bus drivers: real and virtual implementations."""
+"""I2C drivers: real and virtual implementations."""
 
-from evo_lib.drivers.i2c.rpi import I2CBusRpi
+from evo_lib.drivers.i2c.rpi import RpiI2C
 from evo_lib.drivers.i2c.tca9548a import TCA9548A
-from evo_lib.drivers.i2c.virtual import I2CBusVirtual
+from evo_lib.drivers.i2c.virtual import I2CVirtual
 
 __all__ = [
-    "I2CBusRpi",
-    "I2CBusVirtual",
+    "I2CVirtual",
+    "RpiI2C",
     "TCA9548A",
 ]

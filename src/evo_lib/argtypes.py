@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Any
 from evo_lib.config import ConfigJSON5Parser, ConfigObject, ConfigValidationError, ConfigValue
 
 if TYPE_CHECKING:
-    from evo_lib.component import Component
+    from evo_lib.peripheral import Peripheral
     from evo_lib.registry import Registry
 
 
@@ -590,7 +590,7 @@ class ArgTypes:
 
     # Reference to a device
     class Component(ArgType):
-        def __init__(self, base_type: type[Component], components: Registry[Component]):
+        def __init__(self, base_type: type[Peripheral], components: Registry[Peripheral]):
             self.components = components
             self.base_type = base_type
 

@@ -4,7 +4,7 @@ import pytest
 
 from evo_lib.drivers.gpio.mcp23017 import MCP23017Chip
 from evo_lib.drivers.gpio.virtual import GPIOChipVirtual, GPIOPinVirtual
-from evo_lib.drivers.i2c.virtual import I2CBusVirtual
+from evo_lib.drivers.i2c.virtual import I2CVirtual
 from evo_lib.interfaces.gpio import GPIODirection
 
 
@@ -35,7 +35,8 @@ class TestGPIOChipVirtual:
 class TestMCP23017Chip:
     @pytest.fixture
     def bus_and_chip(self):
-        bus = I2CBusVirtual()
+        bus = I2CVirtual()
+        bus.init()
         dev = bus.add_device(0x20)
         # init() does two write_then_read (IODIR reads) + two write_to (IODIR writes)
         # Actually init() calls write_register which just does write_to
@@ -45,7 +46,8 @@ class TestMCP23017Chip:
         return bus, dev, chip
 
     def test_init_sets_all_inputs(self):
-        bus = I2CBusVirtual()
+        bus = I2CVirtual()
+        bus.init()
         dev = bus.add_device(0x20)
         chip = MCP23017Chip("test", bus, address=0x20)
         chip.init()

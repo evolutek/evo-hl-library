@@ -4,7 +4,7 @@ from abc import abstractmethod
 from enum import Enum
 from typing import TYPE_CHECKING
 
-from evo_lib.component import Component
+from evo_lib.peripheral import Interface
 
 if TYPE_CHECKING:
     from evo_lib.event import Event
@@ -26,7 +26,7 @@ class GPIOEdge(Enum):
     BOTH = "both"
 
 
-class GPIO(Component):
+class GPIO(Interface):
     """A single digital I/O pin (RPi GPIO, MCP23017 pin, etc.)."""
 
     @abstractmethod

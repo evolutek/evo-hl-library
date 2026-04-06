@@ -1,9 +1,9 @@
-"""Serial bus drivers: real and virtual implementations."""
+"""Serial drivers: real and virtual implementations."""
 
-from evo_lib.drivers.serial.rpi import RpiSerialBus
-from evo_lib.drivers.serial.virtual import SerialBusVirtual
+from evo_lib.drivers.serial.rpi import RpiSerial
+from evo_lib.drivers.serial.virtual import SerialVirtual
 
 __all__ = [
-    "RpiSerialBus",
-    "SerialBusVirtual",
+    "RpiSerial",
+    "SerialVirtual",
 ]

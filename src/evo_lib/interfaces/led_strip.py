@@ -1,16 +1,16 @@
 """Abstract interface for addressable LED strips."""
 
 from abc import abstractmethod
-
-from evo_lib.component import Component
-
 from typing import TYPE_CHECKING
+
+from evo_lib.peripheral import Placable
+
 if TYPE_CHECKING:
     from evo_lib.task import Task
     from evo_lib.types.color import Color
 
 
-class LedStrip(Component):
+class LedStrip(Placable):
     """An addressable RGB LED strip (e.g. WS2812B / NeoPixel)."""
 
     @abstractmethod
