@@ -23,6 +23,7 @@ dependencies = [
 rpi = [
     "adafruit-blinka>=8.0",
     "gpiod>=2.0",
+    "pyserial>=3.5",
     "rplidar-roboticia>=0.9",
 ]
 
