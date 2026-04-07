@@ -1,7 +1,7 @@
 """Tests for FSM."""
 
 import threading
-from enum import Enum
+from enum import StrEnum
 
 import pytest
 
@@ -9,10 +9,11 @@ from evo_lib.fsm import FSM, TransitionError
 from evo_lib.task import DelayedTask, ImmediateResultTask, TaskCancelledError
 
 
-class St(Enum):
+class St(StrEnum):
     A = "a"
     B = "b"
     C = "c"
+    ERR = "err"
 
 
 class TestFSMTransitions:
@@ -90,6 +91,102 @@ class TestFSMError:
             task.wait()
 
 
+class TestFSMErrorState:
+    def test_error_transitions_to_error_state(self):
+        entered_error = threading.Event()
+
+        def error_callback():
+            entered_error.set()
+            return ImmediateResultTask(None)
+
+        def failing():
+            t = DelayedTask()
+            t.error(ValueError("boom"))
+            return t
+
+        fsm = FSM(St)
+        fsm.register(St.A, failing, prevs=[])
+        fsm.register(St.ERR, error_callback, prevs=[St.A, St.B, St.C])
+        fsm.register_error_state(St.ERR)
+        task = fsm.start(St.A)
+        task.wait()
+        assert fsm.state == St.ERR
+        assert entered_error.is_set()
+
+    def test_error_in_error_state_stops_fsm(self):
+        def failing():
+            t = DelayedTask()
+            t.error(ValueError("double fault"))
+            return t
+
+        fsm = FSM(St)
+        fsm.register(St.A, lambda: ImmediateResultTask(St.B), prevs=[])
+        fsm.register(St.B, failing, prevs=[St.A])
+        fsm.register(St.ERR, failing, prevs=[St.A, St.B, St.C])
+        fsm.register_error_state(St.ERR)
+        task = fsm.start(St.A)
+        with pytest.raises(ValueError, match="double fault"):
+            task.wait()
+
+    def test_no_error_state_propagates_error(self):
+        def failing():
+            t = DelayedTask()
+            t.error(ValueError("no fallback"))
+            return t
+
+        fsm = FSM(St)
+        fsm.register(St.A, failing, prevs=[])
+        task = fsm.start(St.A)
+        with pytest.raises(ValueError, match="no fallback"):
+            task.wait()
+
+
+class TestFSMHooks:
+    def test_on_enter_called(self):
+        log = []
+        fsm = FSM(St)
+        fsm.register(
+            St.A, lambda: ImmediateResultTask(St.B), prevs=[],
+            on_enter=lambda: log.append("enter_A"),
+        )
+        fsm.register(
+            St.B, lambda: ImmediateResultTask(None), prevs=[St.A],
+            on_enter=lambda: log.append("enter_B"),
+        )
+        fsm.start(St.A).wait()
+        assert log == ["enter_A", "enter_B"]
+
+    def test_on_exit_called(self):
+        log = []
+        fsm = FSM(St)
+        fsm.register(
+            St.A, lambda: ImmediateResultTask(St.B), prevs=[],
+            on_exit=lambda: log.append("exit_A"),
+        )
+        fsm.register(
+            St.B, lambda: ImmediateResultTask(None), prevs=[St.A],
+            on_exit=lambda: log.append("exit_B"),
+        )
+        fsm.start(St.A).wait()
+        assert log == ["exit_A", "exit_B"]
+
+    def test_hooks_order(self):
+        log = []
+        fsm = FSM(St)
+        fsm.register(
+            St.A, lambda: ImmediateResultTask(St.B), prevs=[],
+            on_enter=lambda: log.append("enter_A"),
+            on_exit=lambda: log.append("exit_A"),
+        )
+        fsm.register(
+            St.B, lambda: ImmediateResultTask(None), prevs=[St.A],
+            on_enter=lambda: log.append("enter_B"),
+            on_exit=lambda: log.append("exit_B"),
+        )
+        fsm.start(St.A).wait()
+        assert log == ["enter_A", "exit_A", "enter_B", "exit_B"]
+
+
 class TestFSMCancel:
     def test_cancel_stops_fsm(self):
         pending = DelayedTask()
@@ -98,6 +195,16 @@ class TestFSMCancel:
         task = fsm.start(St.A)
 
         fsm.cancel()
+        with pytest.raises(TaskCancelledError):
+            task.wait()
+
+    def test_cancel_via_task(self):
+        pending = DelayedTask()
+        fsm = FSM(St)
+        fsm.register(St.A, lambda: pending, prevs=[])
+        task = fsm.start(St.A)
+
+        task.cancel()
         with pytest.raises(TaskCancelledError):
             task.wait()
 
