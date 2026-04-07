@@ -5,7 +5,7 @@ An **AnalogInput** represents a single analog voltage input channel.
 ## Class: `AnalogInput`
 
 **Module:** `evo_lib.interfaces.analog_input`
-**Extends:** [Component](../architecture/component.md)
+**Extends:** [Placable](../architecture/peripheral.md#placable)
 
 | Method | Returns | Description |
 |--------|---------|-------------|
@@ -17,9 +17,9 @@ An **AnalogInput** represents a single analog voltage input channel.
 |--------|----------|-----|
 | `ads1115` | ADS1115 16-bit 4-channel ADC | I2C (addr 0x48) |
 
-Each channel of the ADS1115 is exposed as a separate AnalogInput [Component](../architecture/component.md). The ADS1115 driver itself may be a [ComponentHolder](../architecture/component.md#class-componentholder) that owns its channels.
+Each channel of the ADS1115 is exposed as a separate AnalogInput [Peripheral](../architecture/peripheral.md). The ADS1115 driver itself is an [InterfaceHolder](../architecture/peripheral.md#interfaceholder) that owns its channels.
 
 ## See also
 
-- [Component](../architecture/component.md) — lifecycle base class
+- [Peripheral hierarchy](../architecture/peripheral.md) — base classes
 - [GPIO](gpio.md) — for digital (boolean) readings instead of voltage

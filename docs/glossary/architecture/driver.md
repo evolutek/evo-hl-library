@@ -1,6 +1,6 @@
 # Driver
 
-A **Driver** is a concrete implementation of an [Interface](interface.md). It translates abstract operations (read a voltage, move to an angle) into hardware-specific protocol calls (I2C register writes, serial packets, SPI transfers).
+A **Driver** is a concrete implementation of a [Placable or Interface](peripheral.md) contract. It translates abstract operations (read a voltage, move to an angle) into hardware-specific protocol calls (I2C register writes, serial packets, SPI transfers).
 
 ## Purpose
 
@@ -23,7 +23,7 @@ evo_lib/drivers/<name>/
 
 | File | Role |
 |------|------|
-| `base.py` | Re-exports or extends the [Interface](interface.md) with driver-specific details |
+| `base.py` | Re-exports or extends the [Placable/Interface](peripheral.md) with driver-specific details |
 | `rpi.py` | Real implementation using hardware libraries (smbus2, pyserial, RPi.GPIO, etc.) |
 | `fake.py` | [Fake](fake.md) implementation for testing without hardware |
 | `factory.py` | Factory function that reads config and returns the right implementation |
@@ -53,6 +53,5 @@ Driver instances are created from JSON5 configuration files in [evo-robot-config
 
 ## See also
 
-- [Interface](interface.md) — the abstract contracts drivers implement
-- [Component](component.md) — the lifecycle base class
+- [Peripheral hierarchy](peripheral.md) — base classes (Peripheral, Interface, Placable, InterfaceHolder)
 - [Fake](fake.md) — simulation implementations for testing

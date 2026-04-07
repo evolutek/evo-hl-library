@@ -8,9 +8,7 @@ Each file documents a single concept. Files are self-contained but link to relat
 
 | Concept | File | Summary |
 |---------|------|---------|
-| [Component](architecture/component.md) | `architecture/component.md` | Lifecycle base class for all hardware devices |
-| [ComponentHolder](architecture/component-holder.md) | `architecture/component-holder.md` | Component that owns and manages other Components |
-| [Interface](architecture/interface.md) | `architecture/interface.md` | Abstract hardware contract (what a device can do) |
+| [Peripheral hierarchy](architecture/peripheral.md) | `architecture/peripheral.md` | Base classes: Peripheral, Interface, Placable, InterfaceHolder |
 | [Driver](architecture/driver.md) | `architecture/driver.md` | Concrete implementation of an interface (talks to real hardware) |
 | [Fake](architecture/fake.md) | `architecture/fake.md` | Simulation implementation of a driver (no hardware needed) |
 

@@ -5,7 +5,7 @@ A **Pilot** is the movement controller for the robot. It abstracts away the driv
 ## Class hierarchy
 
 ```
-Pilot  (Component)
+Pilot  (Placable)
 ├── DifferentialPilot   — two-wheel drive (left/right)
 └── HolonomicPilot      — omnidirectional (extends DifferentialPilot)
 ```
@@ -90,5 +90,5 @@ Plus all fields from DifferentialPilotWaypoint.
 
 ## See also
 
-- [Component](../architecture/component.md) — lifecycle base class
+- [Peripheral hierarchy](../architecture/peripheral.md) — base classes
 - [Task](../concurrency/task.md) — all movement methods return Task\[PilotMoveStatus\]

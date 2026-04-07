@@ -5,7 +5,7 @@ A **Lidar2D** is a 2D rotating laser scanner that produces distance measurements
 ## Class: `Lidar2D`
 
 **Module:** `evo_lib.interfaces.lidar`
-**Extends:** [Component](../architecture/component.md)
+**Extends:** [Placable](../architecture/peripheral.md#placable)
 
 | Method | Returns | Description |
 |--------|---------|-------------|
@@ -43,5 +43,5 @@ Uses `__slots__` for memory efficiency (thousands of measurements per scan).
 
 ## See also
 
-- [Component](../architecture/component.md) — lifecycle base class
+- [Peripheral hierarchy](../architecture/peripheral.md) — base classes
 - [Event](../concurrency/event.md) — `on_scan()` returns an Event

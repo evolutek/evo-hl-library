@@ -5,7 +5,7 @@ A **GPIO** (General-Purpose Input/Output) represents a single digital I/O pin.
 ## Class: `GPIO`
 
 **Module:** `evo_lib.interfaces.gpio`
-**Extends:** [Component](../architecture/component.md)
+**Extends:** [Interface](../architecture/peripheral.md#interface)
 
 | Method | Returns | Description |
 |--------|---------|-------------|
@@ -42,6 +42,6 @@ Specifies which transitions trigger an interrupt.
 
 ## See also
 
-- [Component](../architecture/component.md) — lifecycle base class
+- [Peripheral hierarchy](../architecture/peripheral.md) — base classes
 - [Event](../concurrency/event.md) — returned by `interrupt()`
 - [AnalogInput](analog-input.md) — for voltage readings instead of digital state

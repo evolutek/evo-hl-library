@@ -5,7 +5,7 @@ A **LedStrip** is an addressable RGB LED strip where each pixel can be set indiv
 ## Class: `LedStrip`
 
 **Module:** `evo_lib.interfaces.led_strip`
-**Extends:** [Component](../architecture/component.md)
+**Extends:** [Placable](../architecture/peripheral.md#placable)
 
 | Method | Returns | Description |
 |--------|---------|-------------|
@@ -32,4 +32,4 @@ Call `show()` to push all changes at once. This avoids visible flickering during
 ## See also
 
 - [Color](../types/color.md) — the RGBA value object used for pixel colors
-- [Component](../architecture/component.md) — lifecycle base class
+- [Peripheral hierarchy](../architecture/peripheral.md) — base classes

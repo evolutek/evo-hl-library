@@ -5,7 +5,7 @@ A **ColorSensor** reads RGB color values from a surface or object.
 ## Class: `ColorSensor`
 
 **Module:** `evo_lib.interfaces.color_sensor`
-**Extends:** [Component](../architecture/component.md)
+**Extends:** [Placable](../architecture/peripheral.md#placable)
 
 | Method | Returns | Description |
 |--------|---------|-------------|
@@ -22,9 +22,9 @@ A **ColorSensor** reads RGB color values from a surface or object.
 |--------|----------|-----|
 | `tca9548a` | TCS34725 RGB sensor behind TCA9548A I2C multiplexer | I2C (mux 0x70) |
 
-Multiple color sensors share the same I2C address (TCS34725 = 0x29). The TCA9548A multiplexer selects which sensor is active. Each sensor is exposed as a separate ColorSensor Component; the mux driver is typically a [ComponentHolder](../architecture/component.md#class-componentholder).
+Multiple color sensors share the same I2C address (TCS34725 = 0x29). The TCA9548A multiplexer selects which sensor is active. Each sensor is exposed as a separate ColorSensor Peripheral; the mux driver is an [InterfaceHolder](../architecture/peripheral.md#interfaceholder).
 
 ## See also
 
 - [Color](../types/color.md) — the RGBA value object returned by `read_color()`
-- [Component](../architecture/component.md) — lifecycle base class
+- [Peripheral hierarchy](../architecture/peripheral.md) — base classes

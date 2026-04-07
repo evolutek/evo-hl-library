@@ -10,7 +10,7 @@ This is not an intrinsic property of a component type. Any component **can** hav
 
 The pose is **configuration data**, not driver behavior. It lives in the config files and is consumed by omnissiah, not by the driver.
 
-A class hierarchy (`LocatableComponent`, mixin, or optional field on `Component`) was considered but the distinction is contextual, not intrinsic: the same driver can be used with or without a pose. See [Alternatives considered](#alternatives-considered).
+The [Placable](../architecture/peripheral.md#placable) base class marks peripherals that can have a physical position. The pose itself is configuration data, not driver behavior: it lives in the config files and is consumed by omnissiah, not by the driver.
 
 ### Config format
 
