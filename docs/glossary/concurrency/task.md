@@ -1,6 +1,6 @@
 # Task
 
-A **Task** represents an asynchronous operation that may complete later, fail, or be cancelled. It is the primary return type of [Interface](../architecture/interface.md) methods.
+A **Task** represents an asynchronous operation that may complete later, fail, or be cancelled. It is the primary return type of [Placable](../architecture/peripheral.md#placable) methods.
 
 ## Purpose
 
@@ -101,5 +101,5 @@ Raised by `wait(timeout=...)` when the timeout elapses before completion.
 ## See also
 
 - [Event](event.md) — multi-shot notifications (Task is one-shot)
-- [Interface](../architecture/interface.md) — all interface methods return Task or Event
+- [Peripheral hierarchy](../architecture/peripheral.md) — Placable methods return Task or Event
 - [Listener](listener.md) — callback mechanism used internally

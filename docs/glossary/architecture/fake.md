@@ -38,5 +38,5 @@ The [factory](driver.md) function selects real or fake based on configuration.
 ## See also
 
 - [Driver](driver.md) — the real implementation counterpart
-- [Interface](interface.md) — the contract both real and fake implement
+- [Peripheral hierarchy](peripheral.md) — the contracts both real and fake implement
 - [Task](../concurrency/task.md) — fakes typically return `ImmediateResultTask` for instant completion

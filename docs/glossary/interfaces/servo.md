@@ -5,7 +5,7 @@ A **Servo** is an angle-controlled actuator driven by PWM. A **SmartServo** exte
 ## Class: `Servo`
 
 **Module:** `evo_lib.interfaces.servo`
-**Extends:** [Component](../architecture/component.md)
+**Extends:** [Placable](../architecture/peripheral.md#placable)
 
 
 | Method | Returns | Description |
@@ -58,5 +58,5 @@ Plus all methods from Servo (`move_to_angle`, `move_to_fraction`, `free`).
 
 ## See also
 
-- [Component](../architecture/component.md) — lifecycle base class
+- [Peripheral hierarchy](../architecture/peripheral.md) — base classes
 - [Pilot](pilot.md) — higher-level movement abstraction that may use servos internally
