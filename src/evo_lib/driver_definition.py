@@ -41,9 +41,13 @@ class DriverInitArgsDefinition:
 
 # Initilization arguments values of a driver instance
 class DriverInitArgs:
-    def __init__(self, definition: DriverInitArgsDefinition) -> None:
+    def __init__(self, name: str, definition: DriverInitArgsDefinition) -> None:
         self.definition = definition
         self.args: dict[str,] = dict()
+        self._name: str = name
+
+    def get_name(self) -> str:
+        return self._name
 
     def set(self, key: str, value: Any) -> None:
         self.args[key] = value
