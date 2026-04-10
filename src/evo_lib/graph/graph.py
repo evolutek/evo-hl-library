@@ -7,11 +7,12 @@ Flow connections describe execution order. Value connections pass data between n
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import Enum
+from threading import Lock
 from typing import TYPE_CHECKING, Any
 
 from evo_lib.argtypes import ArgType
 from evo_lib.config import ConfigObject, ConfigValidationError
-from evo_lib.task import Task, DelayedTask
+from evo_lib.task import DelayedTask, Task
 
 if TYPE_CHECKING:
     from evo_lib.graph.runner import GraphRunner
@@ -50,6 +51,12 @@ class FlowInput(Endpoint):
     def reset(self) -> None:
         self.state = FlowInputState.ACTIVE
 
+    def run(self) -> None:
+        self.get_node().get_graph().schedule_run_flow_input(self)
+
+    def ignore(self) -> None:
+        self.get_node().get_graph().schedule_ignore_flow_input(self)
+
 
 class FlowOutput(Endpoint):
     def __init__(self, node: Node, name: str):
@@ -60,13 +67,18 @@ class FlowOutput(Endpoint):
         self._connections.append(peer)
         peer.connections.append(self)
 
+    def get_connections(self) -> list[FlowInput]:
+        return self._connections
+
     def run(self) -> None:
+        # Run every flow input connected to this flow output
         for inp in self._connections:
-            self.get_node().get_runner().run_following_node(inp.get_node(), inp)
+            inp.run()
 
     def ignore(self) -> None:
+        # Ignore every flow input connected to this flow output
         for inp in self._connections:
-            self.get_node().get_runner().ignore_following_node(inp.get_node(), inp)
+            inp.ignore()
 
 
 @dataclass
@@ -143,10 +155,6 @@ class Node(ABC):
     def get_name(self) -> str:
         return self._name
 
-    def schedule(self, callback) -> None:
-        """Schedule a callback via the graph runner's scheduler."""
-        self.get_runner().get_scheduler().schedule_now(0, callback)
-
     def get_flow_output(self, name: str) -> FlowOutput | None:
         for ep in self._flow_outputs:
             if ep._name == name:
@@ -184,14 +192,17 @@ class Node(ABC):
         return self._flow_outputs
 
     @abstractmethod
-    def run(self) -> Task[()]:
+    def on_run(self) -> Task[()]:
         pass
+
+    def run(self) -> None:
+        self.get_graph().schedule_run_node(self)
 
     def reset(self) -> None:
         for inp in self._value_inputs:
             inp.reset()
 
-    def on_run(self, _output: FlowOutput, input: FlowInput) -> Task[()] | None:
+    def on_run_flow_input(self, _output: FlowOutput, input: FlowInput) -> None:
         assert input.state != FlowInputState.INACTIVE
         if input.state == FlowInputState.ACTIVE:
             input.state = FlowInputState.RUN
@@ -199,7 +210,7 @@ class Node(ABC):
             if self._nb_run_input_flow >= self._nb_active_input_flow:
                 self.run()
 
-    def on_ignore(self, _output: FlowOutput, input: FlowInput) -> None:
+    def on_ignore_flow_input(self, _output: FlowOutput, input: FlowInput) -> None:
         assert input.state != FlowInputState.RUN
         if input.state == FlowInputState.ACTIVE:
             input.state = FlowInputState.INACTIVE
@@ -390,28 +401,101 @@ class Graph:
     def __init__(self):
         self._runner: GraphRunner | None = None
         self._nodes: dict[str, Node] = {}
-        self._running_nodes: set[Node] = set()
-        self._run_task = DelayedTask()
+        self._running_graph_task: DelayedTask | None = None
+        self._running_nodes_tasks: set[Task] = set()
+        self._nb_scheduled_flow_input = 0
+        self._lock = Lock()
 
-    def _on_node_run_end(self, node: Node):
-        self._running_nodes.remove(node)
-        if len(self._running_nodes) == 0:
-            self._run_task.complete()
+    def is_running(self) -> bool:
+        return self._running_graph_task is not None and not self._running_graph_task.is_done()
 
-    def _on_node_run_begin(self, node: Node):
-        self._running_nodes.add(node)
+    def is_terminate(self) -> bool:
+        return self._running_graph_task is not None and self._running_graph_task.is_done()
 
-    def run_next_node(self, node: Node, input_flow: FlowInput) -> None:
-        self._on_node_run_begin(node)
+    def get_running_task(self) -> Task | None:
+        return self._running_graph_task
+
+    def _check_end(self) -> None:
+        # Check if nothing is running or pending on the graph,
+        # if that the case, complete _running_graph_task
+        with self._lock:
+            end = len(self._running_nodes_tasks) == 0 and self._nb_scheduled_flow_input == 0
+        if end:
+            assert self._running_graph_task is not None
+            self._running_graph_task.complete()
+
+    def _remove_node_run_task(self, task: Task) -> None:
+        with self._lock:
+            self._running_nodes_tasks.remove(task)
+        self._check_end()
+
+    def _on_node_run_complete(self, task: Task) -> None:
+        self._remove_node_run_task(task)
+
+    def _on_node_run_error(self, task: Task, error: Exception) -> None:
+        self._remove_node_run_task(task)
+        # TODO: Do something with the error
+
+    def _add_node_run_task(self, task: Task) -> None:
+        with self._lock:
+            self._running_nodes_tasks.add(task)
+
+    def schedule_run_node(self, node: Node) -> None:
+        task = node.on_run()
+        self._add_node_run_task(task)
+        task.on_complete(lambda: self._on_node_run_complete(task))
+        task.on_error(lambda error: self._on_node_run_error(task, error))
+
+    def _do_run_flow_input(self, input_flow: FlowInput) -> None:
+        node = input_flow.get_node()
+        node.on_run_flow_input(input_flow)
+        with self._lock:
+            self._nb_scheduled_flow_input -= 1
+        self._check_end()
+
+    def schedule_run_flow_input(self, input_flow: FlowInput, delay: float = 0) -> None:
         assert self._runner is not None
-        self._runner.get_scheduler().schedule_now(lambda: node.on_run(input_flow))
+        with self._lock:
+            self._nb_scheduled_flow_input += 1
+        self._add_node_run_task(input_flow.get_node())
+        self._runner.get_scheduler().schedule_after(
+            delay = delay,
+            priority = 0,
+            callback = self._do_run_flow_input,
+            args = (input_flow,)
+        )
 
-    def ignore_following_node(self, node: Node, input_flow: FlowInput) -> None:
+    def _do_ignore_flow_input(self, input_flow: FlowInput) -> None:
+        node = input_flow.get_node()
+        node.on_ignore_flow_input(input_flow)
+        with self._lock:
+            self._nb_scheduled_flow_input -= 1
+        self._check_end()
+
+    def schedule_ignore_flow_input(self, input_flow: FlowInput) -> None:
         assert self._runner is not None
-        self._runner.get_scheduler().schedule_now(lambda: node.on_ignore(input_flow))
+        with self._lock:
+            self._nb_scheduled_flow_input += 1
+        self._runner.get_scheduler().schedule_now(
+            proirity = 0,
+            callback = self._do_ignore_flow_input,
+            args = (input_flow,)
+        )
 
     def get_runner(self) -> GraphRunner | None:
         return self._runner
+
+    def activate(self, runner: GraphRunner) -> None:
+        if self._running_graph_task is not None:
+            raise RuntimeError("You can only activate a graph that is inactive")
+        self._runner = runner
+        self._running_graph_task = DelayedTask()
+
+    def deactivate(self) -> None:
+        if not self.is_terminate():
+            raise RuntimeError("You can only deactivate a graph that has stop running")
+        self._running_graph_task = None
+        self._runner = None
 
     def get_node(self, name: str) -> Node | None:
         return self._nodes.get(name)

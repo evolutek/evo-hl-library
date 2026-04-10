@@ -8,7 +8,7 @@ class EntryNode(Node):
     def __init__(self, definition: NodeDefinition, name: str, graph: Graph):
         super().__init__(definition, name, graph)
 
-    def run(self) -> None:
+    def on_run(self) -> None:
         output = self.get_flow_output("flow")
         if output is not None:
             output.run()
@@ -24,7 +24,7 @@ class IfElseNode(Node):
     def __init__(self, definition: NodeDefinition, name: str, graph: Graph):
         super().__init__(definition, name, graph)
 
-    def run(self) -> None:
+    def on_run(self) -> None:
         condition = self.get_value_input("condition")
         true_output = self.get_flow_output("true")
         false_output = self.get_flow_output("false")
