@@ -1,10 +1,16 @@
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Callable
 
 from evo_lib.argtypes import ArgType
+from evo_lib.task import Task
 
 if TYPE_CHECKING:
     from evo_lib.peripheral import Peripheral
+
+
+# A driver command is an unbound method: it takes the peripheral instance as
+# first positional argument, plus any keyword arguments, and returns a Task.
+DriverCommand = Callable[..., Task[Any]]
 
 
 # Description of one initialization argument
@@ -43,7 +49,7 @@ class DriverInitArgsDefinition:
 class DriverInitArgs:
     def __init__(self, name: str, definition: DriverInitArgsDefinition) -> None:
         self.definition = definition
-        self.args: dict[str,] = dict()
+        self.args: dict[str, Any] = dict()
         self._name: str = name
 
     def get_name(self) -> str:
@@ -65,9 +71,37 @@ class DriverInitArgs:
 
 
 class DriverDefinition(ABC):
+    def __init__(self) -> None:
+        # Commands are unbound methods exposed by the driver class, callable as
+        # ``command(peripheral_instance, **kwargs) -> Task``. Subclasses register
+        # them via ``register_command`` (typically in their own ``__init__``).
+        self._commands: dict[str, DriverCommand] = {}
+
+    def register_command(self, name: str, command: DriverCommand) -> None:
+        """Declare a command exposable from config (e.g. by the Action engine)."""
+        if name in self._commands:
+            raise ValueError(f"Command '{name}' is already registered")
+        self._commands[name] = command
+
+    def get_command(self, name: str) -> DriverCommand:
+        """Retrieve a registered command by name."""
+        if name not in self._commands:
+            raise KeyError(f"Unknown command '{name}'")
+        return self._commands[name]
+
+    def get_commands(self) -> dict[str, DriverCommand]:
+        """Return a copy of all registered commands."""
+        return dict(self._commands)
+
     @abstractmethod
     def create(self, args: DriverInitArgs) -> Peripheral:
-        pass
+        """Instantiate the peripheral from config-provided arguments.
+
+        Callers (typically the ComponentsManager) are responsible for linking
+        the returned peripheral back to its definition by setting
+        ``peripheral._definition = self`` after ``create`` returns, so that
+        ``peripheral.get_definition()`` is usable at runtime.
+        """
 
     @abstractmethod
     def get_init_args_definition(self) -> DriverInitArgsDefinition:

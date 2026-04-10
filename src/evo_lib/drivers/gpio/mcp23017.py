@@ -181,6 +181,7 @@ class MCP23017ChipDefinition(DriverDefinition):
     """
 
     def __init__(self, bus: I2C, logger: Logger):
+        super().__init__()
         self._bus = bus
         self._logger = logger
 

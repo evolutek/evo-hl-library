@@ -12,6 +12,7 @@ transforms. Pose3D uses quaternions internally for gimbal-lock-free rotation.
 
 import math
 from abc import ABC, abstractmethod
+from typing import Self
 
 
 # ---------------------------------------------------------------------------
@@ -32,23 +33,23 @@ class VectBase(ABC):
 
     # -- Arithmetic ---------------------------------------------------------
 
-    def __add__(self, other: object) -> VectBase:
+    def __add__(self, other: object) -> Self:
         if type(self) is not type(other):
             return NotImplemented
         return type(self)(*(a + b for a, b in zip(self._components, other._components)))  # type: ignore[arg-type]
 
-    def __sub__(self, other: object) -> VectBase:
+    def __sub__(self, other: object) -> Self:
         if type(self) is not type(other):
             return NotImplemented
         return type(self)(*(a - b for a, b in zip(self._components, other._components)))  # type: ignore[arg-type]
 
-    def __mul__(self, scalar: float) -> VectBase:
+    def __mul__(self, scalar: float) -> Self:
         return type(self)(*(c * scalar for c in self._components))
 
-    def __rmul__(self, scalar: float) -> VectBase:
+    def __rmul__(self, scalar: float) -> Self:
         return self.__mul__(scalar)
 
-    def __neg__(self) -> VectBase:
+    def __neg__(self) -> Self:
         return type(self)(*(-c for c in self._components))
 
     # -- Geometry -----------------------------------------------------------
@@ -61,7 +62,7 @@ class VectBase(ABC):
         """Squared Euclidean norm (avoids sqrt, useful for distance comparisons)."""
         return sum(c * c for c in self._components)
 
-    def normalized(self) -> VectBase:
+    def normalized(self) -> Self:
         """Unit vector in the same direction. Raises ZeroDivisionError on zero vector."""
         n = self.norm()
         return type(self)(*(c / n for c in self._components))

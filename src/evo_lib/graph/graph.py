@@ -7,16 +7,20 @@ Flow connections describe execution order. Value connections pass data between n
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
-from evo_lib.config import ConfigObject, ConfigValidationError
+from evo_robot.hardware.components_manager import DelayedTask
+
 from evo_lib.argtypes import ArgType
+from evo_lib.config import ConfigObject, ConfigValidationError
+from evo_lib.task import Task
 
 if TYPE_CHECKING:
     from evo_lib.graph.runner import GraphRunner
 
 
 # -- Endpoints --
+
 
 class Endpoint(ABC):
     def __init__(self, node: Node, name: str):
@@ -58,19 +62,13 @@ class FlowOutput(Endpoint):
         self._connections.append(peer)
         peer.connections.append(self)
 
-    def _run(self) -> None:
-        for inp in self._connections:
-            inp._node.on_run(self, inp)
-
     def run(self) -> None:
-        self._node.schedule(self._run)
-
-    def _ignore(self) -> None:
         for inp in self._connections:
-            inp._node.on_ignore(self, inp)
+            self.get_node().get_runner().run_following_node(inp.get_node(), inp)
 
     def ignore(self) -> None:
-        self._node.schedule(self._ignore)
+        for inp in self._connections:
+            self.get_node().get_runner().ignore_following_node(inp.get_node(), inp)
 
 
 @dataclass
@@ -120,6 +118,7 @@ class ValueOutput(ValueEndpoint):
 
 # -- Node --
 
+
 class Node(ABC):
     def __init__(self, definition: NodeDefinition, name: str, graph: Graph):
         self._definition = definition
@@ -132,6 +131,14 @@ class Node(ABC):
         self._nb_active_input_flow: int = 0
         self._nb_run_input_flow: int = 0
 
+    def get_graph(self) -> Graph:
+        return self._graph
+
+    def get_runner(self) -> GraphRunner:
+        runner = self.get_graph().get_runner()
+        assert runner is not None
+        return runner
+
     def get_definition(self) -> NodeDefinition:
         return self._definition
 
@@ -140,7 +147,7 @@ class Node(ABC):
 
     def schedule(self, callback) -> None:
         """Schedule a callback via the graph runner's scheduler."""
-        self._graph._runner._scheduler.schedule_now(0, callback)
+        self.get_runner().get_scheduler().schedule_now(0, callback)
 
     def get_flow_output(self, name: str) -> FlowOutput | None:
         for ep in self._flow_outputs:
@@ -179,14 +186,14 @@ class Node(ABC):
         return self._flow_outputs
 
     @abstractmethod
-    def run(self) -> None:
+    def run(self) -> Task[()]:
         pass
 
     def reset(self) -> None:
         for inp in self._value_inputs:
             inp.reset()
 
-    def on_run(self, _output: FlowOutput, input: FlowInput) -> None:
+    def on_run(self, _output: FlowOutput, input: FlowInput) -> Task[()] | None:
         assert input.state != FlowInputState.INACTIVE
         if input.state == FlowInputState.ACTIVE:
             input.state = FlowInputState.RUN
@@ -206,7 +213,8 @@ class Node(ABC):
 
 # -- Node definition --
 
-class NodeDefinition[T: Node = Node]:
+
+class NodeDefinition:
     def __init__(self, type: type[Node], name: str, title: str):
         self._type = type
         self._name = name
@@ -249,40 +257,44 @@ class NodeDefinition[T: Node = Node]:
     def get_flow_outputs(self) -> set[str]:
         return self._flow_outputs
 
-    def create(self, graph: Graph, name: str, config: ConfigObject) -> T:
+    def create(self, graph: Graph, name: str, config: ConfigObject) -> Node:
         """Instantiate a node, create its endpoints, apply config defaults."""
         node = self._type(self, name, graph)
 
         # Create endpoints (only here, NOT in node constructors)
-        for ep_name in self._flow_outputs:
-            node._flow_outputs.append(FlowOutput(node, ep_name))
+        for endpoint_name in self._flow_outputs:
+            node._flow_outputs.append(FlowOutput(node, endpoint_name))
 
-        for ep_name in self._flow_inputs:
-            fi = FlowInput(node, ep_name)
+        for endpoint_name in self._flow_inputs:
+            fi = FlowInput(node, endpoint_name)
             node._flow_inputs.append(fi)
             node._nb_active_input_flow += 1
 
-        for ep_name, ep_def in self._value_outputs.items():
-            node._value_outputs.append(ValueOutput(node, ep_name, ep_def.type))
+        for endpoint_name, endpoint_def in self._value_outputs.items():
+            node._value_outputs.append(ValueOutput(node, endpoint_name, endpoint_def.type))
 
         definition_value_inputs = self._value_inputs
-        for ep_name, ep_def in definition_value_inputs.items():
-            node._value_inputs.append(ValueInput(node, ep_name, ep_def.type, ep_def.default))
+        for endpoint_name, endpoint_def in definition_value_inputs.items():
+            node._value_inputs.append(
+                ValueInput(node, endpoint_name, endpoint_def.type, endpoint_def.default)
+            )
 
         # Apply config overrides for value input defaults
-        config_inputs = config.get_object("inputs", {})
-        for ep_name, default_value in config_inputs.items():
-            if ep_name not in definition_value_inputs:
+        config_inputs = config.get_object_or("inputs", ConfigObject())
+        for endpoint_name, default_value in config_inputs.items():
+            if endpoint_name not in definition_value_inputs:
                 raise ConfigValidationError(
-                    f"Unknown value input '{ep_name}' for node type {self.get_name()}"
+                    f"Unknown value input '{endpoint_name}' for node type {self.get_name()}"
                 )
-            node.get_value_input(ep_name)._default = default_value
+            endpoint = node.get_value_input(endpoint_name)
+            assert endpoint is not None
+            endpoint._default = default_value
 
         return node
 
     def _link_flow_output(self, graph: Graph, endpoint: FlowOutput, connections: list[str]) -> None:
         for connection in connections:
-            parts = connection.split(':')
+            parts = connection.split(":")
             if len(parts) < 1 or len(parts) > 2:
                 raise ConfigValidationError(
                     f"Invalid endpoint reference '{connection}' for flow output "
@@ -312,9 +324,11 @@ class NodeDefinition[T: Node = Node]:
                     )
                 endpoint.link(peer_ep)
 
-    def _link_value_output(self, graph: Graph, endpoint: ValueOutput, connections: list[str]) -> None:
+    def _link_value_output(
+        self, graph: Graph, endpoint: ValueOutput, connections: list[str]
+    ) -> None:
         for connection in connections:
-            parts = connection.split(':')
+            parts = connection.split(":")
             if len(parts) < 1 or len(parts) > 2:
                 raise ConfigValidationError(
                     f"Invalid endpoint reference '{connection}' for value output "
@@ -344,33 +358,62 @@ class NodeDefinition[T: Node = Node]:
                     )
                 endpoint.link(peer_ep)
 
-    def link(self, graph: Graph, node: T, config: ConfigObject) -> None:
+    def link(self, graph: Graph, node: Node, config: ConfigObject) -> None:
         """Connect a node's outputs to other nodes based on config."""
-        flow = config.get_object("flow", {})
-        for ep_name, connections in flow.items():
-            ep = node.get_flow_output(ep_name)
-            if ep is None:
-                raise ConfigValidationError(
-                    f"Unknown flow output '{ep_name}' for node type {self.get_name()}"
-                )
-            self._link_flow_output(graph, ep, connections)
+        connections: list[Any]
 
-        outputs = config.get_object("outputs", {})
-        for ep_name, connections in outputs.items():
-            ep = node.get_value_output(ep_name)
-            if ep is None:
+        # Connect flow outputs
+        flow = config.get_object_or("flow", ConfigObject())
+        for endpoint_name in flow.keys():
+            connections = flow.get_array(endpoint_name)
+            endpoint = node.get_flow_output(endpoint_name)
+            if endpoint is None:
                 raise ConfigValidationError(
-                    f"Unknown value output '{ep_name}' for node type {self.get_name()}"
+                    f"Unknown flow output '{endpoint_name}' for node type {self.get_name()}"
                 )
-            self._link_value_output(graph, ep, connections)
+            self._link_flow_output(graph, endpoint, connections)
+
+        # Connect value outputs
+        outputs = config.get_object_or("outputs", ConfigObject())
+        for endpoint_name in outputs.keys():
+            connections = outputs.get_array(endpoint_name)
+            endpoint = node.get_value_output(endpoint_name)
+            if endpoint is None:
+                raise ConfigValidationError(
+                    f"Unknown value output '{endpoint_name}' for node type {self.get_name()}"
+                )
+            self._link_value_output(graph, endpoint, connections)
 
 
 # -- Graph --
+
 
 class Graph:
     def __init__(self):
         self._runner: GraphRunner | None = None
         self._nodes: dict[str, Node] = {}
+        self._running_nodes: set[Node] = set()
+        self._run_task = DelayedTask()
+
+    def _on_node_run_end(self, node: Node):
+        self._running_nodes.remove(node)
+        if len(self._running_nodes) == 0:
+            self._run_task.complete()
+
+    def _on_node_run_begin(self, node: Node):
+        self._running_nodes.add(node)
+
+    def run_next_node(self, node: Node, input_flow: FlowInput) -> None:
+        self._on_node_run_begin(node)
+        assert self._runner is not None
+        self._runner.get_scheduler().schedule_now(lambda: node.on_run(input_flow))
+
+    def ignore_following_node(self, node: Node, input_flow: FlowInput) -> None:
+        assert self._runner is not None
+        self._runner.get_scheduler().schedule_now(lambda: node.on_ignore(input_flow))
+
+    def get_runner(self) -> GraphRunner | None:
+        return self._runner
 
     def get_node(self, name: str) -> Node | None:
         return self._nodes.get(name)

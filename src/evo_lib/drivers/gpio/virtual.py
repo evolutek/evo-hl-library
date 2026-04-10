@@ -143,6 +143,7 @@ class GPIOChipVirtualDefinition(DriverDefinition):
     """Factory for GPIOChipVirtual from config args."""
 
     def __init__(self, logger: Logger):
+        super().__init__()
         self._logger = logger
 
     def get_init_args_definition(self) -> DriverInitArgsDefinition:

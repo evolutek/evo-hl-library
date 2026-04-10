@@ -1,13 +1,11 @@
 """Graph loader: builds a Graph from JSON5 config and node definitions."""
 
-from evo_lib.registry import Registry
-from evo_lib.config import ConfigObject
 from evo_lib.argtypes import argtype_to_config
-
+from evo_lib.config import ConfigObject
 from evo_lib.graph.graph import Graph, NodeDefinition
-
+from evo_lib.graph.nodes.flow import EntryNodeDefinition, IfElseNodeDefinition
 from evo_lib.graph.nodes.utils import WaitNodeDefinition
-from evo_lib.graph.nodes.flow import IfElseNodeDefinition, EntryNodeDefinition
+from evo_lib.registry import Registry
 
 
 class GraphLoader:
@@ -53,10 +51,11 @@ class GraphLoader:
         graph = Graph()
 
         # Create nodes
-        for name, node_config in config.items():
+        for node_name in config.keys():
+            node_config = config.get_object(node_name)
             node_type = node_config.get_str("type")
             node_def = self._node_definitions.get(node_type)
-            graph.add_node(node_def.create(graph, name, node_config))
+            graph.add_node(node_def.create(graph, node_name, node_config))
 
         # Link nodes
         for node_name, node in graph.get_nodes().items():
