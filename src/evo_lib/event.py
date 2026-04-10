@@ -9,10 +9,10 @@ Typical use: GPIO interrupts, sensor triggers, periodic updates.
 """
 
 import threading
-from typing import Callable
 import time
+from typing import Callable
 
-from .listeners import Listeners, Listener
+from .listeners import Listener, Listeners
 
 
 class Event[*T](Listeners[*T]):
@@ -29,10 +29,10 @@ class Event[*T](Listeners[*T]):
         self._generation = 0
         self._condition = threading.Condition()
 
-    def register(self, callback: Callable[[*T], None]) -> Listener:
+    def register(self, callback: Callable[[*T], None], onetime: bool = False) -> Listener[*T]:
         """Add a callback invoked on every future trigger."""
         with self._condition:
-            return super().register(callback)
+            return super().register(callback, onetime)
 
     def unregister(self, listener: Listener) -> None:
         """Remove a previously registered callback."""
@@ -72,3 +72,9 @@ class Event[*T](Listeners[*T]):
         # try to used this event (calling all listeners can take some time)
         for listener in listeners:
             listener._callback(*args)
+
+    def transform[*U](self, callback: Callable[[*T], tuple[*U]]) -> Event[*U]:
+        """Transform the event value before triggering."""
+        event = Event[*U]()
+        self.register(lambda *args: event.trigger(*callback(*args)))
+        return event

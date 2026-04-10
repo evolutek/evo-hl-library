@@ -1,7 +1,7 @@
 """Built-in flow control nodes: Entry, IfElse."""
 
-from evo_lib.graph.graph import Node, NodeDefinition, Graph, FlowOutput, ValueInput
 from evo_lib.argtypes import ArgTypes
+from evo_lib.graph.graph import Graph, Node, NodeDefinition
 
 
 class EntryNode(Node):
@@ -14,7 +14,7 @@ class EntryNode(Node):
             output.run()
 
 
-class EntryNodeDefinition(NodeDefinition[EntryNode]):
+class EntryNodeDefinition(NodeDefinition):
     def __init__(self):
         super().__init__(EntryNode, "entry", "Entry")
         self.add_flow_output("flow")
@@ -41,10 +41,10 @@ class IfElseNode(Node):
                 false_output.run()
 
 
-class IfElseNodeDefinition(NodeDefinition[IfElseNode]):
+class IfElseNodeDefinition(NodeDefinition):
     def __init__(self):
         super().__init__(IfElseNode, "if", "If")
         self.add_flow_input("flow")
         self.add_flow_output("true")
         self.add_flow_output("false")
-        self.add_value_input("condition", ArgTypes.Bool, False)
+        self.add_value_input("condition", ArgTypes.Bool(), False)

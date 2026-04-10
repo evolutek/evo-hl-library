@@ -19,7 +19,7 @@ class ConfigObject(dict[str, ConfigValue]):
         self,
         parent_key: str | None = None,
         parent_object: ConfigObject | None = None,
-        map: dict[str, ConfigValue] = dict()
+        map: dict[str, ConfigValue] = dict(),
     ):
         super().__init__(map)
         self._parent_object = parent_object
@@ -43,12 +43,18 @@ class ConfigObject(dict[str, ConfigValue]):
             node = node._parent_object
         return ".".join(reversed(path))
 
-    def _get_required(self, key: str, value_types: list[type], value_type_name: str, argtype: ArgType | None) -> Any:
+    def _get_required(
+        self, key: str, value_types: list[type], value_type_name: str, argtype: ArgType | None
+    ) -> Any:
         if key not in self:
-            raise ConfigValidationError(f"Expecting a value at '{self._get_key_path(key)}' but nothing found")
+            raise ConfigValidationError(
+                f"Expecting a value at '{self._get_key_path(key)}' but nothing found"
+            )
         value = self[key]
         if type(value) not in value_types:
-            raise ConfigValidationError(f"Expecting value at '{self._get_key_path(key)}' to be {value_type_name}")
+            raise ConfigValidationError(
+                f"Expecting value at '{self._get_key_path(key)}' to be {value_type_name}"
+            )
         if argtype is not None:
             return argtype.value_from_config(value)
         return value
@@ -71,13 +77,17 @@ class ConfigObject(dict[str, ConfigValue]):
     def get_object(self, key: str, argtype: ArgTypes.Struct | None = None) -> ConfigObject:
         return self._get_required(key, [ConfigObject], "an object/dictionary", argtype)
 
-    def _get_optional(self, key: str, default: Any, argtype: ArgType, getter: Callable) -> Any:
+    def _get_optional(
+        self, key: str, default: Any, argtype: ArgType | None, getter: Callable
+    ) -> Any:
         if key in self:
             return getter(key, argtype)
         else:
             return default
 
-    def get_float_or(self, key: str, default: float, argtype: ArgTypes.Float | None = None) -> float:
+    def get_float_or(
+        self, key: str, default: float, argtype: ArgTypes.Float | None = None
+    ) -> float:
         return self._get_optional(key, default, argtype, self.get_float)
 
     def get_int_or(self, key: str, default: int, argtype: ArgTypes.Float | None = None) -> int:
@@ -92,7 +102,9 @@ class ConfigObject(dict[str, ConfigValue]):
     def get_array_or(self, key: str, default: list, argtype: ArgTypes.Float | None = None) -> list:
         return self._get_optional(key, default, argtype, self.get_array)
 
-    def get_object_or(self, key: str, default: ConfigObject, argtype: ArgTypes.Float | None = None) -> ConfigObject:
+    def get_object_or(
+        self, key: str, default: ConfigObject, argtype: ArgTypes.Float | None = None
+    ) -> ConfigObject:
         return self._get_optional(key, default, argtype, self.get_object)
 
 
@@ -111,7 +123,7 @@ class ConfigJSON5Parser(ConfigParser):
         self,
         raw: ConfigValue | dict | list,
         key: str | None = None,
-        parent: ConfigObject | None = None
+        parent: ConfigObject | None = None,
     ) -> ConfigValue:
         if isinstance(raw, dict):
             v = ConfigObject(key, parent, raw)
@@ -131,7 +143,7 @@ class ConfigJSON5Parser(ConfigParser):
 
 class ConfigSchema(ABC):
     @abstractmethod
-    def validate(self, raw: ConfigValue) -> Any:
+    def validate(self, config: ConfigValue) -> Any:
         pass
 
 

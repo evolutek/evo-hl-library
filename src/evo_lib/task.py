@@ -11,9 +11,9 @@ registers callbacks. Supports progress tracking and cancellation.
     task.cancel()             # calls on_cancel, then aborts
 """
 
+import threading
 from abc import ABC, abstractmethod
 from typing import Callable
-import threading
 
 
 class TaskCancelledError(Exception):
@@ -25,7 +25,7 @@ class TaskTimeoutError(Exception):
     has ellapsed."""
 
 
-class Task[T](ABC):
+class Task[*T](ABC):
     """
     An asynchronous operation with cancellation.
     Can have multiple implementation like:
@@ -39,7 +39,7 @@ class Task[T](ABC):
     # Consumer API
 
     @abstractmethod
-    def wait(self, timeout: float | None = None) -> T:
+    def wait(self, timeout: float | None = None) -> tuple[*T]:
         """Block until the result is available.
         Returns the value on success, raises on error.
         """
@@ -49,28 +49,35 @@ class Task[T](ABC):
         """True if the result (or error) is available."""
 
     @abstractmethod
-    def on_complete(self, callback: Callable[[T], None]) -> Task[T]:
+    def on_complete(self, callback: Callable[[*T], None]) -> Task[*T]:
         """Register a callback invoked with the value on success."""
 
     @abstractmethod
-    def on_error(self, callback: Callable[[Exception], None]) -> Task[T]:
+    def on_error(self, callback: Callable[[Exception], None]) -> Task[*T]:
         """Register a callback invoked with the exception on failure."""
 
     @abstractmethod
-    def cancel(self) -> Task[T]:
+    def cancel(self) -> Task[*T]:
         """Cancel the task. Calls on_cancel handler, then dispatch cancel
         exception."""
 
+    def transform[*U](self, callback: Callable[[*T], tuple[*U]]) -> Task[*U]:
+        """Transform the event value before triggering."""
+        task = DelayedTask[*U]()
+        self.on_complete(lambda *args: task.complete(*callback(*args)))
+        self.on_error(task.error)
+        return task
 
-class ImmediateResultTask[T](Task[T]):
-    def __init__(self, result: T):
+
+class ImmediateResultTask[*T](Task[*T]):
+    def __init__(self, *result: *T):
         super().__init__()
-        self._result = result
+        self._result: tuple[*T] = result
         self._canceled: bool = False
 
     # Consumer API (implement abstract method of parent class)
 
-    def wait(self, timeout: float | None = None) -> T:
+    def wait(self, timeout: float | None = None) -> tuple[*T]:
         """Immediatly return the result value."""
         if self._canceled:
             raise TaskCancelledError()
@@ -81,31 +88,32 @@ class ImmediateResultTask[T](Task[T]):
         """True if the result (or error) is available."""
         return True
 
-    def on_complete(self, callback: Callable[[T], None]) -> ImmediateResultTask[T]:
+    def on_complete(self, callback: Callable[[*T], None]) -> ImmediateResultTask[*T]:
         """As the result is already known, immediatly invoke the callback with
         the result value."""
         if not self._canceled:
             callback(self._result)
         return self
 
-    def on_error(self, callback: Callable[[Exception], None]) -> ImmediateResultTask[T]:
+    def on_error(self, callback: Callable[[Exception], None]) -> ImmediateResultTask[*T]:
         """Do nothing since there is no error."""
         return self
 
-    def cancel(self) -> ImmediateResultTask[T]:
+    def cancel(self) -> ImmediateResultTask[*T]:
         """Cause all subsequent calls to on_complete to do nothing and calls to
         wait raise a canceled exception."""
         self._canceled = True
         return self
 
 
-class ImmediateErrorTask[T](Task[T]):
+class ImmediateErrorTask[*T](Task[*T]):
     """
     An implementation of Task that has inter-thread syncronisation mecanisms
     in order to be used to long running operations and from multiple different
     threads.
     """
-    def __init__(self, error: T):
+
+    def __init__(self, error: Exception):
         super().__init__()
         self._error = error
         self._canceled: bool = False
@@ -123,36 +131,36 @@ class ImmediateErrorTask[T](Task[T]):
         """True if the result (or error) is available."""
         return True
 
-    def on_complete(self, callback: Callable[[T], None]) -> ImmediateErrorTask[T]:
+    def on_complete(self, callback: Callable[[*T], None]) -> ImmediateErrorTask[*T]:
         """Do nothing since there is no result value."""
         return self
 
-    def on_error(self, callback: Callable[[Exception], None]) -> ImmediateErrorTask[T]:
+    def on_error(self, callback: Callable[[Exception], None]) -> ImmediateErrorTask[*T]:
         """As the error is already known, immediatly invoke the callback with the error."""
         if not self._canceled:
             callback(self._error)
         return self
 
-    def cancel(self) -> ImmediateErrorTask[T]:
+    def cancel(self) -> ImmediateErrorTask[*T]:
         """Cause all subsequent calls to on_complete to do nothing and calls to wait raise a canceled exception."""
         self._canceled = True
         return self
 
 
-class DelayedTask[T](Task[T]):
+class DelayedTask[*T](Task[*T]):
     def __init__(self, on_cancel: Callable[[], None] = None):
         self._on_cancel = on_cancel
         self._progress = 0.0
-        self._value: T | None = None
+        self._value: tuple[*T] | None = None
         self._error: Exception | None = None
         self._done = threading.Event()
-        self._complete_callbacks: list[Callable[[T], None]] = []
+        self._complete_callbacks: list[Callable[[*T], None]] = []
         self._error_callbacks: list[Callable[[Exception], None]] = []
         self._lock = threading.Lock()
 
     # Consumer API (implement abstract method of parent class)
 
-    def wait(self, timeout: float | None = None) -> T:
+    def wait(self, timeout: float | None = None) -> tuple[*T]:
         """Block until the task completes. Returns value or raises error."""
         if not self._done.wait(timeout):
             raise TaskTimeoutError()
@@ -163,7 +171,7 @@ class DelayedTask[T](Task[T]):
     def is_done(self) -> bool:
         return self._done.is_set()
 
-    def on_complete(self, callback: Callable[[T], None]) -> DelayedTask[T]:
+    def on_complete(self, callback: Callable[[*T], None]) -> DelayedTask[*T]:
         with self._lock:
             if self._done.is_set() and self._error is None:
                 callback(self._value)
@@ -171,7 +179,7 @@ class DelayedTask[T](Task[T]):
                 self._complete_callbacks.append(callback)
         return self
 
-    def on_error(self, callback: Callable[[Exception], None]) -> DelayedTask[T]:
+    def on_error(self, callback: Callable[[Exception], None]) -> DelayedTask[*T]:
         with self._lock:
             if self._done.is_set() and self._error is not None:
                 callback(self._error)
@@ -179,7 +187,7 @@ class DelayedTask[T](Task[T]):
                 self._error_callbacks.append(callback)
         return self
 
-    def cancel(self) -> DelayedTask[T]:
+    def cancel(self) -> DelayedTask[*T]:
         """Cancel the task. Calls on_cancel handler, then aborts."""
         if self._on_cancel is not None:
             self._on_cancel()
@@ -188,7 +196,7 @@ class DelayedTask[T](Task[T]):
 
     # Producer API
 
-    def complete(self, value: T = None) -> None:
+    def complete(self, *value: *T) -> None:
         """Mark the task as successfully completed."""
         with self._lock:
             self._value = value
@@ -196,7 +204,7 @@ class DelayedTask[T](Task[T]):
             self._done.set()
             callbacks = list(self._complete_callbacks)
         for cb in callbacks:
-            cb(value)
+            cb(*value)
 
     def error(self, error: Exception) -> None:
         """Mark the task as failed."""
