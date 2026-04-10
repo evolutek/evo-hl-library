@@ -12,6 +12,8 @@ from threading import RLock
 from typing import Callable
 
 from evo_lib.task import DelayedTask, Task, TaskCancelledError
+from evo_lib.logger import Logger
+
 
 class TransitionError(Exception):
     """Raised when an invalid state transition is attempted."""
@@ -29,10 +31,8 @@ class FSM[S: StrEnum]:
         fsm.start(MyStates.WAIT).on_complete(lambda _: print("done"))
     """
 
-    def __init__(
-        self, states_enum: type[S], logger: logging.Logger | None = None
-    ):
-        self._logger = logger or logging.getLogger(f"fsm.{states_enum.__name__}")
+    def __init__(self, logger: Logger, states_enum: type[S]):
+        self._logger = logger
         self._states_enum = states_enum
         self._callbacks: dict[S, Callable[[], Task[S | None]]] = {}
         self._prevs: dict[S, list[S]] = {}
@@ -131,9 +131,9 @@ class FSM[S: StrEnum]:
         self._exit_state()
         self._state = state
         if prev is not None:
-            self._logger.debug("%s -> %s", prev.value, state.value)
+            self._logger.debug(f"{prev.value} -> {state.value}")
         else:
-            self._logger.debug("-> %s (start)", state.value)
+            self._logger.debug(f"-> {state.value} (start)")
         if state in self._on_enter:
             self._on_enter[state]()
         callback = self._callbacks[state]
@@ -150,7 +150,7 @@ class FSM[S: StrEnum]:
             if next_state is None:
                 self._current_state_task = None
                 self._exit_state()
-                self._logger.debug("%s -> (stop)", self._state.value)
+                self._logger.debug(f"{self._state.value} -> (stop)")
                 self._task.complete()
                 return
 
@@ -158,8 +158,7 @@ class FSM[S: StrEnum]:
             if self._state not in allowed:
                 self._current_state_task = None
                 self._logger.warning(
-                    "Invalid transition %s -> %s",
-                    self._state.value, next_state.value,
+                    f"Invalid transition {self._state.value} -> {next_state.value}",
                 )
                 self._task.error(
                     TransitionError(
@@ -178,11 +177,10 @@ class FSM[S: StrEnum]:
 
             if self._error_state is not None and self._state != self._error_state:
                 self._logger.error(
-                    "Error in %s, entering error state: %s",
-                    self._state.value, error,
+                    f"Error in {self._state.value}, entering error state: {error}",
                 )
                 self._enter_state(self._error_state)
                 return
 
-            self._logger.error("Error in %s: %s", self._state.value, error)
+            self._logger.error(f"Error in {self._state.value}: {error}")
             self._task.error(error)
