@@ -56,6 +56,14 @@ class Registry[T]:
         """Get all registered items."""
         return list(self._items.values())
 
+    def get_keys(self) -> list[T]:
+        """Get all registered items."""
+        return list(self._items.keys())
+
+    def get_entries(self) -> list[tuple[str, T]]:
+        """Get all registered items."""
+        return list(self._items.items())
+
     def get(self, key: str) -> T:
         """
         Get an item by its key.
@@ -76,3 +84,7 @@ class Registry[T]:
     def freeze(self) -> None:
         """Freeze the registry, preventing further registrations."""
         self._frozen = True
+
+    def has(self, key: str) -> bool:
+        """Check if a key is registered in the registry."""
+        return key in self._items
