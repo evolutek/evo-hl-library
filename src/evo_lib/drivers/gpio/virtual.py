@@ -1,6 +1,5 @@
 """GPIO drivers: virtual implementations for testing and simulation."""
 
-import logging
 import threading
 
 from evo_lib.argtypes import ArgTypes
@@ -20,16 +19,16 @@ class GPIOPinVirtual(GPIO):
     def __init__(
         self,
         name: str,
-        pin: int,
-        direction: GPIODirection = GPIODirection.INPUT,
+        logger: Logger,
+        direction: GPIODirection,
         pull_up: bool = False,
-        logger: logging.Logger | None = None,
+        pin: int = 0,
     ):
         super().__init__(name)
         self._pin = pin
         self._direction = direction
         self._pull_up = pull_up
-        self._log = logger or logging.getLogger(__name__)
+        self._log = logger
         self._lock = threading.Lock()
         self._initialized = False
         self._state: bool = False
@@ -94,6 +93,26 @@ class GPIOPinVirtual(GPIO):
                 event.trigger(value)
 
 
+class GPIOPinVirtualDefinition(DriverDefinition):
+    def __init__(self, logger: Logger):
+        super().__init__(GPIOPinVirtual.commands)
+        self._logger = logger
+
+    def create(self, args: DriverInitArgs) -> Peripheral:
+        return  GPIOPinVirtual(
+            args.get_name(),
+            self._logger,
+            args.get("direction"),
+            args.get("pull_up")
+        )
+
+    def get_init_args_definition(self) -> DriverInitArgsDefinition:
+        args = DriverInitArgsDefinition()
+        args.add_required("direction", ArgTypes.Enum(GPIODirection))
+        args.add_optional("pull_up", ArgTypes.Bool(), False)
+        return args
+
+
 class GPIOChipVirtual(InterfaceHolder):
     """In-memory virtual for the MCP23017 chip, for tests and simulation.
 
@@ -103,12 +122,12 @@ class GPIOChipVirtual(InterfaceHolder):
     def __init__(
         self,
         name: str,
+        logger: Logger,
         address: int = 0x20,
-        logger: logging.Logger | None = None,
     ):
         super().__init__(name)
+        self._log = logger
         self._address = address
-        self._log = logger or logging.getLogger(__name__)
         self._pins: dict[int, GPIOPinVirtual] = {}
 
     def init(self) -> None:
