@@ -9,11 +9,9 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import TYPE_CHECKING, Any
 
-from evo_robot.hardware.components_manager import DelayedTask
-
 from evo_lib.argtypes import ArgType
 from evo_lib.config import ConfigObject, ConfigValidationError
-from evo_lib.task import Task
+from evo_lib.task import Task, DelayedTask
 
 if TYPE_CHECKING:
     from evo_lib.graph.runner import GraphRunner

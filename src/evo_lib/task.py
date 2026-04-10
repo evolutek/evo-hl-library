@@ -92,7 +92,7 @@ class ImmediateResultTask[*T](Task[*T]):
         """As the result is already known, immediatly invoke the callback with
         the result value."""
         if not self._canceled:
-            callback(self._result)
+            callback(*self._result)
         return self
 
     def on_error(self, callback: Callable[[Exception], None]) -> ImmediateResultTask[*T]:
@@ -174,7 +174,7 @@ class DelayedTask[*T](Task[*T]):
     def on_complete(self, callback: Callable[[*T], None]) -> DelayedTask[*T]:
         with self._lock:
             if self._done.is_set() and self._error is None:
-                callback(self._value)
+                callback(*self._value)
             else:
                 self._complete_callbacks.append(callback)
         return self

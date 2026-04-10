@@ -130,6 +130,9 @@ class ConfigJSON5Parser(ConfigParser):
             for key, value in v.items():
                 v[key] = self._transform_raw_config(value, key, v)
             return v
+        elif isinstance(raw, list):
+            for i in range(len(raw)):
+                raw[i] = self._transform_raw_config(raw[i], str(i), parent)
         return raw
 
     def parse_file(self, filepath: str) -> ConfigValue:

@@ -22,6 +22,7 @@ from colorama import Fore, Style
 # Here colorama is used to passively enable color support on Windows terminals
 if sys.platform == "win32":
     from colorama import just_fix_windows_console
+
     just_fix_windows_console()
 
 
@@ -37,13 +38,14 @@ class LoggerLevel(Enum):
 
 def _are_ansi_color_supported():
     plat = sys.platform
-    supported_platform = plat != 'Pocket PC'
-    is_a_tty = hasattr(sys.stdout, 'isatty') and sys.stdout.isatty()
+    supported_platform = plat != "Pocket PC"
+    is_a_tty = hasattr(sys.stdout, "isatty") and sys.stdout.isatty()
     return supported_platform and is_a_tty
 
 
 class _LoggedWriteIO:
     """Internal class to redirect stdout/stderr to the logger."""
+
     def __init__(self, write_func, parent: Any):
         self._logged_write_io_write_func = write_func
         self._logged_write_io_parent = parent
@@ -74,48 +76,85 @@ _base_stdout = sys.stdout
 _base_stderr = sys.stderr
 
 
-ANSI_SEQUENCE_RE = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
+ANSI_SEQUENCE_RE = re.compile(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
+
+
 def _remove_ansi_codes(sentence: str):
-    return ANSI_SEQUENCE_RE.sub('', sentence)
+    return ANSI_SEQUENCE_RE.sub("", sentence)
 
 
 COLORED_MODULE_FMT = (
-    Style.BRIGHT + Fore.BLACK + "["
-    + Style.RESET_ALL + Fore.CYAN + "%s"
-    + Style.BRIGHT + Fore.BLACK + "] "
+    Style.BRIGHT
+    + Fore.BLACK
+    + "["
+    + Style.RESET_ALL
+    + Fore.CYAN
+    + "%s"
+    + Style.BRIGHT
+    + Fore.BLACK
+    + "] "
 )
 
 _COMMON_PREFIX = (
-    Style.BRIGHT + Fore.BLACK + "["
-    + Style.RESET_ALL + Fore.WHITE + "%s"
-    + Style.BRIGHT + Fore.BLACK + "] %s"
+    Style.BRIGHT
+    + Fore.BLACK
+    + "["
+    + Style.RESET_ALL
+    + Fore.WHITE
+    + "%s"
+    + Style.BRIGHT
+    + Fore.BLACK
+    + "] %s"
     + Style.RESET_ALL
 )
 _SEP = Style.DIM + Fore.WHITE + ": "
 COLORED_PREFIXES_FMT = {
     LoggerLevel.DEBUG.value: (
-        _COMMON_PREFIX + Fore.BLACK + "Debug"
-        + _SEP + Style.RESET_ALL + Style.DIM + Fore.WHITE
+        _COMMON_PREFIX + Fore.BLACK + "Debug" + _SEP + Style.RESET_ALL + Style.DIM + Fore.WHITE
     ),
     LoggerLevel.INFO.value: (
-        _COMMON_PREFIX + Fore.BLUE + "Info"
-        + _SEP + Style.RESET_ALL + Fore.WHITE
+        _COMMON_PREFIX + Fore.BLUE + "Info" + _SEP + Style.RESET_ALL + Fore.WHITE
     ),
     LoggerLevel.SUCCESS.value: (
-        _COMMON_PREFIX + Style.BRIGHT + Fore.GREEN + "Success"
-        + Style.RESET_ALL + _SEP + Style.RESET_ALL + Fore.GREEN
+        _COMMON_PREFIX
+        + Style.BRIGHT
+        + Fore.GREEN
+        + "Success"
+        + Style.RESET_ALL
+        + _SEP
+        + Style.RESET_ALL
+        + Fore.GREEN
     ),
     LoggerLevel.WARNING.value: (
-        _COMMON_PREFIX + Style.BRIGHT + Fore.YELLOW + "Warning"
-        + Style.RESET_ALL + _SEP + Style.RESET_ALL + Fore.YELLOW
+        _COMMON_PREFIX
+        + Style.BRIGHT
+        + Fore.YELLOW
+        + "Warning"
+        + Style.RESET_ALL
+        + _SEP
+        + Style.RESET_ALL
+        + Fore.YELLOW
     ),
     LoggerLevel.ERROR.value: (
-        _COMMON_PREFIX + Style.BRIGHT + Fore.RED + "Error"
-        + Style.RESET_ALL + _SEP + Style.RESET_ALL + Fore.RED
+        _COMMON_PREFIX
+        + Style.BRIGHT
+        + Fore.RED
+        + "Error"
+        + Style.RESET_ALL
+        + _SEP
+        + Style.RESET_ALL
+        + Fore.RED
     ),
     LoggerLevel.CRITICAL.value: (
-        _COMMON_PREFIX + Style.BRIGHT + Style.DIM + Fore.RED + "Fatal"
-        + Style.RESET_ALL + _SEP + Style.DIM + Fore.RED
+        _COMMON_PREFIX
+        + Style.BRIGHT
+        + Style.DIM
+        + Fore.RED
+        + "Fatal"
+        + Style.RESET_ALL
+        + _SEP
+        + Style.DIM
+        + Fore.RED
     ),
 }
 
@@ -133,6 +172,7 @@ class LoggerFormatter(logging.Formatter):
 
     Manages timestamps, prefixes, module names, and indentation for multiline logs.
     """
+
     def __init__(self, colored: bool = False):
         super().__init__()
         self._strftime_format: str = "%d-%m-%Y %H:%M:%S"
@@ -170,14 +210,14 @@ class LoggerFormatter(logging.Formatter):
         prefix = prefix_fmt % (strtime, module_str)
 
         # Add prefix in front of every non empty line
-        lines = record.getMessage().split('\n')
+        lines = record.getMessage().split("\n")
         for i, line in enumerate(lines):
             line = line.rstrip()
             if line:
                 line = prefix + line
             lines[i] = line
 
-        output = '\n'.join(lines)
+        output = "\n".join(lines)
 
         if self._next_reset_color:
             self._next_reset_color = False
@@ -190,18 +230,22 @@ class LoggerSink(ABC):
     """
     Abstract base class for log sinks.
     """
+
     @abstractmethod
     def get_handler(self) -> logging.Handler:
-        ...
+        pass
 
     @abstractmethod
     def close(self) -> None:
-        ...
+        pass
 
 
 class _LoggingFileHandler(logging.handlers.TimedRotatingFileHandler):
     def __init__(self, folder: str, latest_filename: str, filename_format: str, interval: int):
-        super().__init__(latest_filename, "s", interval)
+        os.makedirs(folder, exist_ok=True)
+
+        super().__init__(os.path.join(folder, latest_filename), "s", interval)
+        self.terminator = ""  # Do not append new line because the record already contains one
 
         # Add possibility to enable/disable rotation
         self._rotation_enable: bool = False
@@ -253,9 +297,13 @@ class LoggerFileSink(LoggerSink):
 
     Supports log rotation based on time intervals.
     """
+
     def __init__(
-        self, folder: str, latest_filename: str = "latest.log",
-        filename_format: str = "%Y-%m-%d-%i.log", interval=24 * 3600,
+        self,
+        folder: str,
+        latest_filename: str = "latest.log",
+        filename_format: str = "%Y-%m-%d-%i.log",
+        interval=24 * 3600,
     ):
         self.formater = LoggerFormatter(False)
         self.handler = _LoggingFileHandler(folder, latest_filename, filename_format, interval)
@@ -273,7 +321,7 @@ class LoggerFileSink(LoggerSink):
         self.handler.set_rotation_interval(interval.seconds)
 
     def close(self) -> None:
-      self.handler.close()
+        self.handler.close()
 
 
 class _LoggingConsoleHandler(logging.Handler):
@@ -302,6 +350,7 @@ class LoggerConsoleSink(LoggerSink):
     """
     Logger sink that writes to the console (stdout/stderr).
     """
+
     def __init__(self, stdout: TextIO | None = None, stderr: TextIO | None = None):
         if stdout is None:
             stdout = _base_stdout
@@ -328,6 +377,7 @@ class Logger:
 
     Manages multiple sinks and module-specific loggers.
     """
+
     def __init__(self, name: str, *, parent: Logger = None) -> None:
         if parent is None:
             self._logger = logging.getLogger(name)
@@ -379,7 +429,9 @@ class Logger:
         sys.excepthook = self._excepthook
 
     def override_sys_streams(
-        self, stdout_level=logging.DEBUG, stderr_level=logging.ERROR,
+        self,
+        stdout_level=logging.DEBUG,
+        stderr_level=logging.ERROR,
     ) -> None:
         self._stdout_level = stdout_level
         self._stderr_level = stderr_level
@@ -396,10 +448,10 @@ class Logger:
         _base_stderr._errors = "backslashreplace"
 
     def _io_info(self, data):
-        self.info(data, end='')
+        self.info(data, end="")
 
     def _io_error(self, data):
-        self.error(data, end='')
+        self.error(data, end="")
 
     def close(self) -> None:
         """Close all sinks."""
@@ -408,34 +460,34 @@ class Logger:
             sink.close()
         self._sinks.clear()
 
-    def _merge_args(self, args: list, sep=' ') -> str:
+    def _merge_args(self, args: list, sep=" ") -> str:
         return sep.join(str(a) for a in args)
 
     def _log(self, lvl: LoggerLevel, *args, sep: str, end: str) -> None:
         msg = self._merge_args(args, sep) + end
         self._logger.log(lvl.value, msg)
 
-    def debug(self, *args, sep: str = ' ', end: str = '\n') -> None:
+    def debug(self, *args, sep: str = " ", end: str = "\n") -> None:
         """Log a debug message."""
         self._log(LoggerLevel.DEBUG, *args, sep=sep, end=end)
 
-    def info(self, *args, sep: str = ' ', end: str = '\n') -> None:
+    def info(self, *args, sep: str = " ", end: str = "\n") -> None:
         """Log an info message."""
         self._log(LoggerLevel.INFO, *args, sep=sep, end=end)
 
-    def success(self, *args, sep: str = ' ', end: str = '\n') -> None:
+    def success(self, *args, sep: str = " ", end: str = "\n") -> None:
         """Log a success message."""
         self._log(LoggerLevel.SUCCESS, *args, sep=sep, end=end)
 
-    def warning(self, *args, sep: str = ' ', end: str = '\n') -> None:
+    def warning(self, *args, sep: str = " ", end: str = "\n") -> None:
         """Log a warning message."""
         self._log(LoggerLevel.WARNING, *args, sep=sep, end=end)
 
-    def error(self, *args, sep: str = ' ', end: str = '\n') -> None:
+    def error(self, *args, sep: str = " ", end: str = "\n") -> None:
         """Log an error message."""
         self._log(LoggerLevel.ERROR, *args, sep=sep, end=end)
 
-    def critical(self, *args, sep: str = ' ', end: str = '\n') -> None:
+    def critical(self, *args, sep: str = " ", end: str = "\n") -> None:
         """Log a fatal message."""
         self._log(LoggerLevel.CRITICAL, *args, sep=sep, end=end)
 
