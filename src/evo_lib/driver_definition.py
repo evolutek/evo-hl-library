@@ -1,16 +1,13 @@
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Callable
 
 from evo_lib.argtypes import ArgType
+from evo_lib.registry import Registry
 from evo_lib.task import Task
 
 if TYPE_CHECKING:
     from evo_lib.peripheral import Peripheral
-
-
-# A driver command is an unbound method: it takes the peripheral instance as
-# first positional argument, plus any keyword arguments, and returns a Task.
-DriverCommand = Callable[..., Task[Any]]
 
 
 # Description of one initialization argument
@@ -70,28 +67,69 @@ class DriverInitArgs:
         return r
 
 
+type DriverCommandCallback = Callable[..., Task[Any]]
+
+
+# A driver command is an unbound method: it takes the peripheral instance as
+# first positional argument, plus any keyword arguments, and returns a Task.
+@dataclass
+class DriverCommand:
+    name: str
+    callback: DriverCommandCallback
+    args: list[tuple[str, ArgType]]
+    result: list[tuple[str, ArgType]]
+
+
+class DriverCommands:
+    def __init__(self, parents: list[DriverCommands] = []):
+        self._commands: Registry[DriverCommand] = Registry("driver_commands")
+        for parent in parents:
+            for cmd in parent._commands.get_all():
+                self.register(cmd)
+
+    def register(self,
+        args: list[tuple[str, ArgType]],
+        result: list[tuple[str, ArgType]],
+        name: str | None = None
+    ) -> DriverCommand:
+        def decorator(callback: DriverCommandCallback):
+            command = DriverCommand(
+                callback.__name__ if name is None else name,
+                callback,
+                args,
+                result
+            )
+            self._commands.register(command.name, command)
+            return command
+        return decorator
+
+    def get(self, name: str) -> DriverCommand:
+        return self._commands.get(name)
+
+
 class DriverDefinition(ABC):
-    def __init__(self) -> None:
+    def __init__(self, commands: DriverCommands) -> None:
         # Commands are unbound methods exposed by the driver class, callable as
         # ``command(peripheral_instance, **kwargs) -> Task``. Subclasses register
         # them via ``register_command`` (typically in their own ``__init__``).
-        self._commands: dict[str, DriverCommand] = {}
+        #self._commands: dict[str, DriverCommand] = {}
+        self._commands = commands
 
-    def register_command(self, name: str, command: DriverCommand) -> None:
-        """Declare a command exposable from config (e.g. by the Action engine)."""
-        if name in self._commands:
-            raise ValueError(f"Command '{name}' is already registered")
-        self._commands[name] = command
+    # def register_command(self, name: str, command: DriverCommand) -> None:
+    #     """Declare a command exposable from config (e.g. by the Action engine)."""
+    #     if name in self._commands:
+    #         raise ValueError(f"Command '{name}' is already registered")
+    #     self._commands[name] = command
 
-    def get_command(self, name: str) -> DriverCommand:
-        """Retrieve a registered command by name."""
-        if name not in self._commands:
-            raise KeyError(f"Unknown command '{name}'")
-        return self._commands[name]
+    # def get_command(self, name: str) -> DriverCommand:
+    #     """Retrieve a registered command by name."""
+    #     if name not in self._commands:
+    #         raise KeyError(f"Unknown command '{name}'")
+    #     return self._commands[name]
 
-    def get_commands(self) -> dict[str, DriverCommand]:
+    def get_commands(self) -> DriverCommands:
         """Return a copy of all registered commands."""
-        return dict(self._commands)
+        return self._commands
 
     @abstractmethod
     def create(self, args: DriverInitArgs) -> Peripheral:

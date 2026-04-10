@@ -1,7 +1,12 @@
 """Tirette driver: Take a GPIO instance as initialisation argument."""
 
 from evo_lib.argtypes import ArgTypes
-from evo_lib.driver_definition import DriverDefinition, DriverInitArgs, DriverInitArgsDefinition
+from evo_lib.driver_definition import (
+    DriverCommands,
+    DriverDefinition,
+    DriverInitArgs,
+    DriverInitArgsDefinition,
+)
 from evo_lib.event import Event
 from evo_lib.interfaces.gpio import GPIO, GPIOEdge
 from evo_lib.logger import Logger
@@ -30,7 +35,7 @@ class Tirette(Placable):
 
 class TiretteDefinition(DriverDefinition):
     def __init__(self, logger: Logger, peripherals: Registry[Peripheral]):
-        super().__init__()
+        super().__init__(DriverCommands())
         self._logger = logger
         self._peripherals = peripherals
 
