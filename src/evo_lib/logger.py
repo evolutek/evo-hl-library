@@ -89,40 +89,48 @@ COLORED_MODULE_FMT = (
     + "["
     + Style.RESET_ALL
     + Fore.CYAN
-    + "%s"
+    + "{module}"
     + Style.BRIGHT
     + Fore.BLACK
     + "] "
 )
 
-_COMMON_PREFIX = (
+COLORED_TIME_FMT = (
     Style.BRIGHT
     + Fore.BLACK
     + "["
     + Style.RESET_ALL
     + Fore.WHITE
-    + "%s"
+    + "{time}"
     + Style.BRIGHT
     + Fore.BLACK
-    + "] %s"
-    + Style.RESET_ALL
+    + "] "
 )
-_SEP = Style.DIM + Fore.WHITE + ": "
+
+_COMMON_PREFIX = Style.RESET_ALL + "{time}{module}"
+_SEP = Style.DIM + Fore.WHITE + ": " + Style.RESET_ALL
 COLORED_PREFIXES_FMT = {
     LoggerLevel.DEBUG.value: (
-        _COMMON_PREFIX + Fore.BLACK + "Debug" + _SEP + Style.RESET_ALL + Style.DIM + Fore.WHITE
+        _COMMON_PREFIX
+        + Fore.BLACK
+        + "Debug"
+        + _SEP
+        + Style.DIM
+        + Fore.WHITE
     ),
     LoggerLevel.INFO.value: (
-        _COMMON_PREFIX + Fore.BLUE + "Info" + _SEP + Style.RESET_ALL + Fore.WHITE
+        _COMMON_PREFIX
+        + Fore.BLUE
+        + "Info"
+        + _SEP
+        + Fore.WHITE
     ),
     LoggerLevel.SUCCESS.value: (
         _COMMON_PREFIX
         + Style.BRIGHT
         + Fore.GREEN
         + "Success"
-        + Style.RESET_ALL
         + _SEP
-        + Style.RESET_ALL
         + Fore.GREEN
     ),
     LoggerLevel.WARNING.value: (
@@ -130,9 +138,7 @@ COLORED_PREFIXES_FMT = {
         + Style.BRIGHT
         + Fore.YELLOW
         + "Warning"
-        + Style.RESET_ALL
         + _SEP
-        + Style.RESET_ALL
         + Fore.YELLOW
     ),
     LoggerLevel.ERROR.value: (
@@ -140,9 +146,7 @@ COLORED_PREFIXES_FMT = {
         + Style.BRIGHT
         + Fore.RED
         + "Error"
-        + Style.RESET_ALL
         + _SEP
-        + Style.RESET_ALL
         + Fore.RED
     ),
     LoggerLevel.CRITICAL.value: (
@@ -151,7 +155,6 @@ COLORED_PREFIXES_FMT = {
         + Style.DIM
         + Fore.RED
         + "Fatal"
-        + Style.RESET_ALL
         + _SEP
         + Style.DIM
         + Fore.RED
@@ -161,6 +164,7 @@ COLORED_PREFIXES_FMT = {
 # Pre-calculate plain styles
 PLAIN_PREFIXES_FMT = {k: _remove_ansi_codes(v) for k, v in COLORED_PREFIXES_FMT.items()}
 PLAIN_MODULE_FMT = _remove_ansi_codes(COLORED_MODULE_FMT)
+PLAIN_TIME_FMT = _remove_ansi_codes(COLORED_TIME_FMT)
 
 
 _default_logger: Logger = None
@@ -192,22 +196,30 @@ class LoggerFormatter(logging.Formatter):
         self._strftime_format = format
 
     def format(self, record: logging.LogRecord) -> str:
+        # Format time part of the prefix
+        if self._strftime_format:
+            strtime = datetime.fromtimestamp(record.created).strftime(self._strftime_format)
+            time_fmt = COLORED_TIME_FMT if self._colored else PLAIN_TIME_FMT
+            time_str = time_fmt.format(time = strtime)
+        else:
+            time_str = ""
+
+        # Format module part of the prefix
+        module_name = record.name
+        if module_name:
+            module_fmt = COLORED_MODULE_FMT if self._colored else PLAIN_MODULE_FMT
+            module_str = module_fmt.format(module = module_name)
+        else:
+            module_str = ""
+
         # Determine prefix and formatting based on level and color settings
         prefixes_fmt = COLORED_PREFIXES_FMT if self._colored else PLAIN_PREFIXES_FMT
-        module_fmt = COLORED_MODULE_FMT if self._colored else PLAIN_MODULE_FMT
 
         # Get the format string for the current level (default to INFO if unknown)
         prefix_fmt = prefixes_fmt.get(record.levelno, prefixes_fmt[logging.INFO])
 
-        # Format time part of the prefix
-        strtime = datetime.fromtimestamp(record.created).strftime(self._strftime_format)
-
-        # Format module part of the prefix
-        module_name = record.name
-        module_str = (module_fmt % module_name) if module_name else ""
-
         # Format prefix
-        prefix = prefix_fmt % (strtime, module_str)
+        prefix = prefix_fmt.format(time = time_str, module = module_str)
 
         # Add prefix in front of every non empty line
         lines = record.getMessage().split("\n")
@@ -230,6 +242,10 @@ class LoggerSink(ABC):
     """
     Abstract base class for log sinks.
     """
+
+    @abstractmethod
+    def get_formatter(self) -> LoggerFormatter:
+        pass
 
     @abstractmethod
     def get_handler(self) -> logging.Handler:
@@ -305,9 +321,12 @@ class LoggerFileSink(LoggerSink):
         filename_format: str = "%Y-%m-%d-%i.log",
         interval=24 * 3600,
     ):
-        self.formater = LoggerFormatter(False)
+        self.formatter = LoggerFormatter(False)
         self.handler = _LoggingFileHandler(folder, latest_filename, filename_format, interval)
-        self.handler.setFormatter(self.formater)
+        self.handler.setFormatter(self.formatter)
+
+    def get_formatter(self) -> LoggerFormatter:
+        return self.formatter
 
     def get_handler(self) -> logging.Handler:
         return self.handler
@@ -356,9 +375,12 @@ class LoggerConsoleSink(LoggerSink):
             stdout = _base_stdout
         if stderr is None:
             stderr = _base_stderr
-        self.formater = LoggerFormatter(_are_ansi_color_supported())
+        self.formatter = LoggerFormatter(_are_ansi_color_supported())
         self.handler = _LoggingConsoleHandler(stdout, stderr)
-        self.handler.setFormatter(self.formater)
+        self.handler.setFormatter(self.formatter)
+
+    def get_formatter(self) -> LoggerFormatter:
+        return self.formatter
 
     def get_handler(self) -> logging.Handler:
         return self.handler
@@ -368,7 +390,7 @@ class LoggerConsoleSink(LoggerSink):
 
     def set_colored(self, colored: bool) -> None:
         """Enable or disable ANSI color output."""
-        self.formater.set_colored(colored)
+        self.formatter.set_colored(colored)
 
 
 class Logger:
