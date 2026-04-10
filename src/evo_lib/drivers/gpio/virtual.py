@@ -39,16 +39,12 @@ class GPIOPinVirtual(GPIO):
         if not self._initialized:
             raise RuntimeError("GPIO not initialized, call init() first")
 
-    def init(self) -> None:
+    def init(self) -> Task[()]:
         self._initialized = True
         self._state = False
         self._event = None
-        self._log.info(
-            "GPIOPinVirtual '%s' initialized (pin %d, %s)",
-            self.name,
-            self._pin,
-            self._direction,
-        )
+        self._log.info(f"GPIOPinVirtual '{self.name}' initialized (pin {self._pin}, {self._direction})",)
+        return ImmediateResultTask()
 
     def close(self) -> None:
         self._initialized = False
@@ -131,11 +127,11 @@ class GPIOChipVirtual(InterfaceHolder):
         self._pins: dict[int, GPIOPinVirtual] = {}
 
     def init(self) -> None:
-        self._log.info("MCP23017 virtual '%s' initialized at 0x%02x", self.name, self._address)
+        self._log.info(f"MCP23017 virtual '{self.name}' initialized at 0x{self._address:02x}")
 
     def close(self) -> None:
         self._pins.clear()
-        self._log.info("MCP23017 virtual '%s' closed", self.name)
+        self._log.info(f"MCP23017 virtual '{self.name}' closed")
 
     def get_subcomponents(self) -> list[Peripheral]:
         """Return all pins that have been created via get_pin."""

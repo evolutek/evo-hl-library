@@ -19,7 +19,7 @@ class ArgType(ABC):
 
     def value_from_str(self, v: str) -> Any:
         """Parse a string to the given argument type (usefull for CLI)."""
-        return self.value_from_config(ConfigJSON5Parser().parse_string(v)) # Default implementation
+        return self.value_from_config(ConfigJSON5Parser().parse_from_string(v)) # Default implementation
 
     @abstractmethod
     def value_from_config(self, v: ConfigValue) -> Any:

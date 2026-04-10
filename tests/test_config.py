@@ -22,7 +22,7 @@ def test_json5_parser_and_pydantic_schema():
     }
     '''
 
-    raw_config = parser.parse_string(document)
+    raw_config = parser.parse_from_string(document)
 
     schema = ConfigPydanticSchema(MyGlobalConfig)
     my_global_config: MyGlobalConfig = schema.validate(raw_config)

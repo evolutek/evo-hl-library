@@ -110,11 +110,21 @@ class ConfigObject(dict[str, ConfigValue]):
 
 class ConfigParser(ABC):
     @abstractmethod
-    def parse_file(self, filepath: str) -> ConfigValue:
+    def parse_from_file(self, file_path: str) -> ConfigValue:
         pass
 
     @abstractmethod
-    def parse_string(self, string: str) -> ConfigValue:
+    def parse_from_string(self, string: str) -> ConfigValue:
+        pass
+
+
+class ConfigFormater(ABC):
+    @abstractmethod
+    def format_to_file(self, config: ConfigValue, file_path: str) -> None:
+        pass
+
+    @abstractmethod
+    def format_to_string(self, config: ConfigValue) -> str:
         pass
 
 
@@ -135,13 +145,27 @@ class ConfigJSON5Parser(ConfigParser):
                 raw[i] = self._transform_raw_config(raw[i], str(i), parent)
         return raw
 
-    def parse_file(self, filepath: str) -> ConfigValue:
+    def parse_from_file(self, filepath: str) -> ConfigValue:
         with open(filepath, "r", encoding="utf8") as f:
             raw_config = json5.load(f)
         return self._transform_raw_config(raw_config)
 
-    def parse_string(self, string: str) -> ConfigValue:
+    def parse_from_string(self, string: str) -> ConfigValue:
         return json5.loads(string)
+
+
+class ConfigJSON5Formater(ConfigFormater):
+    def __init__(self, indent: int = 4):
+        super().__init__()
+        self._indent = indent
+
+    def format_to_file(self, config: ConfigValue, file_path: str) -> None:
+        with open(file_path, "w", encoding="utf-8") as f:
+            json5.dump(config, f, indent = self._indent, quote_keys = True)
+            f.write("\n")
+
+    def format_to_string(self, config: ConfigValue) -> str:
+        return json5.dump(config, indent = self._indent, quote_keys = True)
 
 
 class ConfigSchema(ABC):
