@@ -26,4 +26,4 @@ class GraphRunner:
         """Schedule a node for execution."""
         if node._graph._runner is not self:
             raise ValueError("Trying to run a node on a graph not bound to this runner")
-        self._scheduler.schedule_now(0, node.run)
+        self._scheduler.schedule_now(0, node.on_run)

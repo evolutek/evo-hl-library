@@ -8,12 +8,13 @@ class WaitNode(Node):
     def __init__(self, definition: NodeDefinition, name: str, graph: Graph):
         super().__init__(definition, name, graph)
 
-    def run(self) -> None:
+    def on_run(self) -> None:
         delay_input = self.get_value_input("delay")
         delay = delay_input.get_value() if delay_input else 0
         output = self.get_flow_output("flow")
         if output is not None:
-            self.get_runner().get_scheduler().schedule_after(delay, 0, output.run)
+            for input in output.get_connections():
+                self.get_graph().schedule_run_flow_input(input, delay)
 
 
 class WaitNodeDefinition(NodeDefinition):

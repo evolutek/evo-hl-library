@@ -27,21 +27,21 @@ class Scheduler:
         self,
         delay: float,
         priority: int,
-        action: Callable,
+        callback: Callable,
         args: tuple = (),
         kwargs: dict[str,] = {},
     ) -> sched.Event:
-        self.s.enter(delay, priority, action, argument=args, kwargs=kwargs)
+        self.s.enter(delay, priority, callback, argument=args, kwargs=kwargs)
 
     def schedule_at(
         self,
         timepoint: float,
         priority: int,
-        action: Callable,
+        callback: Callable,
         args: tuple = (),
         kwargs: dict[str,] = {},
     ) -> sched.Event:
-        self.s.enterabs(timepoint, priority, action, argument=args, kwargs=kwargs)
+        self.s.enterabs(timepoint, priority, callback, argument=args, kwargs=kwargs)
 
     def cancel(self, scheduled: sched.Event) -> None:
         self.s.cancel(scheduled)
