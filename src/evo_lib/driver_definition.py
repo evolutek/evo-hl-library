@@ -75,9 +75,13 @@ type DriverCommandCallback = Callable[..., Task[Any]]
 @dataclass
 class DriverCommand:
     name: str
-    callback: DriverCommandCallback
+    method: str
     args: list[tuple[str, ArgType]]
     result: list[tuple[str, ArgType]]
+    help: str | None
+
+    def call(self, obj: Peripheral, *args, **kwargs) -> Task[Any]:
+        return getattr(obj, self.method)(*args, **kwargs)
 
 
 class DriverCommands:
@@ -90,21 +94,30 @@ class DriverCommands:
     def register(self,
         args: list[tuple[str, ArgType]],
         result: list[tuple[str, ArgType]],
-        name: str | None = None
+        name: str | None = None,
+        help: str | None = None
     ) -> DriverCommand:
         def decorator(callback: DriverCommandCallback):
+            # Create a wrapper to call the method of the instance class not the method on
+            # which this decorator was called, because this decorator can be used on
+            # interface's method, but interface method do not have any implementation.
             command = DriverCommand(
-                callback.__name__ if name is None else name,
-                callback,
-                args,
-                result
+                name = callback.__name__ if name is None else name,
+                method = callback.__name__,
+                args = args,
+                result = result,
+                help = help
             )
             self._commands.register(command.name, command)
-            return command
+
+            return callback
         return decorator
 
     def get(self, name: str) -> DriverCommand:
         return self._commands.get(name)
+
+    def get_all(self) -> list[DriverCommand]:
+        return self._commands.get_all()
 
 
 class DriverDefinition(ABC):
@@ -113,6 +126,13 @@ class DriverDefinition(ABC):
         # ``command(peripheral_instance, **kwargs) -> Task``. Subclasses register
         # them via ``register_command`` (typically in their own ``__init__``).
         self._commands = commands if commands is not None else DriverCommands()
+        self._name: str | None = None
+
+    def set_name(self, name: str) -> None:
+        self._name = name
+
+    def get_name(self) -> str:
+        return self._name
 
     def get_commands(self) -> DriverCommands:
         """Return a copy of all registered commands."""
