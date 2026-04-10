@@ -1,10 +1,9 @@
 """Base classes for all hardware peripherals."""
 
-from __future__ import annotations
-
 from abc import ABC, abstractmethod
 
-from evo_lib.driver_definition import DriverDefinition
+from evo_lib.driver_definition import DriverDefinition, DriverInitArgs
+from evo_lib.task import Task
 
 
 class Peripheral(ABC):
@@ -22,15 +21,38 @@ class Peripheral(ABC):
         # (e.g. MCP23017Pin built via get_pin) may leave this as None; calling
         # get_definition() on them will then raise.
         self._definition: DriverDefinition | None = None
+        self._init_args: DriverInitArgs | None = None
+        self._dependencies: set[Peripheral] = set()
+        self._dependents: set[Peripheral] = set()
+        self._required: bool = True # TODO: Use a value from config
+
+    def add_dependency(self, peripheral: Peripheral) -> None:
+        self._dependencies.add(peripheral)
+
+    def add_dependent(self, peripheral: Peripheral) -> None:
+        self._dependents.add(peripheral)
+
+    def get_dependencies(self) -> set[Peripheral]:
+        return self._dependencies
+
+    def get_dependents(self) -> set[Peripheral]:
+        return self._dependents
+
+    def is_required(self) -> bool:
+        return self._required
 
     @property
     def name(self) -> str:
         """Return the name of this peripheral instance."""
         return self._name
 
-    @abstractmethod
-    def init(self) -> None:
-        """Acquire hardware resources."""
+    def get_init_args(self) -> DriverInitArgs:
+        if self._init_args is None:
+            raise RuntimeError(
+                f"Peripheral '{self._name}' has no init arguments "
+                "(not instantiated through the ComponentsManager?)"
+            )
+        return self._init_args
 
     def get_definition(self) -> DriverDefinition:
         """Return the DriverDefinition this peripheral was instantiated from."""
@@ -40,6 +62,10 @@ class Peripheral(ABC):
                 "(not instantiated through the ComponentsManager?)"
             )
         return self._definition
+
+    @abstractmethod
+    def init(self) -> Task[()]:
+        """Acquire hardware resources."""
 
     @abstractmethod
     def close(self) -> None:

@@ -1,5 +1,6 @@
 import sched
 import time
+from threading import Event as ThreadEvent
 from typing import Callable
 
 from evo_lib.executor import Executor
@@ -16,12 +17,14 @@ class SchedulerExecutor(Executor):
 
 class Scheduler:
     def __init__(self):
-        self.s = sched.scheduler(time.time, time.sleep)
+        self._py_scheduler = sched.scheduler(time.time, time.sleep)
+        self._new_schedule_event = ThreadEvent()
 
     def schedule_now(
         self, priority: int, action: Callable, args: tuple = (), kwargs: dict[str,] = {}
     ) -> sched.Event:
-        self.s.enter(0, priority, action, argument=args, kwargs=kwargs)
+        self._py_scheduler.enter(0, priority, action, argument=args, kwargs=kwargs)
+        self._new_schedule_event.set()
 
     def schedule_after(
         self,
@@ -31,7 +34,8 @@ class Scheduler:
         args: tuple = (),
         kwargs: dict[str,] = {},
     ) -> sched.Event:
-        self.s.enter(delay, priority, callback, argument=args, kwargs=kwargs)
+        self._py_scheduler.enter(delay, priority, callback, argument=args, kwargs=kwargs)
+        self._new_schedule_event.set()
 
     def schedule_at(
         self,
@@ -41,16 +45,19 @@ class Scheduler:
         args: tuple = (),
         kwargs: dict[str,] = {},
     ) -> sched.Event:
-        self.s.enterabs(timepoint, priority, callback, argument=args, kwargs=kwargs)
+        self._py_scheduler.enterabs(timepoint, priority, callback, argument=args, kwargs=kwargs)
+        self._new_schedule_event.set()
 
     def cancel(self, scheduled: sched.Event) -> None:
-        self.s.cancel(scheduled)
+        self._py_scheduler.cancel(scheduled)
 
     def run(self) -> None:
-        self.s.run(blocking=True)
+        while True:
+            self._py_scheduler.run(blocking=True)
+            self._new_schedule_event.wait()
 
     def handle(self) -> float:
-        return self.s.run(blocking=False)
+        return self._py_scheduler.run(blocking=False)
 
     def get_executor(self, priority: int) -> SchedulerExecutor:
         return SchedulerExecutor(self, priority)

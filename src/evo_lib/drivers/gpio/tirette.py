@@ -12,6 +12,7 @@ from evo_lib.interfaces.gpio import GPIO, GPIOEdge
 from evo_lib.logger import Logger
 from evo_lib.peripheral import Peripheral, Placable
 from evo_lib.registry import Registry
+from evo_lib.task import ImmediateResultTask, Task
 
 
 class Tirette(Placable):
@@ -21,9 +22,9 @@ class Tirette(Placable):
         self._gpio = gpio
         self._active_state = active_state
 
-    def init(self) -> None:
+    def init(self) -> Task[()]:
         # TODO: Check GPIO direction
-        pass
+        return ImmediateResultTask()
 
     def close(self) -> None:
         pass  # Nothing to do

@@ -12,16 +12,16 @@ class GraphLoader:
     def __init__(self):
         self._node_definitions: Registry[NodeDefinition] = Registry("node_definitions")
 
-    def register_node(self, node: NodeDefinition) -> None:
+    def register_node_type(self, node: NodeDefinition) -> None:
         self._node_definitions.register(node.get_name(), node)
 
-    def register_base_nodes(self) -> None:
+    def register_base_node_types(self) -> None:
         """Register built-in node types."""
-        self.register_node(WaitNodeDefinition())
-        self.register_node(IfElseNodeDefinition())
-        self.register_node(EntryNodeDefinition())
+        self.register_node_type(WaitNodeDefinition())
+        self.register_node_type(IfElseNodeDefinition())
+        self.register_node_type(EntryNodeDefinition())
 
-    def export_nodes(self) -> ConfigObject:
+    def export_node_types(self) -> ConfigObject:
         """Export all registered node definitions as a config object."""
         config = ConfigObject()
         config["version"] = 1
@@ -35,14 +35,14 @@ class GraphLoader:
 
             vi_config = node_config.create_object("value_inputs")
             for name, vi in node_def.get_value_inputs().items():
-                vi_entry = vi_config.create_object(name)
-                vi_entry["type"] = argtype_to_config(vi.type)
+                vi_entry = argtype_to_config(vi.type)
                 vi_entry["default"] = vi.default
+                vi_config[name] = vi_entry
 
             vo_config = node_config.create_object("value_outputs")
             for name, vo in node_def.get_value_outputs().items():
-                vo_entry = vo_config.create_object(name)
-                vo_entry["type"] = argtype_to_config(vo.type)
+                vo_entry = argtype_to_config(vo.type)
+                vo_config[name] = vo_entry
 
         return config
 

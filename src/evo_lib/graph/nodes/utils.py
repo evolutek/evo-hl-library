@@ -11,7 +11,7 @@ class WaitNode(Node):
     def on_run(self) -> None:
         delay_input = self.get_value_input("delay")
         delay = delay_input.get_value() if delay_input else 0
-        output = self.get_flow_output("flow")
+        output = self.get_flow_output("next")
         if output is not None:
             for input in output.get_connections():
                 self.get_graph().schedule_run_flow_input(input, delay)
@@ -21,5 +21,5 @@ class WaitNodeDefinition(NodeDefinition):
     def __init__(self):
         super().__init__(WaitNode, "wait", "Wait")
         self.add_flow_input("flow")
-        self.add_flow_output("flow")
+        self.add_flow_output("next")
         self.add_value_input("delay", ArgTypes.F32(), 0)
