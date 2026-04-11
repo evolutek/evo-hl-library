@@ -56,12 +56,12 @@ class Registry[T]:
         """Get all registered items."""
         return list(self._items.values())
 
-    def get_keys(self) -> list[T]:
-        """Get all registered items."""
+    def get_keys(self) -> list[str]:
+        """Get all registered keys."""
         return list(self._items.keys())
 
     def get_entries(self) -> list[tuple[str, T]]:
-        """Get all registered items."""
+        """Get all registered key-item pairs."""
         return list(self._items.items())
 
     def get(self, key: str) -> T:
