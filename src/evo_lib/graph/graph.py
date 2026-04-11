@@ -47,14 +47,20 @@ class FlowInput(Endpoint):
         super().__init__(node, name)
         self.connections: list[FlowOutput] = []
         self.state: FlowInputState = FlowInputState.ACTIVE
+        self._triggered_by: FlowOutput | None = None
 
     def reset(self) -> None:
         self.state = FlowInputState.ACTIVE
+        self._triggered_by = None
 
-    def run(self) -> None:
+    def get_triggered_by(self) -> FlowOutput | None:
+        return self._triggered_by
+
+    def run(self, source: FlowOutput) -> None:
+        self._triggered_by = source
         self.get_node().get_graph().schedule_run_flow_input(self)
 
-    def ignore(self) -> None:
+    def ignore(self, source: FlowOutput) -> None:
         self.get_node().get_graph().schedule_ignore_flow_input(self)
 
 
@@ -73,12 +79,12 @@ class FlowOutput(Endpoint):
     def run(self) -> None:
         # Run every flow input connected to this flow output
         for inp in self._connections:
-            inp.run()
+            inp.run(source=self)
 
     def ignore(self) -> None:
         # Ignore every flow input connected to this flow output
         for inp in self._connections:
-            inp.ignore()
+            inp.ignore(source=self)
 
 
 @dataclass
@@ -202,7 +208,7 @@ class Node(ABC):
         for inp in self._value_inputs:
             inp.reset()
 
-    def on_run_flow_input(self, _output: FlowOutput, input: FlowInput) -> None:
+    def on_run_flow_input(self, input: FlowInput) -> None:
         assert input.state != FlowInputState.INACTIVE
         if input.state == FlowInputState.ACTIVE:
             input.state = FlowInputState.RUN
@@ -210,7 +216,7 @@ class Node(ABC):
             if self._nb_run_input_flow >= self._nb_active_input_flow:
                 self.run()
 
-    def on_ignore_flow_input(self, _output: FlowOutput, input: FlowInput) -> None:
+    def on_ignore_flow_input(self, input: FlowInput) -> None:
         assert input.state != FlowInputState.RUN
         if input.state == FlowInputState.ACTIVE:
             input.state = FlowInputState.INACTIVE
@@ -457,7 +463,6 @@ class Graph:
         assert self._runner is not None
         with self._lock:
             self._nb_scheduled_flow_input += 1
-        self._add_node_run_task(input_flow.get_node())
         self._runner.get_scheduler().schedule_after(
             delay = delay,
             priority = 0,
@@ -477,7 +482,7 @@ class Graph:
         with self._lock:
             self._nb_scheduled_flow_input += 1
         self._runner.get_scheduler().schedule_now(
-            proirity = 0,
+            priority = 0,
             callback = self._do_ignore_flow_input,
             args = (input_flow,)
         )
