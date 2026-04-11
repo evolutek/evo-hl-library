@@ -19,9 +19,9 @@ class ConfigObject(dict[str, ConfigValue]):
         self,
         parent_key: str | None = None,
         parent_object: ConfigObject | None = None,
-        map: dict[str, ConfigValue] = dict(),
+        map: dict[str, ConfigValue] | None = None,
     ):
-        super().__init__(map)
+        super().__init__(map or {})
         self._parent_object = parent_object
         self._parent_key = parent_key
 
@@ -118,7 +118,7 @@ class ConfigParser(ABC):
         pass
 
 
-class ConfigFormater(ABC):
+class ConfigFormatter(ABC):
     @abstractmethod
     def format_to_file(self, config: ConfigValue, file_path: str) -> None:
         pass
@@ -151,10 +151,10 @@ class ConfigJSON5Parser(ConfigParser):
         return self._transform_raw_config(raw_config)
 
     def parse_from_string(self, string: str) -> ConfigValue:
-        return json5.loads(string)
+        return self._transform_raw_config(json5.loads(string))
 
 
-class ConfigJSON5Formater(ConfigFormater):
+class ConfigJSON5Formatter(ConfigFormatter):
     def __init__(self, indent: int = 4):
         super().__init__()
         self._indent = indent
@@ -165,7 +165,7 @@ class ConfigJSON5Formater(ConfigFormater):
             f.write("\n")
 
     def format_to_string(self, config: ConfigValue) -> str:
-        return json5.dump(config, indent = self._indent, quote_keys = True)
+        return json5.dumps(config, indent = self._indent, quote_keys = True)
 
 
 class ConfigSchema(ABC):
@@ -180,7 +180,7 @@ class ConfigPydanticSchema(ConfigSchema):
         self.model = model
 
     def validate(self, config: ConfigValue) -> Any:
-        if type(config) is not dict:
+        if not isinstance(config, dict):
             raise ConfigValidationError("Root config value should be a dictionary")
 
         try:

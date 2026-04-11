@@ -81,11 +81,11 @@ class DriverCommand:
 
 
 class DriverCommands:
-    def __init__(self, parents: list[DriverCommands] = []):
+    def __init__(self, parents: list[DriverCommands] | None = None):
         self._commands: Registry[DriverCommand] = Registry("driver_commands")
-        for parent in parents:
+        for parent in (parents or []):
             for cmd in parent._commands.get_all():
-                self.register(cmd)
+                self._commands.register(cmd.name, cmd)
 
     def register(self,
         args: list[tuple[str, ArgType]],
@@ -108,24 +108,11 @@ class DriverCommands:
 
 
 class DriverDefinition(ABC):
-    def __init__(self, commands: DriverCommands) -> None:
+    def __init__(self, commands: DriverCommands | None = None) -> None:
         # Commands are unbound methods exposed by the driver class, callable as
         # ``command(peripheral_instance, **kwargs) -> Task``. Subclasses register
         # them via ``register_command`` (typically in their own ``__init__``).
-        #self._commands: dict[str, DriverCommand] = {}
-        self._commands = commands
-
-    # def register_command(self, name: str, command: DriverCommand) -> None:
-    #     """Declare a command exposable from config (e.g. by the Action engine)."""
-    #     if name in self._commands:
-    #         raise ValueError(f"Command '{name}' is already registered")
-    #     self._commands[name] = command
-
-    # def get_command(self, name: str) -> DriverCommand:
-    #     """Retrieve a registered command by name."""
-    #     if name not in self._commands:
-    #         raise KeyError(f"Unknown command '{name}'")
-    #     return self._commands[name]
+        self._commands = commands if commands is not None else DriverCommands()
 
     def get_commands(self) -> DriverCommands:
         """Return a copy of all registered commands."""

@@ -19,11 +19,12 @@ class Scheduler:
     def __init__(self):
         self._py_scheduler = sched.scheduler(time.time, time.sleep)
         self._new_schedule_event = ThreadEvent()
+        self._running = False
 
     def schedule_now(
-        self, priority: int, action: Callable, args: tuple = (), kwargs: dict[str,] = {}
+        self, priority: int, action: Callable, args: tuple = (), kwargs: dict[str,] | None = None
     ) -> sched.Event:
-        self._py_scheduler.enter(0, priority, action, argument=args, kwargs=kwargs)
+        self._py_scheduler.enter(0, priority, action, argument=args, kwargs=kwargs or {})
         self._new_schedule_event.set()
 
     def schedule_after(
@@ -32,9 +33,9 @@ class Scheduler:
         priority: int,
         callback: Callable,
         args: tuple = (),
-        kwargs: dict[str,] = {},
+        kwargs: dict[str,] | None = None,
     ) -> sched.Event:
-        self._py_scheduler.enter(delay, priority, callback, argument=args, kwargs=kwargs)
+        self._py_scheduler.enter(delay, priority, callback, argument=args, kwargs=kwargs or {})
         self._new_schedule_event.set()
 
     def schedule_at(
@@ -43,18 +44,25 @@ class Scheduler:
         priority: int,
         callback: Callable,
         args: tuple = (),
-        kwargs: dict[str,] = {},
+        kwargs: dict[str,] | None = None,
     ) -> sched.Event:
-        self._py_scheduler.enterabs(timepoint, priority, callback, argument=args, kwargs=kwargs)
+        self._py_scheduler.enterabs(timepoint, priority, callback, argument=args, kwargs=kwargs or {})
         self._new_schedule_event.set()
 
     def cancel(self, scheduled: sched.Event) -> None:
         self._py_scheduler.cancel(scheduled)
 
     def run(self) -> None:
-        while True:
+        self._running = True
+        while self._running:
+            self._new_schedule_event.clear()
             self._py_scheduler.run(blocking=True)
-            self._new_schedule_event.wait()
+            if self._running:
+                self._new_schedule_event.wait()
+
+    def stop(self) -> None:
+        self._running = False
+        self._new_schedule_event.set()
 
     def handle(self) -> float:
         return self._py_scheduler.run(blocking=False)
