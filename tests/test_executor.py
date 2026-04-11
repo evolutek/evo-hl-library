@@ -12,7 +12,7 @@ class TestSimpleExecutorExec:
         executor = SimpleExecutor()
         task = executor.exec(lambda: 42)
         executor.handle()
-        assert task.wait() == 42
+        assert task.wait() == (42,)
 
 
 class TestSimpleExecutorError:
@@ -30,7 +30,7 @@ class TestSimpleExecutorError:
         executor.handle()
         with pytest.raises(ZeroDivisionError):
             t1.wait()
-        assert t2.wait() == 42
+        assert t2.wait() == (42,)
 
 
 class TestSimpleExecutorRunStop:
@@ -41,7 +41,7 @@ class TestSimpleExecutorRunStop:
         t.start()
 
         task = executor.exec(lambda: 42)
-        assert task.wait(timeout=1.0) == 42
+        assert task.wait(timeout=1.0) == (42,)
 
         executor.stop()
         t.join(timeout=1.0)
