@@ -126,8 +126,9 @@ class GPIOChipVirtual(InterfaceHolder):
         self._address = address
         self._pins: dict[int, GPIOPinVirtual] = {}
 
-    def init(self) -> None:
+    def init(self) -> Task[()]:
         self._log.info(f"MCP23017 virtual '{self.name}' initialized at 0x{self._address:02x}")
+        return ImmediateResultTask()
 
     def close(self) -> None:
         self._pins.clear()

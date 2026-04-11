@@ -378,9 +378,12 @@ class ArgTypes:
         _default_max: int = None
 
         def __init__(self, help, min, max):
-            super().__init__(help, min, max)
             assert(self._default_min is not None)
             assert(self._default_max is not None)
+            super().__init__(help,
+                min if min is not None else self._default_min,
+                max if max is not None else self._default_max,
+            )
 
         def value_from_config(self, v: ConfigValue) -> int:
             if not isinstance(v, int):

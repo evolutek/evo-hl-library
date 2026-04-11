@@ -1,14 +1,20 @@
-"""GPIO driver: real Raspberry Pi implementation via gpiod (libgpiod v2)."""
+"""GPIO driver: real Raspberry Pi implementation via gpiod (libgpiod v2)
+and virtual implementation for testing."""
 
 import os
 import selectors
 import threading
 
 from evo_lib.argtypes import ArgTypes
-from evo_lib.driver_definition import DriverDefinition, DriverInitArgs, DriverInitArgsDefinition
+from evo_lib.driver_definition import (
+    DriverDefinition,
+    DriverInitArgs,
+    DriverInitArgsDefinition,
+)
 from evo_lib.event import Event
 from evo_lib.interfaces.gpio import GPIO, GPIODirection, GPIOEdge
 from evo_lib.logger import Logger
+from evo_lib.drivers.gpio.virtual import GPIOPinVirtual
 from evo_lib.task import ImmediateErrorTask, ImmediateResultTask, Task
 
 # Lazy-loaded in init() so this module can be imported without gpiod installed
@@ -39,10 +45,11 @@ class RpiGPIO(GPIO):
         self._watch_thread: threading.Thread | None = None
         self._events: dict[GPIOEdge, Event[bool]] = {}
 
-    def init(self) -> None:
+    def init(self) -> Task[()]:
         global _gpiod
         if _gpiod is None:
             import gpiod
+
             _gpiod = gpiod
 
         if self._direction == GPIODirection.INPUT:
@@ -62,6 +69,7 @@ class RpiGPIO(GPIO):
             config={self._pin: settings},
         )
         self._log.info(f"RpiGPIO '{self.name}' initialized on pin {self._pin} ({self._direction})")
+        return ImmediateResultTask()
 
     def close(self) -> None:
         if self._stop_w < 0:
@@ -161,6 +169,71 @@ class RpiGPIODefinition(DriverDefinition):
 
     def create(self, args: DriverInitArgs) -> RpiGPIO:
         return RpiGPIO(
+            name=args.get_name(),
+            logger=self._logger,
+            pin=args.get("pin"),
+            direction=args.get("direction"),
+            chip=args.get("chip"),
+        )
+
+
+class RpiGPIOVirtual(GPIO):
+    """Virtual twin of RpiGPIO: same constructor signature, pure in-memory.
+
+    Delegates to GPIOPinVirtual for all GPIO logic. Accepts the same
+    arguments as RpiGPIO so the factory can swap them transparently.
+    Exposes inject_input() for simulation.
+    """
+
+    def __init__(
+        self,
+        name: str,
+        logger: Logger,
+        pin: int,
+        direction: GPIODirection = GPIODirection.INPUT,
+        chip: str = f"virtual/{DEFAULT_CHIP}",
+    ):
+        super().__init__(name)
+        self._pin = pin
+        self._chip_path = chip
+        self._inner = GPIOPinVirtual(name, logger, direction, pin=pin)
+
+    def init(self) -> Task[()]:
+        return self._inner.init()
+
+    def close(self) -> None:
+        self._inner.close()
+
+    def read(self) -> Task[bool]:
+        return self._inner.read()
+
+    def write(self, state: bool) -> Task[None]:
+        return self._inner.write(state)
+
+    def interrupt(self, edge: GPIOEdge = GPIOEdge.BOTH) -> Event[bool]:
+        return self._inner.interrupt(edge)
+
+    def inject_input(self, value: bool) -> None:
+        """Inject a value for simulation. Triggers interrupt events if active."""
+        self._inner.inject_input(value)
+
+
+class RpiGPIOVirtualDefinition(DriverDefinition):
+    """Factory for RpiGPIOVirtual from config args."""
+
+    def __init__(self, logger: Logger):
+        super().__init__()
+        self._logger = logger
+
+    def get_init_args_definition(self) -> DriverInitArgsDefinition:
+        defn = DriverInitArgsDefinition()
+        defn.add_required("pin", ArgTypes.U8())
+        defn.add_optional("direction", ArgTypes.Enum(GPIODirection), GPIODirection.INPUT)
+        defn.add_optional("chip", ArgTypes.String(), DEFAULT_CHIP)
+        return defn
+
+    def create(self, args: DriverInitArgs) -> RpiGPIOVirtual:
+        return RpiGPIOVirtual(
             name=args.get_name(),
             logger=self._logger,
             pin=args.get("pin"),

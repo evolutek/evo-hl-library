@@ -61,7 +61,7 @@ class MCP23017Pin(GPIO):
         self._log = chip._log
         self._iodir_reg, self._gpio_reg, self._gppu_reg, self._olat_reg, self._bit = _port_regs(pin)
 
-    def init(self) -> None:
+    def init(self) -> Task[()]:
         if self._direction == GPIODirection.INPUT:
             self._chip.set_bit(self._iodir_reg, self._bit, True)
             self._chip.set_bit(self._gppu_reg, self._bit, self._pull_up)
@@ -74,6 +74,7 @@ class MCP23017Pin(GPIO):
             self.name,
             self._direction.value,
         )
+        return ImmediateResultTask()
 
     def close(self) -> None:
         pass
@@ -117,7 +118,7 @@ class MCP23017Chip(InterfaceHolder):
         self._lock = threading.Lock()
         self._pins: dict[int, MCP23017Pin] = {}
 
-    def init(self) -> None:
+    def init(self) -> Task[()]:
         """Initialize the MCP23017: set all pins as inputs (default state)."""
         self.write_register(_IODIR_A, 0xFF)
         self.write_register(_IODIR_B, 0xFF)
@@ -126,6 +127,7 @@ class MCP23017Chip(InterfaceHolder):
             self.name,
             self._address,
         )
+        return ImmediateResultTask()
 
     def close(self) -> None:
         self._pins.clear()
