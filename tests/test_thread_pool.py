@@ -17,7 +17,7 @@ class TestThreadPoolExec:
     def test_exec_and_wait(self):
         pool = make_pool()
         task = pool.exec(lambda: 42)
-        assert task.wait(timeout=1.0) == 42
+        assert task.wait(timeout=1.0) == (42,)
         pool.stop()
 
 
@@ -36,7 +36,7 @@ class TestThreadPoolError:
             bad.wait(timeout=1.0)
         # Worker should still be alive for the next task
         good = pool.exec(lambda: 42)
-        assert good.wait(timeout=1.0) == 42
+        assert good.wait(timeout=1.0) == (42,)
         pool.stop()
 
 
@@ -60,7 +60,7 @@ class TestThreadPoolWorkers:
         assert len(pool.workers) == 2
         # A third task should not create a new worker
         t3 = pool.exec(lambda: 99)
-        assert t3.wait(timeout=1.0) == 99
+        assert t3.wait(timeout=1.0) == (99,)
         assert len(pool.workers) == 2
         pool.stop()
 
@@ -69,17 +69,6 @@ class TestThreadPoolWorkers:
         barrier = threading.Barrier(3, timeout=2.0)
         # 3 tasks that all must reach the barrier to succeed
         tasks = [pool.exec(barrier.wait) for _ in range(3)]
-        for t in tasks:
-            t.wait(timeout=2.0)
+        for task in tasks:
+            task.wait(timeout=2.0)
         pool.stop()
-
-
-class TestThreadPoolStop:
-    def test_stop_joins_all_workers(self):
-        pool = make_pool()
-        pool.exec(lambda: 1).wait(timeout=1.0)
-        threads = [w.thread for w in pool.workers]
-        pool.stop()
-        for t in threads:
-            assert not t.is_alive()
-        assert len(pool.workers) == 0

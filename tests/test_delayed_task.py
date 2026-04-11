@@ -11,7 +11,7 @@ class TestDelayedTaskComplete:
     def test_complete_and_wait(self):
         task = DelayedTask()
         task.complete(42)
-        assert task.wait() == 42
+        assert task.wait() == (42,)
 
     def test_complete_sets_done(self):
         task = DelayedTask()
@@ -98,7 +98,7 @@ class TestDelayedTaskThreaded:
         t.start()
         task.complete(42)
         t.join(timeout=1.0)
-        assert result == [42]
+        assert result == [(42,)]
 
     def test_producer_consumer_pattern(self):
         """Simulate motor goto: producer updates progress, consumer waits."""

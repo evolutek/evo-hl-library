@@ -6,11 +6,12 @@ from evo_lib.drivers.gpio.mcp23017 import MCP23017Chip
 from evo_lib.drivers.gpio.virtual import GPIOChipVirtual, GPIOPinVirtual
 from evo_lib.drivers.i2c.virtual import I2CVirtual
 from evo_lib.interfaces.gpio import GPIODirection
+from evo_lib.logger import Logger
 
 
 @pytest.fixture
 def chip():
-    c = GPIOChipVirtual(name="test_chip", address=0x20)
+    c = GPIOChipVirtual(name="test_chip", logger=Logger("test"), address=0x20)
     c.init()
     yield c
     c.close()
@@ -81,7 +82,7 @@ class TestMCP23017Chip:
         # Inject GPIO_A value with bit 3 set
         dev.inject_read(b"\x08")
         result = pin.read()
-        assert result.wait() is True
+        assert result.wait() == (True,)
 
     def test_pull_up(self, bus_and_chip):
         _, dev, chip = bus_and_chip

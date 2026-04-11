@@ -149,7 +149,7 @@ class GPIOChipVirtual(InterfaceHolder):
             raise ValueError(f"Pin {pin} out of range (0-{NUM_MCP23017_PINS - 1})")
         if pin in self._pins:
             return self._pins[pin]
-        virtual_pin = GPIOPinVirtual(name, pin, direction, pull_up, logger=self._log)
+        virtual_pin = GPIOPinVirtual(name, self._log, direction, pull_up, pin)
         self._pins[pin] = virtual_pin
         return virtual_pin
 

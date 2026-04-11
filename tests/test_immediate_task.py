@@ -12,7 +12,7 @@ from evo_lib.task import (
 class TestImmediateResultTask:
     def test_wait_returns_value(self):
         r = ImmediateResultTask(42)
-        assert r.wait() == 42
+        assert r.wait() == (42,)
 
     def test_is_done(self):
         assert ImmediateResultTask(1).is_done() is True
