@@ -16,6 +16,7 @@ from evo_lib.interfaces.pilot import (
     Pilot,
     PilotMoveStatus,
 )
+from evo_lib.interfaces.pwm import PWM
 from evo_lib.interfaces.serial import Serial
 from evo_lib.interfaces.servo import Servo
 from evo_lib.interfaces.smart_servo import SmartServo
@@ -33,6 +34,7 @@ __all__ = [
     "Lidar2D",
     "Pilot",
     "PilotMoveStatus",
+    "PWM",
     "Serial",
     "Servo",
     "SmartServo",
