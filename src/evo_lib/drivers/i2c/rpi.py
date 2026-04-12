@@ -1,4 +1,4 @@
-"""I2C driver: real Raspberry Pi implementation via Adafruit Blinka."""
+"""I2C driver: real Raspberry Pi implementation via smbus2 / i2c_rdwr."""
 
 import threading
 
@@ -11,16 +11,15 @@ from evo_lib.task import ImmediateResultTask, Task
 
 
 class RpiI2C(I2C):
-    """Real I2C bus on a Raspberry Pi (or any Blinka-supported SBC).
+    """Real I2C bus on a Raspberry Pi via smbus2.
 
-    Wraps busio.I2C with the board's default SCL/SDA pins for the given
-    bus number. Hardware libraries are lazily imported in init() so that
-    this module can be imported on dev machines without Blinka installed.
+    Opens /dev/i2c-N through smbus2.SMBus and uses i2c_rdwr for the three
+    raw transaction flavours (write, read, write-then-read). smbus2 is a
+    pure-Python wrapper on the kernel ioctl interface, so no GPIO-backend
+    library is needed at import time.
 
     All operations are serialized with a threading.Lock so that multiple
     threads sharing the same bus block properly instead of spin-waiting.
-    Each I/O returns an ImmediateResultTask wrapping the synchronous busio
-    call, matching the library-wide Task-returning driver contract.
     """
 
     def __init__(self, name: str, logger: Logger, bus: int = 1):
@@ -32,17 +31,16 @@ class RpiI2C(I2C):
 
     def init(self) -> Task[()]:
         """Open the I2C bus. Must be called before any read/write."""
-        import busio
+        from smbus2 import SMBus
 
-        scl, sda = self._get_i2c_pins(self._bus_number)
-        self._i2c = busio.I2C(scl, sda)
+        self._i2c = SMBus(self._bus_number)
         self._log.info(f"I2C bus {self._bus_number} opened")
         return ImmediateResultTask()
 
     def close(self) -> None:
         """Release the I2C bus."""
         if self._i2c is not None:
-            self._i2c.deinit()
+            self._i2c.close()
             self._i2c = None
             self._log.info(f"I2C bus {self._bus_number} closed")
 
@@ -50,43 +48,48 @@ class RpiI2C(I2C):
         if self._i2c is None:
             raise RuntimeError("I2C bus not opened, call init() first")
 
-    def write_to(self, address: int, data: bytes) -> Task[None]:
+    def write_to(self, address: int, data: bytes) -> Task[()]:
+        from smbus2 import i2c_msg
         self._check_ready()
         with self._lock:
-            self._i2c.writeto(address, data)
+            self._i2c.i2c_rdwr(i2c_msg.write(address, data))
         return ImmediateResultTask(None)
 
     def read_from(self, address: int, count: int) -> Task[bytes]:
+        from smbus2 import i2c_msg
         self._check_ready()
-        buf = bytearray(count)
+        msg = i2c_msg.read(address, count)
         with self._lock:
-            self._i2c.readfrom_into(address, buf)
-        return ImmediateResultTask(bytes(buf))
+            self._i2c.i2c_rdwr(msg)
+        return ImmediateResultTask(bytes(msg))
 
     def write_then_read(self, address: int, out_data: bytes, in_count: int) -> Task[bytes]:
+        from smbus2 import i2c_msg
         self._check_ready()
-        buf = bytearray(in_count)
+        write = i2c_msg.write(address, out_data)
+        read = i2c_msg.read(address, in_count)
         with self._lock:
-            self._i2c.writeto_then_readfrom(address, out_data, buf)
-        return ImmediateResultTask(bytes(buf))
+            # Combined write+read in one transaction (repeated-START between).
+            self._i2c.i2c_rdwr(write, read)
+        return ImmediateResultTask(bytes(read))
 
     def scan(self) -> Task[list[int]]:
+        """Probe each valid 7-bit I2C address and return the ones that ACK.
+
+        smbus2 has no built-in scan; we iterate the standard range 0x03-0x77
+        and count a write_quick ACK as "device present". Reserved addresses
+        (0x00-0x02, 0x78-0x7F) are skipped per the I2C spec.
+        """
         self._check_ready()
+        found: list[int] = []
         with self._lock:
-            return ImmediateResultTask(self._i2c.scan())
-
-    @staticmethod
-    def _get_i2c_pins(bus: int) -> tuple:
-        """Return (SCL, SDA) board pins for the given I2C bus number."""
-        import board
-
-        if bus == 1:
-            return board.SCL, board.SDA
-        scl_attr = f"SCL{bus}"
-        sda_attr = f"SDA{bus}"
-        if hasattr(board, scl_attr) and hasattr(board, sda_attr):
-            return getattr(board, scl_attr), getattr(board, sda_attr)
-        raise ValueError(f"I2C bus {bus} not supported: board has no {scl_attr}/{sda_attr} pins")
+            for addr in range(0x03, 0x78):
+                try:
+                    self._i2c.write_quick(addr)
+                    found.append(addr)
+                except OSError:
+                    pass
+        return ImmediateResultTask(found)
 
 
 class RpiI2CDefinition(DriverDefinition):
@@ -131,7 +134,7 @@ class RpiI2CVirtual(I2C):
         self._inner.close()
         self._log.info(f"RpiI2CVirtual '{self.name}' closed")
 
-    def write_to(self, address: int, data: bytes) -> Task[None]:
+    def write_to(self, address: int, data: bytes) -> Task[()]:
         return self._inner.write_to(address, data)
 
     def read_from(self, address: int, count: int) -> Task[bytes]:

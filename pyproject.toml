@@ -21,7 +21,11 @@ dependencies = [
 # Hardware libs for Raspberry Pi (and any blinka-supported SBC).
 # Install on the robot: uv sync --extra rpi
 rpi = [
-    "adafruit-blinka>=8.0",
+    # I2C via smbus2 (pure Python, wraps the kernel ioctl interface).
+    "smbus2>=0.4",
+    # GPIO via gpiod (libgpiod v2 Python bindings). Single GPIO backend in
+    # the stack; no Blinka / RPi.GPIO shim needed since RpiI2C no longer
+    # goes through busio. See #67.
     "gpiod>=2.0",
     "pyserial>=3.5",
     "rplidar-roboticia>=0.9",
