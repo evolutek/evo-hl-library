@@ -35,7 +35,7 @@ class Platform:
             self.os = PlatformOS.UNKNOWN
 
         release = platform.release()
-        if release.count("Raspbian") > 0: # TODO: Check if correct
+        if "rpt-rpi" in release:
             self.hardware = PlatformHardware.RASPBERRY_PI
         else:
             self.hardware = PlatformHardware.COMPUTER
