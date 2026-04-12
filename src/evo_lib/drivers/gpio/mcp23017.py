@@ -86,7 +86,7 @@ class MCP23017Pin(GPIO):
         val = self._chip.read_register(self._gpio_reg)
         return ImmediateResultTask(bool(val & (1 << self._bit)))
 
-    def write(self, state: bool) -> Task[None]:
+    def write(self, state: bool) -> Task[()]:
         """Set the pin output state via the chip's I2C connection."""
         if self._direction != GPIODirection.OUTPUT:
             return ImmediateErrorTask(NotImplementedError("write() requires OUTPUT direction"))
@@ -156,23 +156,24 @@ class MCP23017Chip(InterfaceHolder):
     def read_register(self, register: int) -> int:
         """Read a single byte from a MCP23017 register."""
         with self._lock:
-            data = self._bus.write_then_read(self._address, bytes([register]), 1)
+            (data,) = self._bus.write_then_read(self._address, bytes([register]), 1).wait()
         return data[0]
 
     def write_register(self, register: int, value: int) -> None:
         """Write a single byte to a MCP23017 register."""
         with self._lock:
-            self._bus.write_to(self._address, bytes([register, value]))
+            self._bus.write_to(self._address, bytes([register, value])).wait()
 
     def set_bit(self, register: int, bit: int, value: bool) -> None:
         """Read-modify-write a single bit in a register (atomic)."""
         with self._lock:
-            current = self._bus.write_then_read(self._address, bytes([register]), 1)[0]
+            (data,) = self._bus.write_then_read(self._address, bytes([register]), 1).wait()
+            current = data[0]
             if value:
                 current |= 1 << bit
             else:
                 current &= ~(1 << bit)
-            self._bus.write_to(self._address, bytes([register, current]))
+            self._bus.write_to(self._address, bytes([register, current])).wait()
 
 
 class MCP23017ChipDefinition(DriverDefinition):
@@ -189,12 +190,11 @@ class MCP23017ChipDefinition(DriverDefinition):
 
     def get_init_args_definition(self) -> DriverInitArgsDefinition:
         defn = DriverInitArgsDefinition()
-        defn.add_required("name", ArgTypes.String())
         defn.add_optional("address", ArgTypes.U8(), 0x20)
         return defn
 
     def create(self, args: DriverInitArgs) -> MCP23017Chip:
-        name = args.get("name")
+        name = args.get_name()
         return MCP23017Chip(
             name=name,
             bus=self._bus,
