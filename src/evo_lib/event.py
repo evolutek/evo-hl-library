@@ -78,3 +78,44 @@ class Event[*T](Listeners[*T]):
         event = Event[*U]()
         self.register(lambda *args: event.trigger(*callback(*args)))
         return event
+
+    def debounce(self, delay_s: float) -> Event[*T]:
+        """Return a debounced event: only the last value stable for ``delay_s`` fires.
+
+        Each incoming trigger cancels any pending emission and schedules a new
+        one. The downstream event only fires once the upstream has been quiet
+        for ``delay_s``. Useful to filter mechanical bouncing on switches.
+        """
+        debounced = Event[*T]()
+        lock = threading.Lock()
+        timer: threading.Timer | None = None
+        last_args: tuple | None = None
+        # Bumped on every upstream trigger. A pending fire commits only if its
+        # captured generation still matches at fire time; otherwise a newer
+        # event has arrived and will schedule its own fire.
+        generation = 0
+
+        def handler(*args):
+            nonlocal timer, last_args, generation
+            with lock:
+                last_args = args
+                generation += 1
+                my_gen = generation
+                if timer is not None:
+                    timer.cancel()
+
+                def fire():
+                    nonlocal timer
+                    with lock:
+                        if generation != my_gen:
+                            return
+                        args_to_fire = last_args
+                        timer = None
+                    debounced.trigger(*args_to_fire)
+
+                timer = threading.Timer(delay_s, fire)
+                timer.daemon = True
+                timer.start()
+
+        self.register(handler)
+        return debounced

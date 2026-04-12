@@ -1,6 +1,9 @@
-"""Tirette driver: real (GPIO-based) and virtual implementations."""
+"""Tirette driver: wraps a GPIO interface to detect pull/put transitions.
 
-from typing import TYPE_CHECKING
+Both Tirette and TiretteVirtual take a GPIO peripheral by reference;
+they do not instantiate their own GPIO. This lets a tirette sit on any
+GPIO source (RPi, MCP23017, virtual, ...) chosen in config.
+"""
 
 from evo_lib.argtypes import ArgTypes
 from evo_lib.driver_definition import (
@@ -9,37 +12,55 @@ from evo_lib.driver_definition import (
     DriverInitArgs,
     DriverInitArgsDefinition,
 )
+from evo_lib.drivers.gpio.virtual import GPIOPinVirtual
 from evo_lib.event import Event
-from evo_lib.interfaces.gpio import GPIO, GPIODirection, GPIOEdge
+from evo_lib.interfaces.gpio import GPIO, GPIOEdge
 from evo_lib.logger import Logger
-from evo_lib.peripheral import Placable
+from evo_lib.peripheral import Peripheral, Placable
+from evo_lib.registry import Registry
 from evo_lib.task import ImmediateResultTask, Task
-
-if TYPE_CHECKING:
-    from evo_lib.drivers.gpio.rpi import RpiGPIOVirtual
 
 
 class Tirette(Placable):
-    """Real tirette: listens to a GPIO interrupt to detect pull/put."""
+    """Listens to a GPIO interrupt to detect pull/put events.
+
+    The GPIO is injected and managed externally (by the PeripheralsManager).
+    ``debounce_s`` filters mechanical bouncing on insertion/removal: only
+    a state stable for ``debounce_s`` is propagated to listeners.
+    """
 
     commands = DriverCommands()
 
-    def __init__(self, name: str, logger: Logger, gpio: GPIO, active_state: bool):
+    def __init__(
+        self,
+        name: str,
+        logger: Logger,
+        gpio: GPIO,
+        active_state: bool,
+        debounce_s: float = 0.0,
+    ):
         super().__init__(name)
         self._logger = logger
         self._gpio = gpio
         self._active_state = active_state
+        self._debounce_s = debounce_s
 
     def init(self) -> Task[()]:
-        self._gpio.init()
+        # GPIO dependency is initialized by the PeripheralsManager.
         return ImmediateResultTask()
 
     def close(self) -> None:
-        self._gpio.close()
+        # GPIO dependency is closed by the PeripheralsManager.
+        pass
 
     def get_trigger_event(self) -> Event[bool]:
         """Return an event with an argument at True if the tirette is pulled."""
-        return self._gpio.interrupt(GPIOEdge.BOTH).transform(lambda x: (x != self._active_state,))
+        event = self._gpio.interrupt(GPIOEdge.BOTH).transform(
+            lambda x: (x != self._active_state,)
+        )
+        if self._debounce_s > 0:
+            event = event.debounce(self._debounce_s)
+        return event
 
     @commands.register(
         args=[],
@@ -52,39 +73,52 @@ class Tirette(Placable):
 
 
 class TiretteDefinition(DriverDefinition):
-    """Factory for real Tirette. Creates an RpiGPIO internally from the pin number."""
+    """Factory for Tirette. Takes a GPIO peripheral by reference."""
 
-    def __init__(self, logger: Logger):
+    def __init__(self, logger: Logger, peripherals: Registry[Peripheral]):
         super().__init__(Tirette.commands)
         self._logger = logger
+        self._peripherals = peripherals
 
     def get_init_args_definition(self) -> DriverInitArgsDefinition:
         defn = DriverInitArgsDefinition()
-        defn.add_required("pin", ArgTypes.U8())
+        defn.add_required("gpio", ArgTypes.Component(GPIO, self._peripherals))
         defn.add_required(
             "active_state", ArgTypes.Bool(help="True means the tirette is in place when GPIO is high")
+        )
+        defn.add_optional(
+            "debounce_s", ArgTypes.F32(help="Stability window (s) for mechanical bouncing"), 0.0
         )
         return defn
 
     def create(self, args: DriverInitArgs) -> Tirette:
-        from evo_lib.drivers.gpio.rpi import RpiGPIO
-
-        gpio = RpiGPIO(
-            name=f"{args.get_name()}_gpio",
-            logger=self._logger,
-            pin=args.get("pin"),
-            direction=GPIODirection.INPUT,
+        return Tirette(
+            args.get_name(),
+            self._logger,
+            args.get("gpio"),
+            args.get("active_state"),
+            args.get("debounce_s"),
         )
-        return Tirette(args.get_name(), self._logger, gpio, args.get("active_state"))
 
 
 class TiretteVirtual(Tirette):
-    """Virtual tirette for simulation. Adds pull/put commands to inject GPIO state."""
+    """Virtual tirette: same as Tirette but adds pull/put simulation commands.
+
+    Requires a GPIOPinVirtual (which exposes inject_input) rather than any
+    GPIO interface.
+    """
 
     commands = DriverCommands(parents=[Tirette.commands])
 
-    def __init__(self, name: str, logger: Logger, gpio: "RpiGPIOVirtual", active_state: bool):
-        super().__init__(name, logger, gpio, active_state)
+    def __init__(
+        self,
+        name: str,
+        logger: Logger,
+        gpio: GPIOPinVirtual,
+        active_state: bool,
+        debounce_s: float = 0.0,
+    ):
+        super().__init__(name, logger, gpio, active_state, debounce_s)
         self._virtual_gpio = gpio
 
     @commands.register(args=[], result=[])
@@ -103,27 +137,29 @@ class TiretteVirtual(Tirette):
 
 
 class TiretteVirtualDefinition(DriverDefinition):
-    """Factory for TiretteVirtual. Creates an RpiGPIOVirtual internally."""
+    """Factory for TiretteVirtual. Takes a GPIOPinVirtual peripheral by reference."""
 
-    def __init__(self, logger: Logger):
+    def __init__(self, logger: Logger, peripherals: Registry[Peripheral]):
         super().__init__(TiretteVirtual.commands)
         self._logger = logger
+        self._peripherals = peripherals
 
     def get_init_args_definition(self) -> DriverInitArgsDefinition:
         defn = DriverInitArgsDefinition()
-        defn.add_required("pin", ArgTypes.U8())
+        defn.add_required("gpio", ArgTypes.Component(GPIOPinVirtual, self._peripherals))
         defn.add_required(
             "active_state", ArgTypes.Bool(help="True means the tirette is in place when GPIO is high")
+        )
+        defn.add_optional(
+            "debounce_s", ArgTypes.F32(help="Stability window (s) for mechanical bouncing"), 0.0
         )
         return defn
 
     def create(self, args: DriverInitArgs) -> TiretteVirtual:
-        from evo_lib.drivers.gpio.rpi import RpiGPIOVirtual
-
-        gpio = RpiGPIOVirtual(
-            name=f"{args.get_name()}_gpio",
-            logger=self._logger,
-            pin=args.get("pin"),
-            direction=GPIODirection.INPUT,
+        return TiretteVirtual(
+            args.get_name(),
+            self._logger,
+            args.get("gpio"),
+            args.get("active_state"),
+            args.get("debounce_s"),
         )
-        return TiretteVirtual(args.get_name(), self._logger, gpio, args.get("active_state"))
