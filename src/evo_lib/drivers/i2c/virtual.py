@@ -1,10 +1,7 @@
 """I2C driver: in-memory virtual implementation for testing and simulation."""
 
-import logging
-
 from evo_lib.interfaces.i2c import I2C
-
-log = logging.getLogger(__name__)
+from evo_lib.task import ImmediateResultTask, Task
 
 
 class I2CDeviceVirtual:
@@ -49,8 +46,9 @@ class I2CVirtual(I2C):
         self._devices: dict[int, I2CDeviceVirtual] = {}
         self._opened = False
 
-    def init(self) -> None:
+    def init(self) -> Task[()]:
         self._opened = True
+        return ImmediateResultTask()
 
     def close(self) -> None:
         self._opened = False
@@ -71,22 +69,23 @@ class I2CVirtual(I2C):
             raise OSError(f"No device at address 0x{address:02x}")
         return self._devices[address]
 
-    def write_to(self, address: int, data: bytes) -> None:
+    def write_to(self, address: int, data: bytes) -> Task[()]:
         self._check_ready()
         device = self.get_device(address)
         device.written.append(data)
+        return ImmediateResultTask(None)
 
-    def read_from(self, address: int, count: int) -> bytes:
+    def read_from(self, address: int, count: int) -> Task[bytes]:
         self._check_ready()
         device = self.get_device(address)
-        return device.consume_read(count)
+        return ImmediateResultTask(device.consume_read(count))
 
-    def write_then_read(self, address: int, out_data: bytes, in_count: int) -> bytes:
+    def write_then_read(self, address: int, out_data: bytes, in_count: int) -> Task[bytes]:
         self._check_ready()
         device = self.get_device(address)
         device.written.append(out_data)
-        return device.consume_read(in_count)
+        return ImmediateResultTask(device.consume_read(in_count))
 
-    def scan(self) -> list[int]:
+    def scan(self) -> Task[list[int]]:
         self._check_ready()
-        return sorted(self._devices.keys())
+        return ImmediateResultTask(sorted(self._devices.keys()))
