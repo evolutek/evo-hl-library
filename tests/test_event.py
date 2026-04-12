@@ -1,6 +1,7 @@
 """Tests for multi-shot Event."""
 
 import threading
+import time
 
 from evo_lib.event import Event
 
@@ -73,3 +74,44 @@ class TestEvent:
     def test_trigger_no_callbacks(self):
         ev = Event()
         ev.trigger(1)  # should not raise
+
+
+class TestEventDebounce:
+    def test_debounce_emits_only_after_stable(self):
+        received = []
+        ev = Event()
+        debounced = ev.debounce(0.05)
+        debounced.register(lambda v: received.append(v))
+
+        # Burst of rapid events: only the last one should fire, once
+        ev.trigger(1)
+        ev.trigger(2)
+        ev.trigger(3)
+        time.sleep(0.15)
+        assert received == [3]
+
+    def test_debounce_respects_delay(self):
+        received = []
+        ev = Event()
+        debounced = ev.debounce(0.05)
+        debounced.register(lambda v: received.append(v))
+
+        ev.trigger(1)
+        # Before the delay expires, nothing should have fired yet
+        time.sleep(0.02)
+        assert received == []
+        # After the delay, it fires
+        time.sleep(0.08)
+        assert received == [1]
+
+    def test_debounce_two_stable_values(self):
+        received = []
+        ev = Event()
+        debounced = ev.debounce(0.05)
+        debounced.register(lambda v: received.append(v))
+
+        ev.trigger("a")
+        time.sleep(0.1)
+        ev.trigger("b")
+        time.sleep(0.1)
+        assert received == ["a", "b"]

@@ -3,7 +3,7 @@
 import pytest
 
 from evo_lib.drivers.gpio.tirette import TiretteVirtual
-from evo_lib.drivers.gpio.rpi import RpiGPIOVirtual
+from evo_lib.drivers.gpio.virtual import GPIOPinVirtual
 from evo_lib.interfaces.gpio import GPIODirection
 from evo_lib.logger import Logger
 
@@ -11,13 +11,15 @@ from evo_lib.logger import Logger
 @pytest.fixture
 def tirette():
     logger = Logger("test")
-    gpio = RpiGPIOVirtual(name="tirette_gpio", logger=logger, pin=17, direction=GPIODirection.INPUT)
+    gpio = GPIOPinVirtual(name="tirette_gpio", logger=logger, direction=GPIODirection.INPUT, pin=17)
+    gpio.init().wait()
     t = TiretteVirtual(name="tirette", logger=logger, gpio=gpio, active_state=True)
     t.init().wait()
     # Tirette starts in place (like on the real robot)
     t.put().wait()
     yield t
     t.close()
+    gpio.close()
 
 
 class TestTiretteVirtual:
