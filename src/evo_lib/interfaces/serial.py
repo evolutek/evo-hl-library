@@ -4,6 +4,9 @@ from abc import abstractmethod
 
 from evo_lib.peripheral import Interface
 
+DEFAULT_BAUDRATE = 38400
+DEFAULT_TIMEOUT = 1.0
+
 
 class Serial(Interface):
     """A serial bus (UART) abstraction.
@@ -36,6 +39,29 @@ class Serial(Interface):
     @abstractmethod
     def flush(self) -> None:
         """Flush the output buffer (wait until all bytes are sent)."""
+
+    @abstractmethod
+    def reset_input_buffer(self) -> None:
+        """Discard all bytes currently waiting in the input buffer.
+
+        Used to recover from a desynchronized state after a timeout, or
+        to drop the local echo on half-duplex buses (AX-12 Dynamixel)
+        before reading a device response.
+        """
+
+    def set_baudrate(self, baudrate: int) -> None:
+        """Reconfigure the bus baudrate on the fly (no reopen).
+
+        Optional capability. UART-based buses (pyserial, virtual twins)
+        override this. Buses with a fixed-speed transport (BT SPP, TCP
+        bridges) inherit the default and raise NotImplementedError.
+
+        AX-12 Dynamixel servos rely on this to switch between their
+        EEPROM-configured baudrates (1 Mbps, 500 kbps, ...) at runtime.
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} does not support runtime baudrate change"
+        )
 
     @property
     @abstractmethod

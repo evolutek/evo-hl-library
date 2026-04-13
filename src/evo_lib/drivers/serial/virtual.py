@@ -2,7 +2,15 @@
 
 import threading
 
-from evo_lib.interfaces.serial import Serial
+from evo_lib.argtypes import ArgTypes
+from evo_lib.driver_definition import (
+    DriverDefinition,
+    DriverInitArgs,
+    DriverInitArgsDefinition,
+)
+from evo_lib.interfaces.serial import DEFAULT_BAUDRATE, DEFAULT_TIMEOUT, Serial
+from evo_lib.logger import Logger
+from evo_lib.task import ImmediateResultTask, Task
 
 
 class SerialVirtual(Serial):
@@ -12,21 +20,31 @@ class SerialVirtual(Serial):
     for assertions. Thread-safe so it can be used with async reader threads.
     """
 
-    def __init__(self, name: str = "virtual", timeout: float = 1.0):
+    def __init__(
+        self,
+        name: str,
+        logger: Logger,
+        timeout: float = DEFAULT_TIMEOUT,
+    ):
         super().__init__(name)
+        self._log = logger
         self._timeout = timeout
+        self._baudrate = DEFAULT_BAUDRATE
         self._lock = threading.Lock()
         self._read_buffer = bytearray()
         self._read_event = threading.Event()
         self.written: list[bytes] = []
         self._opened = False
 
-    def init(self) -> None:
+    def init(self) -> Task[()]:
         self._opened = True
+        self._log.info(f"SerialVirtual '{self.name}' opened")
+        return ImmediateResultTask()
 
     def close(self) -> None:
         self._opened = False
         self._read_event.set()  # Unblock any waiting reads
+        self._log.info(f"SerialVirtual '{self.name}' closed")
 
     def _check_ready(self) -> None:
         if not self._opened:
@@ -64,6 +82,20 @@ class SerialVirtual(Serial):
     def flush(self) -> None:
         self._check_ready()
 
+    def reset_input_buffer(self) -> None:
+        self._check_ready()
+        with self._lock:
+            self._read_buffer.clear()
+            # Drop any pending wake-up: a concurrent reader must re-wait
+            # instead of consuming an empty buffer and timing out.
+            self._read_event.clear()
+
+    def set_baudrate(self, baudrate: int) -> None:
+        self._check_ready()
+        # No hardware to reconfigure; record the value for assertions.
+        self._baudrate = baudrate
+        self._log.info(f"SerialVirtual '{self.name}' baudrate set to {baudrate}")
+
     @property
     def in_waiting(self) -> int:
         self._check_ready()
@@ -77,3 +109,23 @@ class SerialVirtual(Serial):
         with self._lock:
             self._read_buffer.extend(data)
         self._read_event.set()
+
+
+class SerialVirtualDefinition(DriverDefinition):
+    """Factory for SerialVirtual from config args."""
+
+    def __init__(self, logger: Logger):
+        super().__init__()
+        self._logger = logger
+
+    def get_init_args_definition(self) -> DriverInitArgsDefinition:
+        defn = DriverInitArgsDefinition()
+        defn.add_optional("timeout", ArgTypes.F32(), DEFAULT_TIMEOUT)
+        return defn
+
+    def create(self, args: DriverInitArgs) -> SerialVirtual:
+        return SerialVirtual(
+            name=args.get_name(),
+            logger=self._logger,
+            timeout=args.get("timeout"),
+        )
