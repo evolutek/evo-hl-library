@@ -4,6 +4,8 @@ from abc import abstractmethod
 
 from evo_lib.peripheral import Interface
 
+# Historical Evolutek STM32 default — legacy trajman, recalage, actuator boards
+# all run at 38400 baud. Smart-servo buses (AX-12) override via set_baudrate().
 DEFAULT_BAUDRATE = 38400
 DEFAULT_TIMEOUT = 1.0
 
