@@ -1,12 +1,17 @@
 """Serial driver: real implementation via pyserial."""
 
-import logging
 import threading
 
-from evo_lib.interfaces.serial import Serial
-
-# Lazy-loaded in init() so this module can be imported without pyserial installed
-_serial = None
+from evo_lib.argtypes import ArgTypes
+from evo_lib.driver_definition import (
+    DriverDefinition,
+    DriverInitArgs,
+    DriverInitArgsDefinition,
+)
+from evo_lib.drivers.serial.virtual import SerialVirtual
+from evo_lib.interfaces.serial import DEFAULT_BAUDRATE, DEFAULT_TIMEOUT, Serial
+from evo_lib.logger import Logger
+from evo_lib.task import ImmediateResultTask, Task
 
 
 class RpiSerial(Serial):
@@ -19,41 +24,38 @@ class RpiSerial(Serial):
     def __init__(
         self,
         name: str,
+        logger: Logger,
         port: str,
-        baudrate: int = 38400,
-        timeout: float = 1.0,
-        logger: logging.Logger | None = None,
+        baudrate: int = DEFAULT_BAUDRATE,
+        timeout: float = DEFAULT_TIMEOUT,
     ):
         super().__init__(name)
         self._port_path = port
         self._baudrate = baudrate
         self._timeout = timeout
-        self._log = logger or logging.getLogger(__name__)
+        self._log = logger
         self._serial = None
         self._lock = threading.Lock()
 
-    def init(self) -> None:
-        global _serial
-        if _serial is None:
-            import serial
+    def init(self) -> Task[()]:
+        # pyserial imported lazily so this module stays importable without it.
+        # sys.modules caches the module, so repeated init() calls are free.
+        import serial
 
-            _serial = serial
-
-        self._serial = _serial.Serial(
+        self._serial = serial.Serial(
             port=self._port_path,
             baudrate=self._baudrate,
             timeout=self._timeout,
         )
         self._log.info(
-            "Serial '%s' opened at %d baud",
-            self._port_path,
-            self._baudrate,
+            f"RpiSerial '{self.name}' opened on {self._port_path} @ {self._baudrate} baud"
         )
+        return ImmediateResultTask()
 
     def close(self) -> None:
         if self._serial is not None:
             self._serial.close()
-            self._log.info("Serial '%s' closed", self._port_path)
+            self._log.info(f"RpiSerial '{self.name}' closed")
             self._serial = None
 
     def _check_ready(self) -> None:
@@ -86,8 +88,134 @@ class RpiSerial(Serial):
         with self._lock:
             self._serial.flush()
 
+    def reset_input_buffer(self) -> None:
+        self._check_ready()
+        with self._lock:
+            self._serial.reset_input_buffer()
+
+    def set_baudrate(self, baudrate: int) -> None:
+        self._check_ready()
+        with self._lock:
+            # pyserial reconfigures termios in-place on assignment.
+            self._serial.baudrate = baudrate
+            self._baudrate = baudrate
+        self._log.info(f"RpiSerial '{self.name}' baudrate set to {baudrate}")
+
     @property
     def in_waiting(self) -> int:
         self._check_ready()
         with self._lock:
             return self._serial.in_waiting
+
+
+class RpiSerialDefinition(DriverDefinition):
+    """Factory for RpiSerial from config args."""
+
+    def __init__(self, logger: Logger):
+        super().__init__()
+        self._logger = logger
+
+    def get_init_args_definition(self) -> DriverInitArgsDefinition:
+        defn = DriverInitArgsDefinition()
+        defn.add_required("port", ArgTypes.String())
+        defn.add_optional("baudrate", ArgTypes.U32(), DEFAULT_BAUDRATE)
+        defn.add_optional("timeout", ArgTypes.F32(), DEFAULT_TIMEOUT)
+        return defn
+
+    def create(self, args: DriverInitArgs) -> RpiSerial:
+        return RpiSerial(
+            name=args.get_name(),
+            logger=self._logger,
+            port=args.get("port"),
+            baudrate=args.get("baudrate"),
+            timeout=args.get("timeout"),
+        )
+
+
+class RpiSerialVirtual(Serial):
+    """Virtual twin of RpiSerial: same constructor signature, pure in-memory.
+
+    Delegates to SerialVirtual for all serial logic. Accepts the same
+    arguments as RpiSerial so the factory can swap them transparently
+    in config. Exposes inject_read() / written for simulation setups.
+    """
+
+    def __init__(
+        self,
+        name: str,
+        logger: Logger,
+        port: str,
+        baudrate: int = DEFAULT_BAUDRATE,
+        timeout: float = DEFAULT_TIMEOUT,
+    ):
+        super().__init__(name)
+        self._log = logger
+        self._port_path = port
+        self._baudrate = baudrate
+        self._inner = SerialVirtual(name, logger, timeout=timeout)
+
+    def init(self) -> Task[()]:
+        self._log.info(
+            f"RpiSerialVirtual '{self.name}' initialized "
+            f"(port={self._port_path}, baudrate={self._baudrate})"
+        )
+        return self._inner.init()
+
+    def close(self) -> None:
+        self._inner.close()
+
+    def write(self, data: bytes) -> None:
+        self._inner.write(data)
+
+    def read(self, count: int) -> bytes:
+        return self._inner.read(count)
+
+    def read_available(self) -> bytes:
+        return self._inner.read_available()
+
+    def flush(self) -> None:
+        self._inner.flush()
+
+    def reset_input_buffer(self) -> None:
+        self._inner.reset_input_buffer()
+
+    def set_baudrate(self, baudrate: int) -> None:
+        self._baudrate = baudrate
+        self._inner.set_baudrate(baudrate)
+
+    @property
+    def in_waiting(self) -> int:
+        return self._inner.in_waiting
+
+    # --- Simulation helpers ---
+
+    @property
+    def written(self) -> list[bytes]:
+        return self._inner.written
+
+    def inject_read(self, data: bytes) -> None:
+        self._inner.inject_read(data)
+
+
+class RpiSerialVirtualDefinition(DriverDefinition):
+    """Factory for RpiSerialVirtual from config args."""
+
+    def __init__(self, logger: Logger):
+        super().__init__()
+        self._logger = logger
+
+    def get_init_args_definition(self) -> DriverInitArgsDefinition:
+        defn = DriverInitArgsDefinition()
+        defn.add_required("port", ArgTypes.String())
+        defn.add_optional("baudrate", ArgTypes.U32(), DEFAULT_BAUDRATE)
+        defn.add_optional("timeout", ArgTypes.F32(), DEFAULT_TIMEOUT)
+        return defn
+
+    def create(self, args: DriverInitArgs) -> RpiSerialVirtual:
+        return RpiSerialVirtual(
+            name=args.get_name(),
+            logger=self._logger,
+            port=args.get("port"),
+            baudrate=args.get("baudrate"),
+            timeout=args.get("timeout"),
+        )
