@@ -5,13 +5,12 @@ the SOPAS (SICK Open Platform for Applications and Sensors) protocol
 with COLA-B framing over TCP.
 """
 
-import logging
 import math
 import socket
-import threading
 import time
-from collections import deque
-from typing import Generator
+from queue import Empty, Full, Queue
+from threading import Thread
+from typing import Iterator
 
 from evo_lib.argtypes import ArgTypes
 from evo_lib.driver_definition import DriverDefinition, DriverInitArgs, DriverInitArgsDefinition
@@ -19,6 +18,7 @@ from evo_lib.event import Event
 from evo_lib.interfaces.lidar import Lidar2D, Lidar2DMeasure
 from evo_lib.logger import Logger
 from evo_lib.task import ImmediateResultTask, Task
+from evo_lib.thread_pool import ThreadPoolExecutor
 
 # COLA-B framing
 _STX = b"\x02"
@@ -32,63 +32,68 @@ class SickTIMDriver(Lidar2D):
     def __init__(
         self,
         name: str,
+        logger: Logger,
+        threadpool: ThreadPoolExecutor,
         host: str,
         port: int = 2112,
-        logger: logging.Logger | None = None,
     ):
         super().__init__(name)
+        self._log = logger
+        self._threadpool = threadpool
         self._host = host
         self._port = port
-        self._log = logger or logging.getLogger(__name__)
         self._socket: socket.socket | None = None
         self._scan_event: Event[list[Lidar2DMeasure]] = Event()
-        self._poll_thread: threading.Thread | None = None
+        self._poll_thread: Thread | None = None
         self._running = False
-        self._measures: deque[Lidar2DMeasure] = deque(maxlen=10000)
-        self._data_ready = threading.Event()
+        self._measures: Queue[Lidar2DMeasure] = Queue(maxsize=10000)
 
-    def init(self) -> None:
+    def _init(self) -> None:
+        # TODO: Do this init in a worker thread because socket connection can take some time
         self._socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self._socket.settimeout(5.0)
         self._socket.connect((self._host, self._port))
-        self._log.info("SICK TIM '%s' connected to %s:%d", self.name, self._host, self._port)
+        self._log.info(f"SICK TIM '{self.name}' connected to {self._host}:{self._port}")
+
+    def init(self) -> Task[()]:
+        return self._threadpool.exec(self._init)
 
     def close(self) -> None:
         self.stop().wait()
         if self._socket is not None:
             self._socket.close()
             self._socket = None
-        self._log.info("SICK TIM '%s' closed", self.name)
+        self._log.info(f"SICK TIM '{self.name}' closed")
 
-    def start(self) -> Task[None]:
+    def start(self) -> Task[()]:
         if self._running:
-            return ImmediateResultTask(None)
+            return ImmediateResultTask()
         self._running = True
-        self._poll_thread = threading.Thread(
-            target=self._poll_loop, daemon=True, name=f"sicktim-{self.name}"
-        )
+        self._poll_thread = Thread(target=self._poll_loop)
         self._poll_thread.start()
-        return ImmediateResultTask(None)
+        return ImmediateResultTask()
 
-    def stop(self) -> Task[None]:
+    def stop(self) -> Task[()]:
         if not self._running:
-            return ImmediateResultTask(None)
+            return ImmediateResultTask()
         self._running = False
         if self._poll_thread is not None:
-            self._poll_thread.join(timeout=3.0)
+            self._poll_thread.join(timeout=1.0)
+            if self._poll_thread.is_alive():
+                self._log.error(f"Failed to stop Sick TIM lidar '{self.name}' thread")
             self._poll_thread = None
-        return ImmediateResultTask(None)
+        return ImmediateResultTask()
 
-    def iter(self, duration: float | None = None) -> Generator[Lidar2DMeasure, None, None]:
+    def iter(self, duration: float | None = None) -> Iterator[Lidar2DMeasure]:
         start = time.monotonic()
         while True:
             if duration is not None and time.monotonic() - start >= duration:
                 return
             if self._measures:
-                yield self._measures.popleft()
-            else:
-                self._data_ready.clear()
-                self._data_ready.wait(timeout=0.1)
+                try:
+                    yield self._measures.get(block=True, timeout=0.1)
+                except Empty:
+                    pass
 
     def on_scan(self) -> Event[list[Lidar2DMeasure]]:
         return self._scan_event
@@ -103,13 +108,15 @@ class SickTIMDriver(Lidar2D):
                     continue
                 batch = self._parse_response(response)
                 if batch:
-                    for m in batch:
-                        self._measures.append(m)
-                    self._data_ready.set()
+                    try:
+                        for m in batch:
+                            self._measures.put_nowait(m)
+                    except Full:
+                        pass
                     self._scan_event.trigger(batch)
         except Exception as e:
             if self._running:
-                self._log.error("SICK TIM poll error: %s", e)
+                self._log.error(f"SICK TIM poll error: {e}")
         finally:
             self._running = False
 
@@ -154,7 +161,7 @@ class SickTIMDriver(Lidar2D):
                         angle=math.radians(angle_deg),
                         distance=float(distance_mm),
                         timestamp=ts,
-                        quality=255.0,
+                        quality=1.0,
                     )
                 )
             return batch
@@ -165,21 +172,22 @@ class SickTIMDriver(Lidar2D):
 class SickTIMDefinition(DriverDefinition):
     """Factory for SickTIMDriver from config args."""
 
-    def __init__(self, logger: Logger):
+    def __init__(self, logger: Logger, threadpool: ThreadPoolExecutor):
+        super().__init__(Lidar2D.commands)
         self._logger = logger
+        self._threadpool = threadpool
 
     def get_init_args_definition(self) -> DriverInitArgsDefinition:
         defn = DriverInitArgsDefinition()
-        defn.add_required("name", ArgTypes.String())
         defn.add_required("host", ArgTypes.String())
         defn.add_optional("port", ArgTypes.U16(), 2112)
         return defn
 
     def create(self, args: DriverInitArgs) -> SickTIMDriver:
-        name = args.get("name")
         return SickTIMDriver(
-            name=name,
+            name=args.get_name(),
+            logger=self._logger,
+            threadpool=self._threadpool,
             host=args.get("host"),
             port=args.get("port"),
-            logger=self._logger.get_sublogger(name).get_stdlib_logger(),
         )

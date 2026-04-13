@@ -4,13 +4,11 @@ The RPLidar A2 is a rotating 2D lidar connected via USB serial.
 Uses the rplidar-roboticia library (already in rpi extras).
 """
 
-import logging
-import math
 import os
-import threading
 import time
-from collections import deque
-from typing import Generator
+from queue import Empty, Full, Queue
+from threading import Thread
+from typing import TYPE_CHECKING, Iterator
 
 from evo_lib.argtypes import ArgTypes
 from evo_lib.driver_definition import DriverDefinition, DriverInitArgs, DriverInitArgsDefinition
@@ -19,8 +17,14 @@ from evo_lib.interfaces.lidar import Lidar2D, Lidar2DMeasure
 from evo_lib.logger import Logger
 from evo_lib.task import ImmediateResultTask, Task
 
+_MEASURES_QUEUE_LENGTH = 10000
+
 # Lazy-loaded
 _rplidar = None
+
+if TYPE_CHECKING:
+    import adafruit_rplidar as rplidar_type
+    _rplidar = rplidar_type
 
 
 class RPLidarDriver(Lidar2D):
@@ -29,31 +33,31 @@ class RPLidarDriver(Lidar2D):
     def __init__(
         self,
         name: str,
+        logger: Logger,
         port: str,
         baudrate: int = 115200,
-        logger: logging.Logger | None = None,
     ):
         super().__init__(name)
         self._port = port
         self._baudrate = baudrate
-        self._log = logger or logging.getLogger(__name__)
-        self._lidar = None
+        self._log = logger
+        self._lidar: rplidar_type.RPLidar | None = None
         self._scan_event: Event[list[Lidar2DMeasure]] = Event()
-        self._scan_thread: threading.Thread | None = None
-        self._running = False
+        self._scan_thread: Thread | None = None
+        self._running: bool = False
         self._stop_r, self._stop_w = os.pipe()
-        self._measures: deque[Lidar2DMeasure] = deque(maxlen=10000)
-        self._data_ready = threading.Event()
+        self._measures: Queue[Lidar2DMeasure] = Queue(maxsize = _MEASURES_QUEUE_LENGTH)
 
-    def init(self) -> None:
+    def init(self) -> Task[()]:
         global _rplidar
         if _rplidar is None:
-            import rplidar
+            import adafruit_rplidar
+            _rplidar = adafruit_rplidar
 
-            _rplidar = rplidar
+        self._lidar = _rplidar.RPLidar(motor_pin = None, port = self._port, baudrate = self._baudrate)
+        self._log.info(f"RPLidar '{self.name}' initialized on {self._port}")
 
-        self._lidar = _rplidar.RPLidar(self._port, baudrate=self._baudrate)
-        self._log.info("RPLidar '%s' initialized on %s", self.name, self._port)
+        return ImmediateResultTask()
 
     def close(self) -> None:
         self.stop().wait()
@@ -65,45 +69,48 @@ class RPLidarDriver(Lidar2D):
             self._lidar.stop()
             self._lidar.disconnect()
             self._lidar = None
-        self._log.info("RPLidar '%s' closed", self.name)
+        self._log.info(f"RPLidar '{self.name}' closed")
 
-    def start(self) -> Task[None]:
+    def start(self) -> Task[()]:
         if self._running:
-            return ImmediateResultTask(None)
+            return ImmediateResultTask()
         self._running = True
-        self._scan_thread = threading.Thread(
-            target=self._scan_loop, daemon=True, name=f"rplidar-{self.name}"
-        )
+        self._scan_thread = Thread(target=self._scan_loop)
         self._scan_thread.start()
-        return ImmediateResultTask(None)
+        return ImmediateResultTask()
 
     def stop(self) -> Task[None]:
         if not self._running:
-            return ImmediateResultTask(None)
+            return ImmediateResultTask()
         self._running = False
         if self._stop_w >= 0:
             os.write(self._stop_w, b"\x00")
         if self._scan_thread is not None:
-            self._scan_thread.join(timeout=3.0)
+            self._scan_thread.join(timeout=1.0)
+            if self._scan_thread.is_alive():
+                self._log.error(f"Failed to stop RPLidar '{self.name}' thread")
             self._scan_thread = None
-        return ImmediateResultTask(None)
+        return ImmediateResultTask()
 
-    def iter(self, duration: float | None = None) -> Generator[Lidar2DMeasure, None, None]:
+    def iter(self, duration: float | None = None) -> Iterator[Lidar2DMeasure]:
         start = time.monotonic()
         while True:
             if duration is not None and time.monotonic() - start >= duration:
                 return
             if self._measures:
-                yield self._measures.popleft()
-            else:
-                self._data_ready.clear()
-                self._data_ready.wait(timeout=0.1)
+                try:
+                    yield self._measures.get(block = True, timeout = 0.1)
+                except Empty:
+                    pass
 
     def on_scan(self) -> Event[list[Lidar2DMeasure]]:
         return self._scan_event
 
     def _scan_loop(self) -> None:
         """Background thread: read scans and fire events."""
+
+        # Old RPLidar implementation
+        """
         try:
             for scan in self._lidar.iter_scans():
                 if not self._running:
@@ -123,9 +130,39 @@ class RPLidarDriver(Lidar2D):
                 self._scan_event.trigger(batch)
         except Exception as e:
             if self._running:
-                self._log.error("RPLidar scan error: %s", e)
+                self._log.error(f"RPLidar scan error: {e}")
         finally:
             self._running = False
+        """
+
+        # New adafruit RPLidar implementation
+        batch = []
+        while self._running:
+            try:
+                for new_scan, quality, angle, distance in self._lidar.iter_measurements(
+                    scan_type = _rplidar.SCAN_TYPE_NORMAL,
+                    max_buf_meas = 2048
+                ):
+                    if not self._running:
+                        break
+
+                    if new_scan and len(batch) > 0:
+                        self._scan_event.trigger(batch)
+                        batch = []
+
+                    measure = Lidar2DMeasure(angle, distance, time.monotonic(), quality / 255.0)
+                    try:
+                        self._measures.put_nowait(measure)
+                    except Full:
+                        pass
+                    batch.append(measure)
+
+            except _rplidar.RPLidarException as e:
+                if self._running:
+                    self._log.error(f"RPLidar scan error: {e}")
+                    self._lidar.stop()
+                    self._lidar.start()
+                    time.sleep(0.2)
 
 
 class RPLidarDefinition(DriverDefinition):
@@ -135,17 +172,16 @@ class RPLidarDefinition(DriverDefinition):
         self._logger = logger
 
     def get_init_args_definition(self) -> DriverInitArgsDefinition:
-        defn = DriverInitArgsDefinition()
+        defn = DriverInitArgsDefinition(Lidar2D.commands)
         defn.add_required("name", ArgTypes.String())
         defn.add_required("port", ArgTypes.String())
         defn.add_optional("baudrate", ArgTypes.U32(), 115200)
         return defn
 
     def create(self, args: DriverInitArgs) -> RPLidarDriver:
-        name = args.get("name")
         return RPLidarDriver(
-            name=name,
+            name=args.get_name(),
+            logger=self._logger,
             port=args.get("port"),
             baudrate=args.get("baudrate"),
-            logger=self._logger.get_sublogger(name).get_stdlib_logger(),
         )

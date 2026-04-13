@@ -28,7 +28,8 @@ rpi = [
     # goes through busio. See #67.
     "gpiod>=2.0",
     "pyserial>=3.5",
-    "rplidar-roboticia>=0.9",
+    # RPLidar A-series driver.
+    "adafruit-circuitpython-rplidar>=1.2.20",
 ]
 
 # -- Development dependencies --
