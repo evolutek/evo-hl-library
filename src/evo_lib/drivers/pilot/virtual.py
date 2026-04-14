@@ -1,15 +1,21 @@
 """Pilot drivers: virtual implementations for testing and simulation.
 
-Simulates movement with linear interpolation in a background thread,
-similar to the legacy fake_trajman.py.
+``PilotVirtual`` / ``HolonomicPilotVirtual`` are standalone generic virtuals:
+their constructor takes simulation-tuning params (``speed_trsl``,
+``speed_rot``) rather than mirroring a real driver. Drop-in virtual twins
+(same constructor as their real counterpart) live alongside the real
+drivers in ``serial_pilot.py``.
+
+Movement simulation: linear interpolation in a background thread, similar
+to the legacy fake_trajman.py.
 """
 
-import logging
 import math
 import threading
 
 from evo_lib.argtypes import ArgTypes
 from evo_lib.driver_definition import DriverDefinition, DriverInitArgs, DriverInitArgsDefinition
+from evo_lib.event import Event
 from evo_lib.interfaces.pilot import (
     DifferentialPilot,
     DifferentialPilotWaypoint,
@@ -19,36 +25,46 @@ from evo_lib.interfaces.pilot import (
 )
 from evo_lib.logger import Logger
 from evo_lib.task import DelayedTask, ImmediateResultTask, Task
+from evo_lib.types.pose import Pose2D
+from evo_lib.types.vect import Vect2D
 
 
 class PilotVirtual(DifferentialPilot):
-    """Simulated pilot for testing and development without hardware."""
+    """Standalone simulated differential pilot for tests and simulation.
+
+    Not a drop-in twin of DifferentialSerialPilot — see
+    ``DifferentialSerialPilotVirtual`` in ``serial_pilot.py`` for that.
+    Use this class when the specific hardware does not matter and you want
+    to tune simulation speeds (``speed_trsl``, ``speed_rot``).
+    """
 
     def __init__(
         self,
         name: str,
+        logger: Logger,
         speed_trsl: float = 200.0,
         speed_rot: float = 2.0,
-        logger: logging.Logger | None = None,
     ):
         super().__init__(name)
+        self._log = logger
         self._speed_trsl = speed_trsl  # mm/s
         self._speed_rot = speed_rot  # rad/s
-        self._log = logger or logging.getLogger(__name__)
         self._x: float = 0.0
         self._y: float = 0.0
         self._theta: float = 0.0
         self._lock = threading.Lock()
         self._current_task: DelayedTask[PilotMoveStatus] | None = None
         self._cancel = threading.Event()
+        self._pose_velocity_event: Event[Pose2D, Vect2D] = Event()
 
     @property
     def position(self) -> tuple[float, float, float]:
         with self._lock:
             return (self._x, self._y, self._theta)
 
-    def init(self) -> None:
-        self._log.info("PilotVirtual '%s' initialized", self.name)
+    def init(self) -> Task[()]:
+        self._log.info(f"PilotVirtual '{self.name}' initialized")
+        return ImmediateResultTask()
 
     def close(self) -> None:
         self._cancel.set()
@@ -56,9 +72,11 @@ class PilotVirtual(DifferentialPilot):
     def go_to(self, x: float, y: float) -> Task[PilotMoveStatus]:
         dx = x - self._x
         dy = y - self._y
-        distance = math.sqrt(dx * dx + dy * dy)
-        if distance < 0.1:
+        # Compare squared distances to avoid a sqrt in the common near-target
+        # path (embedded target: minimize CPU in the hot trajectory loop).
+        if dx * dx + dy * dy < 0.01:
             return ImmediateResultTask(PilotMoveStatus.REACHED)
+        distance = math.sqrt(dx * dx + dy * dy)
         heading = math.atan2(dy, dx)
         duration = distance / self._speed_trsl
         return self._start_move(x, y, heading, duration)
@@ -103,16 +121,47 @@ class PilotVirtual(DifferentialPilot):
         wp = waypoints[-1]
         return self.go_to(wp.x, wp.y)
 
-    def stop(self) -> Task[None]:
+    def stop(self) -> Task[()]:
         self._cancel.set()
         if self._current_task is not None:
             self._current_task.complete(PilotMoveStatus.CANCELLED)
             self._current_task = None
-        return ImmediateResultTask(None)
+        return ImmediateResultTask()
 
-    def free(self) -> Task[None]:
+    def free(self) -> Task[()]:
         self._cancel.set()
-        return ImmediateResultTask(None)
+        return ImmediateResultTask()
+
+    def unfree(self) -> Task[()]:
+        # Simulation has no motors to re-enable — just clear the cancel flag
+        # so a subsequent move can start.
+        self._cancel.clear()
+        return ImmediateResultTask()
+
+    def on_pose_or_velocity_update(self) -> Event[Pose2D, Vect2D]:
+        return self._pose_velocity_event
+
+    def get_pose(self) -> Task[Pose2D]:
+        with self._lock:
+            return ImmediateResultTask(Pose2D(self._x, self._y, self._theta))
+
+    def get_velocity(self) -> Task[Vect2D]:
+        # Simulation jumps to target at end of duration; between jumps the
+        # instantaneous velocity is zero.
+        return ImmediateResultTask(Vect2D(0.0, 0.0))
+
+    def get_pose_and_velocity(self) -> Task[Pose2D, Vect2D]:
+        with self._lock:
+            return ImmediateResultTask(
+                Pose2D(self._x, self._y, self._theta), Vect2D(0.0, 0.0)
+            )
+
+    def set_pose(self, pose: Pose2D) -> Task[()]:
+        with self._lock:
+            self._x = pose.x
+            self._y = pose.y
+            self._theta = pose.heading
+        return ImmediateResultTask()
 
     # --- Internal ---
 
@@ -156,6 +205,8 @@ class PilotVirtual(DifferentialPilot):
             self._x = target_x
             self._y = target_y
             self._theta = heading
+            pose = Pose2D(self._x, self._y, self._theta)
+        self._pose_velocity_event.trigger(pose, Vect2D(0.0, 0.0))
         task.complete(PilotMoveStatus.REACHED)
 
     def _simulate_rotation(
@@ -168,6 +219,8 @@ class PilotVirtual(DifferentialPilot):
             return  # Cancelled
         with self._lock:
             self._theta = heading
+            pose = Pose2D(self._x, self._y, self._theta)
+        self._pose_velocity_event.trigger(pose, Vect2D(0.0, 0.0))
         task.complete(PilotMoveStatus.REACHED)
 
 
@@ -175,27 +228,30 @@ class PilotVirtualDefinition(DriverDefinition):
     """Factory for PilotVirtual from config args."""
 
     def __init__(self, logger: Logger):
+        super().__init__(DifferentialPilot.commands)
         self._logger = logger
 
     def get_init_args_definition(self) -> DriverInitArgsDefinition:
         defn = DriverInitArgsDefinition()
-        defn.add_required("name", ArgTypes.String())
         defn.add_optional("speed_trsl", ArgTypes.F32(), 200.0)
         defn.add_optional("speed_rot", ArgTypes.F32(), 2.0)
         return defn
 
     def create(self, args: DriverInitArgs) -> PilotVirtual:
-        name = args.get("name")
         return PilotVirtual(
-            name=name,
+            name=args.get_name(),
+            logger=self._logger,
             speed_trsl=args.get("speed_trsl"),
             speed_rot=args.get("speed_rot"),
-            logger=self._logger.get_sublogger(name).get_stdlib_logger(),
         )
 
 
 class HolonomicPilotVirtual(PilotVirtual, HolonomicPilot):
-    """Simulated holonomic pilot: simultaneous translation+rotation."""
+    """Standalone simulated holonomic pilot: simultaneous translation+rotation.
+
+    Not a drop-in twin of HolonomicSerialPilot — see
+    ``HolonomicSerialPilotVirtual`` in ``serial_pilot.py`` for that.
+    """
 
     def go_to_while_head_to(self, x: float, y: float, heading: float) -> Task[PilotMoveStatus]:
         dx = x - self._x
@@ -230,20 +286,19 @@ class HolonomicPilotVirtualDefinition(DriverDefinition):
     """Factory for HolonomicPilotVirtual from config args."""
 
     def __init__(self, logger: Logger):
+        super().__init__(HolonomicPilot.commands)
         self._logger = logger
 
     def get_init_args_definition(self) -> DriverInitArgsDefinition:
         defn = DriverInitArgsDefinition()
-        defn.add_required("name", ArgTypes.String())
         defn.add_optional("speed_trsl", ArgTypes.F32(), 200.0)
         defn.add_optional("speed_rot", ArgTypes.F32(), 2.0)
         return defn
 
     def create(self, args: DriverInitArgs) -> HolonomicPilotVirtual:
-        name = args.get("name")
         return HolonomicPilotVirtual(
-            name=name,
+            name=args.get_name(),
+            logger=self._logger,
             speed_trsl=args.get("speed_trsl"),
             speed_rot=args.get("speed_rot"),
-            logger=self._logger.get_sublogger(name).get_stdlib_logger(),
         )
