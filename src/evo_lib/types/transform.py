@@ -81,6 +81,9 @@ class RigidTransform2D(Transform2D):
         point.y = x * self._s + y * self._c
         point += self.offset
 
+    def apply_to_angle(self, angle: float) -> float:
+        return angle + self.angle
+
     def transform(self, other: RigidTransform2D) -> None:
         other.apply_to_point(self.offset)
         self.angle += other.angle

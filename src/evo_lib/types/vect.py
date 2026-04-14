@@ -43,12 +43,12 @@ class VectBase(ABC):
     # -- Arithmetic ---------------------------------------------------------
 
     def __add__(self, other: object) -> Self:
-        if type(self) is not type(other):
+        if not isinstance(other, type(self)):
             return NotImplemented
         return type(self)(*(a + b for a, b in zip(self._components, other._components)))  # type: ignore[arg-type]
 
     def __sub__(self, other: object) -> Self:
-        if type(self) is not type(other):
+        if not isinstance(other, type(self)):
             return NotImplemented
         return type(self)(*(a - b for a, b in zip(self._components, other._components)))  # type: ignore[arg-type]
 
@@ -64,14 +64,16 @@ class VectBase(ABC):
     # -- In place arithmetic ---------------------------------------------------------
 
     def __iadd__(self, other: object) -> Self:
-        if type(self) is not type(other):
+        if not isinstance(other, type(self)):
             return NotImplemented
         self._components = tuple(a + b for a, b in zip(self._components, other._components))  # type: ignore[arg-type]
         return self
 
     def __isub__(self, other: object) -> Self:
-        if type(self) is not type(other):
+        if not isinstance(other, type(self)):
             return NotImplemented
+        self._components = tuple(a - b for a, b in zip(self._components, other._components))  # type: ignore[arg-type]
+        return self
 
     def __imul__(self, scalar: float) -> Self:
         self._components = tuple(c * scalar for c in self._components)
@@ -94,7 +96,7 @@ class VectBase(ABC):
 
     def dot(self, other: VectBase) -> float:
         """Dot product."""
-        if type(self) is not type(other):
+        if not isinstance(other, type(self)):
             raise TypeError(f"Cannot dot {type(self).__name__} with {type(other).__name__}")
         return sum(a * b for a, b in zip(self._components, other._components))
 
