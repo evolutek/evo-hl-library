@@ -34,7 +34,7 @@ class ColorSensor(Placable):
     @abstractmethod
     @commands.register(
         args=[],
-        result=[("name", ArgTypes.Enum(NamedColor))],
+        result=[("name", ArgTypes.Enum(NamedColor, help="Closest palette entry"))],
     )
     def get_color(self) -> Task[NamedColor]:
         """Classify the current reading against the palette."""
@@ -42,7 +42,7 @@ class ColorSensor(Placable):
     @abstractmethod
     @commands.register(
         args=[
-            ("name", ArgTypes.Enum(NamedColor)),
+            ("name", ArgTypes.Enum(NamedColor, help="Palette entry to set")),
             ("r", ArgTypes.U16(help="Red ADC counts")),
             ("g", ArgTypes.U16(help="Green ADC counts")),
             ("b", ArgTypes.U16(help="Blue ADC counts")),
@@ -54,15 +54,13 @@ class ColorSensor(Placable):
         """Register a palette reference for ``name`` from known RGBC counts."""
 
     @abstractmethod
-    @commands.register(
-        args=[
-            ("name", ArgTypes.Enum(NamedColor)),
-            ("samples", ArgTypes.U16(help="Number of live readings to average")),
-        ],
-        result=[],
-    )
     def calibrate(self, name: NamedColor, samples: int = 10) -> Task[()]:
-        """Live-sample ``samples`` times and store the average as the palette ref for ``name``."""
+        """Live-sample ``samples`` times and store the average as the palette ref for ``name``.
+
+        Not exposed as a REPL command on real sensors — calibration requires
+        physical presentation of a target and is a commissioning operation,
+        not a runtime debug knob. Virtual implementations may expose it.
+        """
 
     @abstractmethod
     @commands.register(

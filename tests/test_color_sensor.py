@@ -43,6 +43,15 @@ class TestPalette:
         # Distance² is huge — well beyond a tight threshold of 1000.
         assert p.classify(ColorRaw(0, 0, 0, 0), max_distance_squared=1000) is NamedColor.Unknown
 
+    def test_unknown_ref_is_never_returned_as_match(self):
+        # If Unknown is injected with a spot-on match, classify must still
+        # pick the next best real entry — Unknown is reserved for "no match".
+        p = Palette(refs={
+            NamedColor.Unknown: ColorRaw(0, 0, 0, 0),
+            NamedColor.Red: ColorRaw(8000, 1000, 1000, 10000),
+        })
+        assert p.classify(ColorRaw(0, 0, 0, 0)) is NamedColor.Red
+
     def test_gamma_changes_result(self):
         # Refs are nearly equidistant so a gamma shift can flip the winner.
         p = Palette(refs={
@@ -133,6 +142,20 @@ class TestTCS34725:
         with pytest.raises(ValueError):
             TCS34725(name="cs0", logger=logger, bus=bus, gain=2)
 
+    def test_get_full_scale_tracks_atime(self, logger):
+        bus, _ = self._bus_with_device()
+        sensor = TCS34725(name="cs0", logger=logger, bus=bus)
+        sensor.init().wait()
+        # Default ATIME ≈ 103 ms → (256 - 0xD5) * 1024 = 43008
+        assert sensor.get_full_scale() == (256 - 0xD5) * 1024
+        sensor.set_integration_time(614.4).wait()
+        # ATIME=0 → full_scale capped at 65535
+        assert sensor.get_full_scale() == 65535
+
+    def test_calibrate_not_exposed_as_command(self):
+        names = {cmd.name for cmd in TCS34725.commands.get_all()}
+        assert "calibrate" not in names
+
 
 # ── TCS34725Virtual (full virtual) ───────────────────────────────────────
 
@@ -192,6 +215,10 @@ class TestTCS34725Virtual:
         sensor.set_gamma(2.2).wait()
         (g,) = sensor.get_gamma().wait()
         assert g == 2.2
+
+    def test_calibrate_exposed_as_command_on_virtual(self):
+        names = {cmd.name for cmd in TCS34725Virtual.commands.get_all()}
+        assert "calibrate" in names
 
 
 # ── ATIME helpers ────────────────────────────────────────────────────────
