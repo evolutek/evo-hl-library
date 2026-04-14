@@ -533,7 +533,13 @@ class ArgTypes:
             s.write(struct.pack("q", v))
 
     class Enum(ArgType):
-        def __init__(self, enum_type: type[IntEnum], subargs: dict[IntEnum, ArgType] = {}):
+        def __init__(
+            self,
+            enum_type: type[IntEnum],
+            subargs: dict[IntEnum, ArgType] = {},
+            help: str | None = None,
+        ):
+            super().__init__(help)
             self.enum_type = enum_type
 
         def value_from_config(self, v: ConfigValue) -> IntEnum:
@@ -637,6 +643,23 @@ class ArgTypes:
 
         def self_to_config(self, c: ConfigObject) -> None:
             pass
+
+    class OptionalComponent(Component):
+        """Like Component, but accepts a missing/null config value (returns None).
+
+        Use for dependencies a driver can function without (e.g. an optional
+        illumination LED attached to a color sensor).
+        """
+
+        def value_from_config(self, v: ConfigValue) -> Any:
+            if v is None or v == "":
+                return None
+            return super().value_from_config(v)
+
+        def value_from_str(self, v: str) -> Any:
+            if v == "" or v.lower() == "none":
+                return None
+            return super().value_from_str(v)
 
 
 ID_TO_ARGTYPE: list[type[ArgType]] = [

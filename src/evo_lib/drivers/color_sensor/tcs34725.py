@@ -17,7 +17,7 @@ from evo_lib.interfaces.led import LED
 from evo_lib.logger import Logger
 from evo_lib.peripheral import Peripheral
 from evo_lib.registry import Registry
-from evo_lib.task import ImmediateResultTask, Task
+from evo_lib.task import DelayedTask, ImmediateResultTask, Task
 from evo_lib.types.color import ColorRaw, NamedColor, Palette
 
 _COMMAND_BIT = 0x80
@@ -91,15 +91,27 @@ class TCS34725(ColorSensor):
 
     def init(self) -> Task[()]:
         self._write_register(_ENABLE, _ENABLE_PON)
-        time.sleep(_POWER_ON_DELAY_S)
-        self._write_register(_ENABLE, _ENABLE_PON | _ENABLE_AEN)
-        self._write_register(_ATIME, self._atime)
-        self._write_register(_CONTROL, _GAIN_TO_BYTE[self._gain])
-        self._log.info(
-            f"TCS34725 '{self.name}' initialized at 0x{self._address:02x} "
-            f"(integration={_atime_to_ms(self._atime):.1f}ms, gain={self._gain}x)"
-        )
-        return ImmediateResultTask()
+        task: DelayedTask[()] = DelayedTask()
+
+        def finish_init() -> None:
+            try:
+                self._write_register(_ENABLE, _ENABLE_PON | _ENABLE_AEN)
+                self._write_register(_ATIME, self._atime)
+                self._write_register(_CONTROL, _GAIN_TO_BYTE[self._gain])
+                self._log.info(
+                    f"TCS34725 '{self.name}' initialized at 0x{self._address:02x} "
+                    f"(integration={_atime_to_ms(self._atime):.1f}ms, gain={self._gain}x)"
+                )
+                task.complete()
+            except Exception as exc:
+                task.error(exc)
+
+        threading.Timer(_POWER_ON_DELAY_S, finish_init).start()
+        return task
+
+    def get_full_scale(self) -> int:
+        """Max possible ADC count for the current ATIME; use with ``Color.from_raw``."""
+        return min(65535, (256 - self._atime) * 1024)
 
     def close(self) -> None:
         self._write_register(_ENABLE, 0x00)
@@ -230,6 +242,7 @@ class TCS34725Definition(DriverDefinition):
         defn.add_optional("address", ArgTypes.U8(), 0x29)
         defn.add_optional("integration_time_ms", ArgTypes.F32(), _atime_to_ms(_ATIME_DEFAULT))
         defn.add_optional("gain", ArgTypes.U8(), 4)
+        defn.add_optional("light", ArgTypes.OptionalComponent(LED, self._peripherals), None)
         return defn
 
     def create(self, args: DriverInitArgs) -> TCS34725:
@@ -241,6 +254,7 @@ class TCS34725Definition(DriverDefinition):
             address=args.get("address"),
             integration_time_ms=args.get("integration_time_ms"),
             gain=args.get("gain"),
+            light=args.get("light"),
         )
 
 
@@ -285,9 +299,21 @@ class TCS34725Virtual(ColorSensor):
         self._palette.set(name, ColorRaw(r=r, g=g, b=b, c=c))
         return ImmediateResultTask()
 
+    @commands.register(
+        args=[("name", ArgTypes.Enum(NamedColor, help="Palette entry to populate"))],
+        result=[],
+    )
     def calibrate(self, name: NamedColor, samples: int = 10) -> Task[()]:
+        if samples != 10:
+            self._log.debug(
+                f"TCS34725Virtual '{self.name}' calibrate: samples={samples} ignored "
+                "(virtual reads the injected value directly)"
+            )
         self._palette.set(name, self._raw)
         return ImmediateResultTask()
+
+    def get_full_scale(self) -> int:
+        return 65535
 
     def set_light(self, intensity: float) -> Task[()]:
         if self._light is None:
@@ -322,9 +348,10 @@ class TCS34725Virtual(ColorSensor):
 
 
 class TCS34725VirtualDefinition(DriverDefinition):
-    def __init__(self, logger: Logger):
+    def __init__(self, logger: Logger, peripherals: Registry[Peripheral]):
         super().__init__(TCS34725Virtual.commands)
         self._logger = logger
+        self._peripherals = peripherals
 
     def get_init_args_definition(self) -> DriverInitArgsDefinition:
         defn = DriverInitArgsDefinition()
@@ -332,6 +359,7 @@ class TCS34725VirtualDefinition(DriverDefinition):
         defn.add_optional("initial_g", ArgTypes.U16(), 0)
         defn.add_optional("initial_b", ArgTypes.U16(), 0)
         defn.add_optional("initial_c", ArgTypes.U16(), 0)
+        defn.add_optional("light", ArgTypes.OptionalComponent(LED, self._peripherals), None)
         return defn
 
     def create(self, args: DriverInitArgs) -> TCS34725Virtual:
@@ -343,4 +371,5 @@ class TCS34725VirtualDefinition(DriverDefinition):
             initial_g=args.get("initial_g"),
             initial_b=args.get("initial_b"),
             initial_c=args.get("initial_c"),
+            light=args.get("light"),
         )

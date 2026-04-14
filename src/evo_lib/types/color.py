@@ -66,7 +66,12 @@ class Color:
 
     @staticmethod
     def from_raw(raw: ColorRaw, full_scale: int = 65535) -> "Color":
-        """Normalize raw ADC counts to a Color with each channel in 0.0-1.0."""
+        """Normalize raw ADC counts to a Color with each channel in 0.0-1.0.
+
+        ``full_scale`` is the sensor's current max count. For TCS34725-style
+        chips this depends on ATIME — pass ``sensor.get_full_scale()`` rather
+        than relying on the 65535 default when accuracy matters.
+        """
         fs = float(full_scale) if full_scale > 0 else 1.0
         return Color(
             min(1.0, raw.r / fs),
@@ -151,6 +156,8 @@ class Palette:
         if self._refs_gamma is None:
             # Fast path: integer arithmetic, no pow calls.
             for name, ref in self._refs.items():
+                if name is NamedColor.Unknown:
+                    continue
                 dr = raw.r - ref.r
                 dg = raw.g - ref.g
                 db = raw.b - ref.b
@@ -164,6 +171,8 @@ class Palette:
             lr, lg, lb, lc = (raw.r ** inv_g, raw.g ** inv_g,
                               raw.b ** inv_g, raw.c ** inv_g)
             for name, (rr, gg, bb, cc) in self._refs_gamma.items():
+                if name is NamedColor.Unknown:
+                    continue
                 dr = lr - rr
                 dg = lg - gg
                 db = lb - bb
