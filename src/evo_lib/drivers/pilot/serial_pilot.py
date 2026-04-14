@@ -43,7 +43,7 @@ _ACK_TIMEOUT = 1.0
 _RESPONSE_TIMEOUT = 1.0
 
 
-class SerialPilot(DifferentialPilot):
+class DifferentialSerialPilot(DifferentialPilot):
     """Trajectory manager communicating with carte-asserv via serial binary protocol."""
 
     commands = DriverCommands([DifferentialPilot.commands])
@@ -63,7 +63,8 @@ class SerialPilot(DifferentialPilot):
         self._reader_thread: threading.Thread | None = None
         self._running = False
         self._last_position: Pose2D = Pose2D()
-        self._last_velocity: Vect2D = Vect2D()
+        self._last_speed: float = 0
+        self._last_velocity: Vect2D = Vect2D(0, 0)
         self._moving = False
         self._rx_buffer = bytearray()
         self._response_event = threading.Event()
@@ -74,16 +75,17 @@ class SerialPilot(DifferentialPilot):
         self._reader_thread = threading.Thread(target=self._reader_loop)
         self._reader_thread.start()
         # Send init packet
-        with self._lock:
-            self._bus.write(INIT_PACKET)
-        self._log.info(f"SerialPilot '{self.name}' initialized")
+        # with self._lock:
+        #     self._bus.write(INIT_PACKET)
+        self._log.info(f"DifferentialSerialPilot '{self.name}' initialized")
+        return ImmediateResultTask()
 
     def close(self) -> None:
         self._running = False
         if self._reader_thread is not None:
             self._reader_thread.join(timeout=2.0)
             self._reader_thread = None
-        self._log.info(f"SerialPilot '{self.name}' closed", self.name)
+        self._log.info(f"DifferentialSerialPilot '{self.name}' closed", self.name)
 
     # Movement commands
 
@@ -398,7 +400,7 @@ class SerialPilot(DifferentialPilot):
         with self._lock:
             self._bus.write(packet)
         if not self._response_event.wait(timeout=_RESPONSE_TIMEOUT):
-            self._log.warning("Query %s timed out", command.name)
+            self._log.warning(f"Query {command.name} timed out")
             return ImmediateResultTask(())
         return ImmediateResultTask(self._response_data)
 
@@ -406,7 +408,7 @@ class SerialPilot(DifferentialPilot):
         """Background thread: read and dispatch incoming messages from the board."""
         while self._running:
             try:
-                header = self._bus.read_available()
+                header = self._bus.read_available() # FIXME: Non blocking read cause high CPU usage
                 if not header:
                     continue
                 self._process_bytes(header)
@@ -434,6 +436,7 @@ class SerialPilot(DifferentialPilot):
 
     def _dispatch(self, cmd: int, payload: bytes) -> None:
         """Handle a parsed incoming message."""
+        #self._log.debug(f"Received message: cmd={cmd}, payload={payload.hex()}")
         if cmd == Commands.ACKNOWLEDGE:
             self._ack_event.set()
         elif cmd == Commands.MOVE_BEGIN:
@@ -443,10 +446,19 @@ class SerialPilot(DifferentialPilot):
             if self._move_task is not None:
                 self._move_task.complete(PilotMoveStatus.REACHED)
                 self._move_task = None
-        elif cmd == Commands.TELEMETRY_MESSAGE and len(payload) >= 18:
+        elif cmd == Commands.TELEMETRY_MESSAGE:
             # Format: bbffff (counter, cmdid, x, y, theta, speed)
-            _, _, x, y, theta, _ = struct.unpack("=bbffff", payload[:18])
-            self._last_position = (x, y, theta)
+            x, y, theta, speed = struct.unpack("=ffff", payload)
+            self._log.debug(f"Telemetry: x={x:.1f}, y={y:.1f}, theta={math.degrees(theta):.1f}°, speed={speed:.1f}mm/s")
+            self._last_position.x = x
+            self._last_position.y = y
+            self._last_position.heading = theta
+            self._last_speed = speed
+        elif cmd == Commands.GET_TRAVEL_THETA:
+            # Format: bbffff (counter, cmdid, x, y, theta, speed)
+            (theta,) = struct.unpack("=f", payload)
+            self._log.debug(f"Telemetry: travel_theta={math.degrees(theta):.1f}°")
+            self._last_velocity = Vect2D.from_polar(self._last_speed, theta)
         elif cmd == Commands.ERROR:
             self._moving = False
             if self._move_task is not None:
@@ -457,9 +469,9 @@ class SerialPilot(DifferentialPilot):
                     self._move_task.complete(PilotMoveStatus.ERROR)
                 self._move_task = None
         elif cmd == Commands.DEBUG:
-            self._log.debug("Board debug: %s", payload.hex())
+            self._log.debug(f"Board debug: {payload.hex():x}")
         elif cmd == Commands.DEBUG_MESSAGE and len(payload) >= 2:
-            self._log.debug("Board debug msg (counter=%d, cmd=%d)", payload[0], payload[1])
+            self._log.debug(f"Board debug msg (counter={payload[0]}, cmd={payload[1]})")
         elif cmd in RESPONSE_FORMATS:
             # GET command response: payload starts with bb (counter, cmd_id) then data
             fmt = RESPONSE_FORMATS[Commands(cmd)]
@@ -470,7 +482,7 @@ class SerialPilot(DifferentialPilot):
                 self._response_event.set()
 
 
-class SerialPilotDefinition(DriverDefinition):
+class DifferentialSerialPilotDefinition(DriverDefinition):
     """Factory for SerialPilot from config args."""
 
     def __init__(self, logger: Logger, peripherals: Registry[Peripheral]):
@@ -483,18 +495,18 @@ class SerialPilotDefinition(DriverDefinition):
         defn.add_required("serial", ArgTypes.Component(Serial, self._peripherals))
         return defn
 
-    def create(self, args: DriverInitArgs) -> SerialPilot:
-        return SerialPilot(
+    def create(self, args: DriverInitArgs) -> DifferentialSerialPilot:
+        return DifferentialSerialPilot(
             name = args.get_name(),
             logger = self._logger,
             bus = args.get("serial"),
         )
 
 
-class HolonomicSerialPilot(SerialPilot, HolonomicPilot):
+class HolonomicSerialPilot(DifferentialSerialPilot, HolonomicPilot):
     """Holonomic trajectory manager using GLOBAL_GOTO for simultaneous translation+rotation."""
 
-    commands = DriverCommands([SerialPilot.commands, HolonomicPilot.commands])
+    commands = DriverCommands([DifferentialSerialPilot.commands, HolonomicPilot.commands])
 
     def go_to_while_head_to(self, x: float, y: float, heading: float) -> Task[PilotMoveStatus]:
         return self._send_move(
@@ -552,9 +564,9 @@ class HolonomicSerialPilot(SerialPilot, HolonomicPilot):
         return self.go_to_while_head_to(wp.x, wp.y, wp.heading)
 
     @commands.register(args=[], result=[])
-    def calibrate_otos(self) -> None:
+    def calibrate_otos(self) -> Task[()]:
         """Calibrate the optical tracking sensor (OTOS)."""
-        self._send_command(Commands.OTOS_CAL)
+        return self._send_command(Commands.OTOS_CAL)
 
 
 class HolonomicSerialPilotDefinition(DriverDefinition):
