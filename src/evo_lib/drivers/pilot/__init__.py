@@ -10,8 +10,8 @@ from evo_lib.drivers.pilot.protocol import (
 from evo_lib.drivers.pilot.serial_pilot import (
     HolonomicSerialPilot,
     HolonomicSerialPilotDefinition,
-    SerialPilot,
-    SerialPilotDefinition,
+    DifferentialSerialPilot,
+    DifferentialSerialPilotDefinition,
 )
 from evo_lib.drivers.pilot.virtual import (
     HolonomicPilotVirtual,

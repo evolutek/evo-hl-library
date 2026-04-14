@@ -89,7 +89,8 @@ class DriverCommands:
         self._commands: Registry[DriverCommand] = Registry("driver_commands")
         for parent in (parents or []):
             for cmd in parent._commands.get_all():
-                self._commands.register(cmd.name, cmd)
+                if not self._commands.has(cmd.name):
+                    self._commands.register(cmd.name, cmd)
 
     def register(self,
         args: list[tuple[str, ArgType]],

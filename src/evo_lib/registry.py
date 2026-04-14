@@ -46,6 +46,8 @@ class Registry[T]:
             FrozenError: If the registry is frozen.
             KeyError: If the key is already registered.
         """
+        if not isinstance(key, str):
+            raise TypeError(f"Registry keys must be strings, got {type(key).__name__}")
         if self._frozen:
             raise FrozenError(f"Registry '{self._name}' has been frozen")
         if key in self._items:
