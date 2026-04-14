@@ -131,10 +131,6 @@ class TCS34725(ColorSensor):
             self._palette.classify(raw, self._unknown_threshold_squared)
         )
 
-    def set_color(self, name: NamedColor, r: int, g: int, b: int, c: int) -> Task[()]:
-        self._palette.set(name, ColorRaw(r=r, g=g, b=b, c=c))
-        return ImmediateResultTask()
-
     def calibrate(self, name: NamedColor, samples: int = 10) -> Task[()]:
         if samples < 1:
             raise ValueError(f"samples must be >= 1, got {samples}")
@@ -295,8 +291,16 @@ class TCS34725Virtual(ColorSensor):
             self._palette.classify(self._raw, self._unknown_threshold_squared)
         )
 
-    def set_color(self, name: NamedColor, r: int, g: int, b: int, c: int) -> Task[()]:
-        self._palette.set(name, ColorRaw(r=r, g=g, b=b, c=c))
+    @commands.register(
+        args=[("name", ArgTypes.Enum(NamedColor, help="Named color to simulate"))],
+        result=[],
+    )
+    def set_color(self, name: NamedColor) -> Task[()]:
+        """Simulate the sensor perceiving ``name`` by copying its palette ref into the live reading."""
+        ref = self._palette.get(name)
+        if ref is None:
+            raise ValueError(f"palette has no entry for {name.name}")
+        self._raw = ref
         return ImmediateResultTask()
 
     @commands.register(

@@ -175,13 +175,19 @@ class TestTCS34725Virtual:
         (name,) = sensor.get_color().wait()
         assert name is NamedColor.Red
 
-    def test_set_color_updates_palette(self, logger):
+    def test_set_color_simulates_perception_of_named_entry(self, logger):
         sensor = TCS34725Virtual(name="cs0", logger=logger)
         sensor.init().wait()
-        sensor.set_color(NamedColor.Red, 1, 1, 1, 1).wait()
-        sensor.inject_color(r=2, g=2, b=2, c=2).wait()
-        (name,) = sensor.get_color().wait()
-        assert name is NamedColor.Red
+        sensor.set_color(NamedColor.Red).wait()
+        (raw,) = sensor.read_color().wait()
+        ref = sensor._palette.get(NamedColor.Red)
+        assert (raw.r, raw.g, raw.b, raw.c) == (ref.r, ref.g, ref.b, ref.c)
+
+    def test_set_color_raises_on_missing_palette_entry(self, logger):
+        sensor = TCS34725Virtual(name="cs0", logger=logger, palette=Palette())
+        sensor.init().wait()
+        with pytest.raises(ValueError):
+            sensor.set_color(NamedColor.Red).wait()
 
     def test_calibrate_stores_current_raw(self, logger):
         sensor = TCS34725Virtual(name="cs0", logger=logger)
