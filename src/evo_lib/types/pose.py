@@ -55,18 +55,18 @@ class Pose2D(PoseBase, Vect2D):
     frames.
     """
 
-    __slots__ = ("theta")
+    __slots__ = ("heading")
 
-    def __init__(self, x: float, y: float, theta: float = 0.0) -> None:
+    def __init__(self, x: float = 0.0, y: float = 0.0, theta: float = 0.0) -> None:
         super().__init__(x, y)
-        self.theta = float(theta)
+        self.heading = float(theta)
 
     def copy(self) -> Pose2D:
-        return Pose2D(self.x, self.y, self.theta)
+        return Pose2D(self.x, self.y, self.heading)
 
     @property
     def _comparison_key(self) -> tuple[float, ...]:
-        return (self.x, self.y, self.theta)
+        return (self.x, self.y, self.heading)
 
     @property
     def position(self) -> Vect2D:
@@ -80,17 +80,17 @@ class Pose2D(PoseBase, Vect2D):
             x' = self.x + point.x * cos(theta) - point.y * sin(theta)
             y' = self.y + point.x * sin(theta) + point.y * cos(theta)
         """
-        return self.position + point.rotate(self.theta)
+        return self.position + point.rotate(self.heading)
 
     def inverse(self) -> Pose2D:
         """The inverse transform (parent frame -> this frame)."""
-        p = Vect2D(-self.x, -self.y).rotate(-self.theta)
-        return Pose2D(p.x, p.y, -self.theta)
+        p = Vect2D(-self.x, -self.y).rotate(-self.heading)
+        return Pose2D(p.x, p.y, -self.heading)
 
     def compose(self, other: Pose2D) -> Pose2D:
         """Compose two transforms: self then other (in the local frame of self)."""
         p = self.transform(other.position)
-        return Pose2D(p.x, p.y, self.theta + other.theta)
+        return Pose2D(p.x, p.y, self.heading + other.heading)
 
     @staticmethod
     def from_dict(d: dict) -> Pose2D:
@@ -99,18 +99,18 @@ class Pose2D(PoseBase, Vect2D):
 
     def to_dict(self) -> dict[str, float]:
         """Serialize to a dict."""
-        return {"x": self.x, "y": self.y, "theta": self.theta}
+        return {"x": self.x, "y": self.y, "theta": self.heading}
 
     # -- Conversion ---------------------------------------------------------
 
     def to_3d(self, z: float = 0.0) -> Pose3D:
         """Promote to 3D with the given Z and yaw = theta."""
-        return Pose3D(self.x, self.y, z, yaw=self.theta)
+        return Pose3D(self.x, self.y, z, yaw=self.heading)
 
     # -- Display ------------------------------------------------------------
 
     def __repr__(self) -> str:
-        return f"Pose2D(x={self.x}, y={self.y}, theta={self.theta})"
+        return f"Pose2D(x={self.x}, y={self.y}, theta={self.heading})"
 
 
 class Pose3D(PoseBase, Vect3D):
@@ -127,9 +127,9 @@ class Pose3D(PoseBase, Vect3D):
 
     def __init__(
         self,
-        x: float,
-        y: float,
-        z: float,
+        x: float = 0.0,
+        y: float = 0.0,
+        z: float = 0.0,
         roll: float = 0.0,
         pitch: float = 0.0,
         yaw: float = 0.0,
