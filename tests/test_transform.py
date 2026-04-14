@@ -4,7 +4,8 @@ import math
 
 import pytest
 
-from evo_lib.types.transform import AffineTransform, RigidTransform
+from evo_lib.types.transform import AffineTransform2D as AffineTransform
+from evo_lib.types.transform import RigidTransform2D as RigidTransform
 from evo_lib.types.vect import Vect2D
 
 
@@ -50,7 +51,7 @@ class TestRigidTransformConstruction:
 
         # Point at center should remain at center after transformation
         point = Vect2D(2, 3)
-        t.apply(point)
+        t.apply_to_point(point)
         assert point.x == pytest.approx(2)
         assert point.y == pytest.approx(3)
 
@@ -77,7 +78,7 @@ class TestRigidTransformApply:
         """Test apply with identity transform."""
         t = RigidTransform.create_identity()
         point = Vect2D(3, 4)
-        t.apply(point)
+        t.apply_to_point(point)
         assert point.x == pytest.approx(3)
         assert point.y == pytest.approx(4)
 
@@ -85,7 +86,7 @@ class TestRigidTransformApply:
         """Test apply with translation only."""
         t = RigidTransform.create_translate(Vect2D(2, -1))
         point = Vect2D(1, 3)
-        t.apply(point)
+        t.apply_to_point(point)
         assert point.x == pytest.approx(3)
         assert point.y == pytest.approx(2)
 
@@ -93,7 +94,7 @@ class TestRigidTransformApply:
         """Test apply with 90-degree rotation around origin."""
         t = RigidTransform(Vect2D(0, 0), math.pi / 2)
         point = Vect2D(1, 0)
-        t.apply(point)
+        t.apply_to_point(point)
         # After 90-degree rotation: (1,0) -> (0,1)
         assert point.x == pytest.approx(0, abs=1e-10)
         assert point.y == pytest.approx(1)
@@ -103,7 +104,7 @@ class TestRigidTransformApply:
         # Rotate 90 degrees then translate by (2, 3)
         t = RigidTransform(Vect2D(2, 3), math.pi / 2)
         point = Vect2D(1, 0)
-        t.apply(point)
+        t.apply_to_point(point)
         # (1,0) rotated 90 degrees -> (0,1), then translated -> (2,4)
         assert point.x == pytest.approx(2)
         assert point.y == pytest.approx(4)
@@ -112,7 +113,7 @@ class TestRigidTransformApply:
         """Test apply with negative (clockwise) rotation."""
         t = RigidTransform(Vect2D(0, 0), -math.pi / 2)
         point = Vect2D(0, 1)
-        t.apply(point)
+        t.apply_to_point(point)
         # After -90-degree rotation: (0,1) -> (1,0)
         assert point.x == pytest.approx(1)
         assert point.y == pytest.approx(0, abs=1e-10)
@@ -202,8 +203,8 @@ class TestRigidTransformInversion:
         assert neg_t.angle == pytest.approx(-math.pi / 2)
 
         point = Vect2D(1, 0)
-        t.apply(point)
-        neg_t.apply(point)
+        t.apply_to_point(point)
+        neg_t.apply_to_point(point)
 
         assert point.x == pytest.approx(1)
         assert point.y == pytest.approx(0)
@@ -225,8 +226,8 @@ class TestRigidTransformInversion:
         # Point after transform then inverse should return to original
         point = Vect2D(1, 1)
         original = point.copy()
-        t.apply(point)
-        neg_t.apply(point)
+        t.apply_to_point(point)
+        neg_t.apply_to_point(point)
 
         assert point.x == pytest.approx(original.x)
         assert point.y == pytest.approx(original.y)
@@ -302,7 +303,7 @@ class TestAffineTransformApply:
         """Test apply with identity affine transform."""
         t = AffineTransform()
         point = Vect2D(3, 4)
-        t.apply(point)
+        t.apply_to_point(point)
         assert point.x == pytest.approx(3)
         assert point.y == pytest.approx(4)
 
@@ -310,7 +311,7 @@ class TestAffineTransformApply:
         """Test apply with scaling only."""
         t = AffineTransform(Vect2D(0, 0), 0, Vect2D(2, 3))
         point = Vect2D(1, 1)
-        t.apply(point)
+        t.apply_to_point(point)
         assert point.x == pytest.approx(2)
         assert point.y == pytest.approx(3)
 
@@ -319,7 +320,7 @@ class TestAffineTransformApply:
         # Scale by 2, rotate 90 degrees, translate by (1, 1)
         t = AffineTransform(Vect2D(1, 1), math.pi / 2, Vect2D(2, 1))
         point = Vect2D(1, 0)
-        t.apply(point)
+        t.apply_to_point(point)
 
         # (1,0) scaled by (2,1) -> (2,0)
         # (2,0) rotated 90 degrees -> (0,2)
@@ -331,7 +332,7 @@ class TestAffineTransformApply:
         """Test non-uniform scale with rotation."""
         t = AffineTransform(Vect2D(0, 0), math.pi / 2, Vect2D(2, 3))
         point = Vect2D(1, 1)
-        t.apply(point)
+        t.apply_to_point(point)
 
         # (1,1) scaled by (2,3) -> (2,3)
         # (2,3) rotated 90 degrees -> (-3,2)
@@ -342,7 +343,7 @@ class TestAffineTransformApply:
         """Test scaling with zero factor (degenerate case)."""
         t = AffineTransform(Vect2D(0, 0), 0, Vect2D(0, 0))
         point = Vect2D(5, 10)
-        t.apply(point)
+        t.apply_to_point(point)
 
         assert point.x == pytest.approx(0)
         assert point.y == pytest.approx(0)
