@@ -191,7 +191,11 @@ class DelayedTask[*T](Task[*T]):
         """Cancel the task. Calls on_cancel handler, then aborts."""
         if self._on_cancel is not None:
             self._on_cancel()
-        self.error(TaskCancelledError("Task cancelled"))
+        else:
+            # Only trigger error if there is not cancel handler, otherwise we assume
+            # the cancel handler either will trigger an error or a completion
+            # (e.g. with a cancelled status) when the cancellation is done
+            self.error(TaskCancelledError("Task cancelled"))
         return self
 
     # Producer API

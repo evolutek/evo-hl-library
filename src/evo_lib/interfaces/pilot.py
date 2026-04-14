@@ -2,21 +2,24 @@
 
 from abc import abstractmethod
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 from typing import TYPE_CHECKING
 
+from evo_lib.event import Event
 from evo_lib.peripheral import Placable
+from evo_lib.types.pose import Pose2D
+from evo_lib.types.vect import Vect2D
 
 if TYPE_CHECKING:
     from evo_lib.task import Task
 
 
-class PilotMoveStatus(Enum):
-    ERROR = 0
-    MOVING = 1
-    REACHED = 2
-    BLOCKED = 3
-    CANCELLED = 4
+class PilotMoveStatus(StrEnum):
+    ERROR = "error"
+    MOVING = "moving"
+    REACHED = "reached"
+    BLOCKED = "blocked"
+    CANCELLED = "cancelled"
 
 
 @dataclass(slots=True)
@@ -52,13 +55,38 @@ class HolonomicPilotWaypoint(DifferentialPilotWaypoint):
 
 class Pilot(Placable):
     @abstractmethod
-    def stop(self) -> Task[None]:
+    def stop(self) -> Task[()]:
         """Immediately stop the current movement."""
         pass
 
     @abstractmethod
-    def free(self) -> Task[None]:
+    def free(self) -> Task[()]:
         """Immediately stop motor and go into freewheel."""
+        pass
+
+    @abstractmethod
+    def unfree(self) -> Task[()]:
+        """Enable asservissement and keep robot in current position."""
+        pass
+
+    @abstractmethod
+    def on_pose_or_velocity_update(self) -> Event[Pose2D, Vect2D]:
+        pass
+
+    @abstractmethod
+    def get_velocity(self) -> Task[Vect2D]:
+        pass
+
+    @abstractmethod
+    def get_pose(self) -> Task[Pose2D]:
+        pass
+
+    @abstractmethod
+    def get_pose_and_velocity(self) -> Task[Pose2D, Vect2D]:
+        pass
+
+    @abstractmethod
+    def set_pose(self, pose: Pose2D) -> Task[()]:
         pass
 
 
