@@ -21,11 +21,11 @@ class TestPose2DConstruction:
         p = Pose2D(100, 200, 1.57)
         assert p.x == 100.0
         assert p.y == 200.0
-        assert math.isclose(p.heading, 1.57)
+        assert math.isclose(p.theta, 1.57)
 
     def test_theta_defaults_to_zero(self):
         p = Pose2D(10, 20)
-        assert p.heading == 0.0
+        assert p.theta == 0.0
 
 
 class TestPose2DPosition:
@@ -98,7 +98,7 @@ class TestPose2DCompose:
         sensor_global = robot.compose(sensor_local)
         assert math.isclose(sensor_global.x, 50, abs_tol=1e-9)
         assert math.isclose(sensor_global.y, 0, abs_tol=1e-9)
-        assert math.isclose(sensor_global.heading, math.pi / 2)
+        assert math.isclose(sensor_global.theta, math.pi / 2)
 
 
 class TestPose2DFromDict:
@@ -108,7 +108,7 @@ class TestPose2DFromDict:
 
     def test_missing_theta(self):
         p = Pose2D.from_dict({"x": 10, "y": 20})
-        assert p.heading == 0.0
+        assert p.theta == 0.0
 
     def test_from_config_like_dict(self):
         config = {
@@ -257,7 +257,7 @@ class TestPose3DCompose:
 
         assert math.isclose(result_2d.x, result_3d.x, abs_tol=1e-9)
         assert math.isclose(result_2d.y, result_3d.y, abs_tol=1e-9)
-        assert math.isclose(result_2d.heading, result_3d.yaw, abs_tol=1e-9)
+        assert math.isclose(result_2d.theta, result_3d.yaw, abs_tol=1e-9)
 
     def test_compose_with_pitch_only(self):
         """Pitch-only compose: sensor tilted 90° down sees (0,0,-100) → (100,0,0) in parent."""

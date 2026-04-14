@@ -24,21 +24,20 @@ class VectBase(ABC):
 
     __slots__ = ()
 
-    # Components getter
     @property
     @abstractmethod
     def _components(self) -> tuple[float, ...]:
-        """All components as an ordered tuple."""
-        pass
+        """All components as an ordered tuple.
 
-    # Components setter
-    @_components.setter
-    def _components(self, components: tuple[float, ...]) -> None:
-        pass
+        Concrete subclasses must also provide a ``@_components.setter``
+        that updates the backing attributes in place — it is used by the
+        in-place operators (``+=``, ``-=``, ``*=``).
+        """
+        ...
 
     @abstractmethod
     def copy(self) -> VectBase:
-        pass
+        ...
 
     # -- Arithmetic ---------------------------------------------------------
 
@@ -127,7 +126,7 @@ class Vect2D(VectBase):
 
     __slots__ = ("x", "y")
 
-    def __init__(self, x: float | int, y: float | int) -> None:
+    def __init__(self, x: float, y: float) -> None:
         self.x = float(x)
         self.y = float(y)
 
@@ -210,7 +209,7 @@ class Vect3D(VectBase):
         return (self.x, self.y, self.z)
 
     @_components.setter
-    def _components(self, components: tuple[float, float]) -> None:
+    def _components(self, components: tuple[float, float, float]) -> None:
         self.x, self.y, self.z = components
 
     # -- 3D-specific --------------------------------------------------------

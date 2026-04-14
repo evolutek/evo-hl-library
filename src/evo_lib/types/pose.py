@@ -1,8 +1,15 @@
 """Geometry types shared across omnissiah modules.
 
-Position and Pose represent 2D coordinates on the table.
-Utility functions provide distance computation and angle normalization.
+Pose2D and Pose3D represent rigid-body poses (position + orientation) on the
+table or in 3D space. They are elements of SE(2) / SE(3): they compose, they
+invert, they transform points — but they are **not** vectors. Addition,
+scaling, and norm are intentionally not defined.
+
+See docs/glossary/types/geometry-vocabulary.md for the underlying concepts
+and docs/glossary/types/geometry-examples.md for worked examples.
 """
+
+from __future__ import annotations
 
 import math
 from abc import ABC, abstractmethod
@@ -11,10 +18,11 @@ from evo_lib.types.vect import Vect2D, Vect3D
 
 
 class PoseBase(ABC):
-    """Abstract base for pose types (position + orientation).
+    """Abstract base for pose types.
 
     These are elements of SE(n), not vectors. Addition, scaling, and norm
-    are intentionally not defined.
+    are intentionally not defined — use ``compose``, ``inverse``, and
+    ``transform`` instead.
     """
 
     __slots__ = ()
@@ -26,71 +34,98 @@ class PoseBase(ABC):
     @property
     @abstractmethod
     def _comparison_key(self) -> tuple[float, ...]:
-        """Values used for equality and hashing."""
+        """Values used for equality."""
         ...
-
-    # -- Comparison ---------------------------------------------------------
 
     def __eq__(self, other: object) -> bool:
         if type(self) is not type(other):
             return NotImplemented
         return all(
-            math.isclose(a, b) for a, b in zip(self._comparison_key, other._comparison_key)  # type: ignore[union-attr]
+            math.isclose(a, b)
+            for a, b in zip(self._comparison_key, other._comparison_key)  # type: ignore[union-attr]
         )
 
-    def __hash__(self) -> int:
-        return hash(tuple(round(v, 9) for v in self._comparison_key))
+    # Poses are logically mutable (transforms can alter heading in place).
+    # Equality is approximate (``math.isclose``), which cannot be reconciled
+    # with a stable hash. Make poses explicitly unhashable.
+    __hash__ = None  # type: ignore[assignment]
 
 
 # ---------------------------------------------------------------------------
-# Concrete pose types
+# Pose2D
 # ---------------------------------------------------------------------------
 
 
-class Pose2D(PoseBase, Vect2D):
-    """2D position with orientation (x, y, theta).
+class Pose2D(PoseBase):
+    """2D rigid-body pose (x, y, theta).
 
-    Represents a rigid-body pose in the plane: where something is and which
-    direction it faces. Use *transform* to convert points between reference
-    frames.
+    Represents where something is and which direction it faces on the table.
+    Internally caches ``cos(theta)`` and ``sin(theta)`` to avoid recomputing
+    them on every ``transform`` call (see docs/glossary/types/geometry-performance.md).
+
+    This class uses **composition** with Vect2D (via the ``position``
+    accessor) rather than inheriting from it: a pose is not a vector, and
+    inheriting vector arithmetic would silently produce geometrically wrong
+    results (cf. ``pose_a + pose_b`` — use ``pose_a.compose(pose_b)``).
     """
 
-    __slots__ = ("heading")
+    __slots__ = ("x", "y", "theta", "_c", "_s")
 
-    def __init__(self, x: float = 0.0, y: float = 0.0, heading: float = 0.0) -> None:
-        super().__init__(x, y)
-        self.heading = float(heading)
+    def __init__(self, x: float = 0.0, y: float = 0.0, theta: float = 0.0) -> None:
+        self.x = float(x)
+        self.y = float(y)
+        self.theta = float(theta)
+        self._c = math.cos(self.theta)
+        self._s = math.sin(self.theta)
 
     def copy(self) -> Pose2D:
-        return Pose2D(self.x, self.y, self.heading)
+        return Pose2D(self.x, self.y, self.theta)
 
     @property
     def _comparison_key(self) -> tuple[float, ...]:
-        return (self.x, self.y, self.heading)
+        return (self.x, self.y, self.theta)
 
     @property
     def position(self) -> Vect2D:
-        """The translation part as a Vect2D."""
+        """The translation part as a new Vect2D (caller-owned copy)."""
         return Vect2D(self.x, self.y)
+
+    # -- SE(2) operations ---------------------------------------------------
 
     def transform(self, point: Vect2D) -> Vect2D:
         """Transform *point* from this frame into the parent frame.
 
-        Applies rotation then translation:
-            x' = self.x + point.x * cos(theta) - point.y * sin(theta)
-            y' = self.y + point.x * sin(theta) + point.y * cos(theta)
+        Applies rotation then translation, using cached cos/sin:
+            x' = self.x + point.x * c - point.y * s
+            y' = self.y + point.x * s + point.y * c
         """
-        return self.position + point.rotate(self.heading)
+        return Vect2D(
+            self.x + point.x * self._c - point.y * self._s,
+            self.y + point.x * self._s + point.y * self._c,
+        )
 
     def inverse(self) -> Pose2D:
-        """The inverse transform (parent frame -> this frame)."""
-        p = Vect2D(-self.x, -self.y).rotate(-self.heading)
-        return Pose2D(p.x, p.y, -self.heading)
+        """The inverse transform (parent frame -> this frame).
+
+        Note that ``Pose2D(-x, -y, -theta)`` is **not** the inverse: the
+        translation must also be rotated by the inverse rotation.
+        """
+        # Reuse cached cos/sin: cos(-t)=cos(t), sin(-t)=-sin(t)
+        inv = Pose2D.__new__(Pose2D)
+        inv.theta = -self.theta
+        inv._c = self._c
+        inv._s = -self._s
+        inv.x = -self.x * self._c - self.y * self._s
+        inv.y = self.x * self._s - self.y * self._c
+        return inv
 
     def compose(self, other: Pose2D) -> Pose2D:
-        """Compose two transforms: self then other (in the local frame of self)."""
-        p = self.transform(other.position)
-        return Pose2D(p.x, p.y, self.heading + other.heading)
+        """Compose two transforms: self then other (other expressed in self's frame)."""
+        px = self.x + other.x * self._c - other.y * self._s
+        py = self.y + other.x * self._s + other.y * self._c
+        return Pose2D(px, py, self.theta + other.theta)
+
+    # -- Serialization ------------------------------------------------------
 
     @staticmethod
     def from_dict(d: dict) -> Pose2D:
@@ -99,28 +134,33 @@ class Pose2D(PoseBase, Vect2D):
 
     def to_dict(self) -> dict[str, float]:
         """Serialize to a dict."""
-        return {"x": self.x, "y": self.y, "theta": self.heading}
+        return {"x": self.x, "y": self.y, "theta": self.theta}
 
     # -- Conversion ---------------------------------------------------------
 
     def to_3d(self, z: float = 0.0) -> Pose3D:
         """Promote to 3D with the given Z and yaw = theta."""
-        return Pose3D(self.x, self.y, z, yaw=self.heading)
+        return Pose3D(self.x, self.y, z, yaw=self.theta)
 
     # -- Display ------------------------------------------------------------
 
     def __repr__(self) -> str:
-        return f"Pose2D(x={self.x}, y={self.y}, theta={self.heading})"
+        return f"Pose2D(x={self.x}, y={self.y}, theta={self.theta})"
 
 
-class Pose3D(PoseBase, Vect3D):
-    """3D position with orientation (x, y, z, quaternion).
+# ---------------------------------------------------------------------------
+# Pose3D
+# ---------------------------------------------------------------------------
+
+
+class Pose3D(PoseBase):
+    """3D rigid-body pose (x, y, z + quaternion).
 
     Full 6-DOF pose for articulated arms or 3D sensors. Orientation is stored
     as a unit quaternion internally, avoiding gimbal lock. Constructor accepts
     Euler angles (roll, pitch, yaw) for convenience.
 
-    For ground robots, use Pose2D instead (only yaw matters).
+    For ground robots, prefer Pose2D (only yaw matters, cheaper).
     """
 
     __slots__ = ("x", "y", "z", "_qw", "_qx", "_qy", "_qz")
@@ -134,16 +174,28 @@ class Pose3D(PoseBase, Vect3D):
         pitch: float = 0.0,
         yaw: float = 0.0,
     ) -> None:
-        super().__init__(x, y, z)
+        self.x = float(x)
+        self.y = float(y)
+        self.z = float(z)
         qw, qx, qy, qz = Pose3D._euler_to_quat(roll, pitch, yaw)
         self._qw, self._qx, self._qy, self._qz = Pose3D._canonical_sign(qw, qx, qy, qz)
 
     def copy(self) -> Pose3D:
-        return Pose3D(self.x, self.y, self.z, self.roll, self.pitch, self.yaw)
+        return Pose3D.from_quaternion(
+            self.x, self.y, self.z, self._qw, self._qx, self._qy, self._qz
+        )
 
     @classmethod
-    def from_quaternion(cls, x: float, y: float, z: float,
-                        qw: float, qx: float, qy: float, qz: float) -> Pose3D:
+    def from_quaternion(
+        cls,
+        x: float,
+        y: float,
+        z: float,
+        qw: float,
+        qx: float,
+        qy: float,
+        qz: float,
+    ) -> Pose3D:
         """Construct directly from a unit quaternion (no Euler conversion)."""
         obj = object.__new__(cls)
         obj.x = float(x)
@@ -202,14 +254,16 @@ class Pose3D(PoseBase, Vect3D):
 
     @property
     def position(self) -> Vect3D:
-        """The translation part as a Vect3D."""
+        """The translation part as a new Vect3D (caller-owned copy)."""
         return Vect3D(self.x, self.y, self.z)
+
+    # -- SE(3) operations ---------------------------------------------------
 
     def transform(self, point: Vect3D) -> Vect3D:
         """Transform *point* from this frame into the parent frame.
 
-        Uses the quaternion cross-product formula:
-        p' = p + 2w * (q_xyz x p) + 2 * (q_xyz x (q_xyz x p))
+        Quaternion sandwich product, expanded for efficiency:
+            p' = self.position + q * p * q⁻¹
         """
         px, py, pz = point.x, point.y, point.z
         qw, qx, qy, qz = self._qw, self._qx, self._qy, self._qz
@@ -231,7 +285,6 @@ class Pose3D(PoseBase, Vect3D):
         # Inverse rotation = conjugate for unit quaternions
         iqw, iqx, iqy, iqz = self._qw, -self._qx, -self._qy, -self._qz
 
-        # Rotate -t by the inverse quaternion
         tx, ty, tz = -self.x, -self.y, -self.z
         ttx = 2 * (iqy * tz - iqz * ty)
         tty = 2 * (iqz * tx - iqx * tz)
@@ -243,7 +296,7 @@ class Pose3D(PoseBase, Vect3D):
         return Pose3D.from_quaternion(px, py, pz, iqw, iqx, iqy, iqz)
 
     def compose(self, other: Pose3D) -> Pose3D:
-        """Compose two transforms: self then other (in the local frame of self)."""
+        """Compose two transforms: self then other (other expressed in self's frame)."""
         p = self.transform(other.position)
 
         # Quaternion multiplication: q1 * q2
@@ -255,6 +308,8 @@ class Pose3D(PoseBase, Vect3D):
         qz = w1 * z2 + x1 * y2 - y1 * x2 + z1 * w2
 
         return Pose3D.from_quaternion(p.x, p.y, p.z, qw, qx, qy, qz)
+
+    # -- Serialization ------------------------------------------------------
 
     @staticmethod
     def from_dict(d: dict) -> Pose3D:
@@ -299,7 +354,9 @@ class Pose3D(PoseBase, Vect3D):
         )
 
     @staticmethod
-    def _canonical_sign(qw: float, qx: float, qy: float, qz: float) -> tuple[float, float, float, float]:
+    def _canonical_sign(
+        qw: float, qx: float, qy: float, qz: float
+    ) -> tuple[float, float, float, float]:
         """Ensure canonical sign so q and -q (same rotation) have identical repr."""
         for c in (qw, qx, qy, qz):
             if c > 1e-15:
