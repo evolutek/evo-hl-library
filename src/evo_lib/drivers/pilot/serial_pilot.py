@@ -84,6 +84,8 @@ class DifferentialSerialPilot(DifferentialPilot):
         self._running = False
         if self._reader_thread is not None:
             self._reader_thread.join(timeout=2.0)
+            if self._reader_thread.is_alive():
+                self._log.error(f"Failed to stop serial pilot '{self.name}' reader thread")
             self._reader_thread = None
         self._log.info(f"DifferentialSerialPilot '{self.name}' closed", self.name)
 
@@ -449,7 +451,7 @@ class DifferentialSerialPilot(DifferentialPilot):
         elif cmd == Commands.TELEMETRY_MESSAGE:
             # Format: bbffff (counter, cmdid, x, y, theta, speed)
             x, y, theta, speed = struct.unpack("=ffff", payload)
-            self._log.debug(f"Telemetry: x={x:.1f}, y={y:.1f}, theta={math.degrees(theta):.1f}°, speed={speed:.1f}mm/s")
+            # self._log.debug(f"Telemetry: x={x:.1f}, y={y:.1f}, theta={math.degrees(theta):.1f}°, speed={speed:.1f}mm/s")
             self._last_position.x = x
             self._last_position.y = y
             self._last_position.heading = theta
@@ -457,7 +459,7 @@ class DifferentialSerialPilot(DifferentialPilot):
         elif cmd == Commands.GET_TRAVEL_THETA:
             # Format: bbffff (counter, cmdid, x, y, theta, speed)
             (theta,) = struct.unpack("=f", payload)
-            self._log.debug(f"Telemetry: travel_theta={math.degrees(theta):.1f}°")
+            # self._log.debug(f"Telemetry: travel_theta={math.degrees(theta):.1f}°")
             self._last_velocity = Vect2D.from_polar(self._last_speed, theta)
         elif cmd == Commands.ERROR:
             self._moving = False
