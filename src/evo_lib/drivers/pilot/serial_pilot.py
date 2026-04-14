@@ -23,6 +23,7 @@ from evo_lib.drivers.pilot.protocol import (
     Errors,
     build_packet,
 )
+from evo_lib.drivers.pilot.virtual import HolonomicPilotVirtual, PilotVirtual
 from evo_lib.event import Event
 from evo_lib.interfaces.pilot import (
     DifferentialPilot,
@@ -589,4 +590,72 @@ class HolonomicSerialPilotDefinition(DriverDefinition):
             name = args.get_name(),
             logger = self._logger,
             bus = args.get("serial"),
+        )
+
+
+class DifferentialSerialPilotVirtual(PilotVirtual):
+    """Drop-in virtual twin for DifferentialSerialPilot.
+
+    Constructor mirrors DifferentialSerialPilot exactly so a config swap is
+    a one-line change. ``bus`` is kept for signature parity and is
+    orthogonal to the simulation — the serial bus itself may be a real or
+    virtual Serial, that choice is orthogonal too.
+    """
+
+    def __init__(self, name: str, logger: Logger, bus: Serial):
+        super().__init__(name, logger)
+        self._bus = bus
+
+
+class DifferentialSerialPilotVirtualDefinition(DriverDefinition):
+    """Factory for DifferentialSerialPilotVirtual — args mirror the real Definition."""
+
+    def __init__(self, logger: Logger, peripherals: Registry[Peripheral]):
+        super().__init__(DifferentialPilot.commands)
+        self._logger = logger
+        self._peripherals = peripherals
+
+    def get_init_args_definition(self) -> DriverInitArgsDefinition:
+        defn = DriverInitArgsDefinition()
+        defn.add_required("serial", ArgTypes.Component(Serial, self._peripherals))
+        return defn
+
+    def create(self, args: DriverInitArgs) -> DifferentialSerialPilotVirtual:
+        return DifferentialSerialPilotVirtual(
+            name=args.get_name(),
+            logger=self._logger,
+            bus=args.get("serial"),
+        )
+
+
+class HolonomicSerialPilotVirtual(HolonomicPilotVirtual):
+    """Drop-in virtual twin for HolonomicSerialPilot.
+
+    Constructor mirrors HolonomicSerialPilot exactly; ``bus`` is kept for
+    signature parity and is orthogonal to the simulation.
+    """
+
+    def __init__(self, name: str, logger: Logger, bus: Serial):
+        super().__init__(name, logger)
+        self._bus = bus
+
+
+class HolonomicSerialPilotVirtualDefinition(DriverDefinition):
+    """Factory for HolonomicSerialPilotVirtual — args mirror the real Definition."""
+
+    def __init__(self, logger: Logger, peripherals: Registry[Peripheral]):
+        super().__init__(HolonomicPilot.commands)
+        self._logger = logger
+        self._peripherals = peripherals
+
+    def get_init_args_definition(self) -> DriverInitArgsDefinition:
+        defn = DriverInitArgsDefinition()
+        defn.add_required("serial", ArgTypes.Component(Serial, self._peripherals))
+        return defn
+
+    def create(self, args: DriverInitArgs) -> HolonomicSerialPilotVirtual:
+        return HolonomicSerialPilotVirtual(
+            name=args.get_name(),
+            logger=self._logger,
+            bus=args.get("serial"),
         )
