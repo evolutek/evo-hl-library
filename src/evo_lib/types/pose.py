@@ -57,9 +57,9 @@ class Pose2D(PoseBase, Vect2D):
 
     __slots__ = ("heading")
 
-    def __init__(self, x: float = 0.0, y: float = 0.0, theta: float = 0.0) -> None:
+    def __init__(self, x: float = 0.0, y: float = 0.0, heading: float = 0.0) -> None:
         super().__init__(x, y)
-        self.heading = float(theta)
+        self.heading = float(heading)
 
     def copy(self) -> Pose2D:
         return Pose2D(self.x, self.y, self.heading)
