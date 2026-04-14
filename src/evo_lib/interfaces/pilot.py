@@ -98,8 +98,8 @@ class Pilot(Placable):
 
     @abstractmethod
     @commands.register(args = [
-        ("x", ArgTypes.Float()),
-        ("y", ArgTypes.Float()),
+        ("x", ArgTypes.F32()),
+        ("y", ArgTypes.F32()),
     ], result = [])
     def go_to(self, x: float, y: float) -> Task[PilotMoveStatus]:
         """Move to the given position. The returned Task can be cancelled."""
@@ -119,22 +119,22 @@ class Pilot(Placable):
 
     @abstractmethod
     @commands.register(args = [
-        ("heading", ArgTypes.Float()),
+        ("heading", ArgTypes.F32()),
     ], result = [])
     def head_to(self, heading: float) -> Task[PilotMoveStatus]:
         pass
 
     @abstractmethod
     @commands.register(args = [
-        ("x", ArgTypes.Float()),
-        ("y", ArgTypes.Float()),
+        ("x", ArgTypes.F32()),
+        ("y", ArgTypes.F32()),
     ], result = [])
     def look_at(self, x: float, y: float) -> Task[PilotMoveStatus]:
         pass
 
     @abstractmethod
     @commands.register(args = [
-        ("angle", ArgTypes.Float()),
+        ("angle", ArgTypes.F32()),
     ], result = [])
     def rotate(self, angle: float) -> Task[PilotMoveStatus]:
         pass
@@ -149,7 +149,7 @@ class DifferentialPilot(Pilot):
 
     @abstractmethod
     @commands.register(args = [
-        ("forward", ArgTypes.Float()),
+        ("forward", ArgTypes.F32()),
     ], result = [])
     def forward(self, distance: float) -> Task[PilotMoveStatus]:
         pass
