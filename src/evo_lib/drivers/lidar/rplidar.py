@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Iterator
 
 from evo_lib.argtypes import ArgTypes
 from evo_lib.driver_definition import DriverDefinition, DriverInitArgs, DriverInitArgsDefinition
+from evo_lib.drivers.lidar.virtual import Lidar2DVirtual
 from evo_lib.event import Event
 from evo_lib.interfaces.lidar import Lidar2D, Lidar2DMeasure
 from evo_lib.logger import Logger
@@ -188,6 +189,48 @@ class RPLidarDefinition(DriverDefinition):
 
     def create(self, args: DriverInitArgs) -> RPLidarDriver:
         return RPLidarDriver(
+            name=args.get_name(),
+            logger=self._logger,
+            port=args.get("port"),
+            baudrate=args.get("baudrate"),
+        )
+
+
+class RPLidarVirtual(Lidar2DVirtual):
+    """Drop-in virtual twin for RPLidarDriver.
+
+    Constructor mirrors RPLidarDriver exactly so a config swap is a one-line
+    change. ``port`` and ``baudrate`` are kept for signature parity and are
+    orthogonal to the simulation.
+    """
+
+    def __init__(
+        self,
+        name: str,
+        logger: Logger,
+        port: str,
+        baudrate: int = 115200,
+    ):
+        super().__init__(name, logger)
+        self._port = port
+        self._baudrate = baudrate
+
+
+class RPLidarVirtualDefinition(DriverDefinition):
+    """Factory for RPLidarVirtual — args mirror RPLidarDefinition."""
+
+    def __init__(self, logger: Logger):
+        super().__init__(Lidar2D.commands)
+        self._logger = logger
+
+    def get_init_args_definition(self) -> DriverInitArgsDefinition:
+        defn = DriverInitArgsDefinition()
+        defn.add_required("port", ArgTypes.String())
+        defn.add_optional("baudrate", ArgTypes.U32(), 115200)
+        return defn
+
+    def create(self, args: DriverInitArgs) -> RPLidarVirtual:
+        return RPLidarVirtual(
             name=args.get_name(),
             logger=self._logger,
             port=args.get("port"),

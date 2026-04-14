@@ -14,6 +14,7 @@ from typing import Iterator
 
 from evo_lib.argtypes import ArgTypes
 from evo_lib.driver_definition import DriverDefinition, DriverInitArgs, DriverInitArgsDefinition
+from evo_lib.drivers.lidar.virtual import Lidar2DVirtual
 from evo_lib.event import Event
 from evo_lib.interfaces.lidar import Lidar2D, Lidar2DMeasure
 from evo_lib.logger import Logger
@@ -185,6 +186,52 @@ class SickTIMDefinition(DriverDefinition):
 
     def create(self, args: DriverInitArgs) -> SickTIMDriver:
         return SickTIMDriver(
+            name=args.get_name(),
+            logger=self._logger,
+            threadpool=self._threadpool,
+            host=args.get("host"),
+            port=args.get("port"),
+        )
+
+
+class SickTIMVirtual(Lidar2DVirtual):
+    """Drop-in virtual twin for SickTIMDriver.
+
+    Constructor mirrors SickTIMDriver exactly so a config swap is a one-line
+    change. ``threadpool``, ``host`` and ``port`` are kept for signature
+    parity and are orthogonal to the simulation.
+    """
+
+    def __init__(
+        self,
+        name: str,
+        logger: Logger,
+        threadpool: ThreadPoolExecutor,
+        host: str,
+        port: int = 2112,
+    ):
+        super().__init__(name, logger)
+        self._threadpool = threadpool
+        self._host = host
+        self._port = port
+
+
+class SickTIMVirtualDefinition(DriverDefinition):
+    """Factory for SickTIMVirtual — args mirror SickTIMDefinition."""
+
+    def __init__(self, logger: Logger, threadpool: ThreadPoolExecutor):
+        super().__init__(Lidar2D.commands)
+        self._logger = logger
+        self._threadpool = threadpool
+
+    def get_init_args_definition(self) -> DriverInitArgsDefinition:
+        defn = DriverInitArgsDefinition()
+        defn.add_required("host", ArgTypes.String())
+        defn.add_optional("port", ArgTypes.U16(), 2112)
+        return defn
+
+    def create(self, args: DriverInitArgs) -> SickTIMVirtual:
+        return SickTIMVirtual(
             name=args.get_name(),
             logger=self._logger,
             threadpool=self._threadpool,

@@ -1,11 +1,19 @@
-"""Lidar2D drivers: virtual implementations for testing and simulation."""
+"""Standalone generic virtual lidar for tests and simulation.
 
-import logging
+``Lidar2DVirtual`` is not a drop-in twin of any specific driver: its
+constructor only takes ``(name, logger)`` and it exposes ``inject_scan``
+for unit tests that do not care which hardware model is being simulated.
+
+Per-driver drop-in virtuals (matching each real driver's constructor and
+DriverDefinition surface exactly) live alongside their real counterparts:
+``RPLidarVirtual`` in ``rplidar.py``, ``SickTIMVirtual`` in ``sick_tim.py``,
+``LD06LidarVirtual`` in ``ld06.py``.
+"""
+
 import time
 from collections import deque
 from typing import Generator
 
-from evo_lib.argtypes import ArgTypes
 from evo_lib.driver_definition import DriverDefinition, DriverInitArgs, DriverInitArgsDefinition
 from evo_lib.event import Event
 from evo_lib.interfaces.lidar import Lidar2D, Lidar2DMeasure
@@ -14,28 +22,34 @@ from evo_lib.task import ImmediateResultTask, Task
 
 
 class Lidar2DVirtual(Lidar2D):
-    """In-memory lidar for tests and simulation."""
+    """Standalone in-memory lidar for tests and simulation.
 
-    def __init__(self, name: str, logger: logging.Logger | None = None):
+    Not a drop-in twin of RPLidar / SickTIM / LD06 — those live alongside
+    their real counterparts. Use this when the specific hardware model
+    does not matter.
+    """
+
+    def __init__(self, name: str, logger: Logger):
         super().__init__(name)
-        self._log = logger or logging.getLogger(__name__)
+        self._log = logger
         self._scan_event: Event[list[Lidar2DMeasure]] = Event()
         self._measures: deque[Lidar2DMeasure] = deque(maxlen=10000)
         self._running = False
 
-    def init(self) -> None:
-        self._log.info("Lidar2DVirtual '%s' initialized", self.name)
+    def init(self) -> Task[()]:
+        self._log.info(f"Lidar2DVirtual '{self.name}' initialized")
+        return ImmediateResultTask()
 
     def close(self) -> None:
         self._running = False
 
-    def start(self) -> Task[None]:
+    def start(self) -> Task[()]:
         self._running = True
-        return ImmediateResultTask(None)
+        return ImmediateResultTask()
 
-    def stop(self) -> Task[None]:
+    def stop(self) -> Task[()]:
         self._running = False
-        return ImmediateResultTask(None)
+        return ImmediateResultTask()
 
     def iter(self, duration: float | None = None) -> Generator[Lidar2DMeasure, None, None]:
         start = time.monotonic()
@@ -58,16 +72,14 @@ class Lidar2DVirtualDefinition(DriverDefinition):
     """Factory for Lidar2DVirtual from config args."""
 
     def __init__(self, logger: Logger):
+        super().__init__(Lidar2D.commands)
         self._logger = logger
 
     def get_init_args_definition(self) -> DriverInitArgsDefinition:
-        defn = DriverInitArgsDefinition()
-        defn.add_required("name", ArgTypes.String())
-        return defn
+        return DriverInitArgsDefinition()
 
     def create(self, args: DriverInitArgs) -> Lidar2DVirtual:
-        name = args.get("name")
         return Lidar2DVirtual(
-            name=name,
-            logger=self._logger.get_sublogger(name).get_stdlib_logger(),
+            name=args.get_name(),
+            logger=self._logger,
         )
