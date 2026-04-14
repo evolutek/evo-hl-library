@@ -6,6 +6,7 @@ Uses the rplidar-roboticia library (already in rpi extras).
 
 import os
 import time
+import math
 from queue import Empty, Full, Queue
 from threading import Thread
 from typing import TYPE_CHECKING, Iterator
@@ -97,11 +98,10 @@ class RPLidarDriver(Lidar2D):
         while True:
             if duration is not None and time.monotonic() - start >= duration:
                 return
-            if self._measures:
-                try:
-                    yield self._measures.get(block = True, timeout = 0.1)
-                except Empty:
-                    pass
+            try:
+                yield self._measures.get(block = True, timeout = 0.1) # TODO: Do not use a timeout
+            except Empty:
+                pass
 
     def on_scan(self) -> Event[list[Lidar2DMeasure]]:
         return self._scan_event
@@ -150,30 +150,38 @@ class RPLidarDriver(Lidar2D):
                         self._scan_event.trigger(batch)
                         batch = []
 
-                    measure = Lidar2DMeasure(angle, distance, time.monotonic(), quality / 255.0)
+                    measure = Lidar2DMeasure(distance, math.radians(angle), time.monotonic(), quality / 255.0)
                     try:
-                        self._measures.put_nowait(measure)
+                        self._measures.put(measure, block = False)
                     except Full:
                         pass
                     batch.append(measure)
 
             except _rplidar.RPLidarException as e:
                 if self._running:
-                    self._log.error(f"RPLidar scan error: {e}")
-                    self._lidar.stop()
-                    self._lidar.start()
+                    # self._log.error(f"RPLidar scan error: {e}")
+                    self._log.error("RPLidar scan error")
+                    while True:
+                        try:
+                            self._lidar.stop()
+                            time.sleep(0.1)
+                            self._lidar.start()
+                            break
+                        except _rplidar.RPLidarException:
+                            time.sleep(0.2)
                     time.sleep(0.2)
+                    self._log.error("RPLidar error recovered")
 
 
 class RPLidarDefinition(DriverDefinition):
     """Factory for RPLidarDriver from config args."""
 
     def __init__(self, logger: Logger):
+        super().__init__(Lidar2D.commands)
         self._logger = logger
 
     def get_init_args_definition(self) -> DriverInitArgsDefinition:
-        defn = DriverInitArgsDefinition(Lidar2D.commands)
-        defn.add_required("name", ArgTypes.String())
+        defn = DriverInitArgsDefinition()
         defn.add_required("port", ArgTypes.String())
         defn.add_optional("baudrate", ArgTypes.U32(), 115200)
         return defn
