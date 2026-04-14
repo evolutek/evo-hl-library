@@ -40,20 +40,6 @@ class ColorSensor(Placable):
         """Classify the current reading against the palette."""
 
     @abstractmethod
-    @commands.register(
-        args=[
-            ("name", ArgTypes.Enum(NamedColor, help="Palette entry to set")),
-            ("r", ArgTypes.U16(help="Red ADC counts")),
-            ("g", ArgTypes.U16(help="Green ADC counts")),
-            ("b", ArgTypes.U16(help="Blue ADC counts")),
-            ("c", ArgTypes.U16(help="Clear ADC counts")),
-        ],
-        result=[],
-    )
-    def set_color(self, name: NamedColor, r: int, g: int, b: int, c: int) -> Task[()]:
-        """Register a palette reference for ``name`` from known RGBC counts."""
-
-    @abstractmethod
     def calibrate(self, name: NamedColor, samples: int = 10) -> Task[()]:
         """Live-sample ``samples`` times and store the average as the palette ref for ``name``.
 
