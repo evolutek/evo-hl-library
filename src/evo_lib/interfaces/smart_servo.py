@@ -1,10 +1,10 @@
 """Abstract interface for smart servos with position feedback (e.g. Dynamixel AX-12)."""
 
 from abc import abstractmethod
+from typing import TYPE_CHECKING
 
 from evo_lib.interfaces.servo import Servo
 
-from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from evo_lib.task import Task
 
@@ -17,7 +17,7 @@ class SmartServo(Servo):
     """
 
     @abstractmethod
-    def move_to_position(self, position: int) -> Task[None]:
+    def move_to_position(self, position: int) -> Task[()]:
         """Move to the given position (native units)."""
 
     @abstractmethod
@@ -33,9 +33,5 @@ class SmartServo(Servo):
         """Read current position (as a fraction between 0 and 1)."""
 
     @abstractmethod
-    def set_speed(self, speed: float) -> Task[None]:
+    def set_speed(self, speed: float) -> Task[()]:
         """Set movement speed (as a fraction between 0 and 1)."""
-
-    # @abstractmethod
-    # def get_stress(self) -> Task[float]:
-    #     """Get stress on servo."""
