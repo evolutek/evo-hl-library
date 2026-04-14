@@ -1,11 +1,15 @@
-"""ColorSensor drivers: real and virtual implementations."""
+"""TCS34725 RGBC color sensor drivers: real and virtual."""
 
-from evo_lib.drivers.color_sensor.tcs34725 import TCS34725, TCS34725Definition
-from evo_lib.drivers.color_sensor.virtual import ColorSensorVirtual, ColorSensorVirtualDefinition
+from evo_lib.drivers.color_sensor.tcs34725 import (
+    TCS34725,
+    TCS34725Definition,
+    TCS34725Virtual,
+    TCS34725VirtualDefinition,
+)
 
 __all__ = [
-    "ColorSensorVirtual",
-    "ColorSensorVirtualDefinition",
     "TCS34725",
     "TCS34725Definition",
+    "TCS34725Virtual",
+    "TCS34725VirtualDefinition",
 ]
