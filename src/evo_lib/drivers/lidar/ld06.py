@@ -7,6 +7,7 @@ from typing import Iterator
 
 from evo_lib.argtypes import ArgTypes
 from evo_lib.driver_definition import DriverDefinition, DriverInitArgs, DriverInitArgsDefinition
+from evo_lib.drivers.lidar.virtual import Lidar2DVirtual
 from evo_lib.event import Event
 from evo_lib.interfaces.lidar import Lidar2D, Lidar2DMeasure
 from evo_lib.interfaces.serial import Serial
@@ -138,4 +139,38 @@ class LD06LidarDriverDefinition(DriverDefinition):
             name=args.get_name(),
             logger=self._logger,
             serial=args.get("serial")
+        )
+
+
+class LD06LidarVirtual(Lidar2DVirtual):
+    """Drop-in virtual twin for LD06LidarDriver.
+
+    Constructor mirrors LD06LidarDriver exactly so a config swap is a
+    one-line change. The ``serial`` bus is kept for signature parity; the
+    bus itself may be a real or virtual Serial (orthogonal choice).
+    """
+
+    def __init__(self, name: str, logger: Logger, serial: Serial):
+        super().__init__(name, logger)
+        self._serial = serial
+
+
+class LD06LidarVirtualDefinition(DriverDefinition):
+    """Factory for LD06LidarVirtual — args mirror LD06LidarDriverDefinition."""
+
+    def __init__(self, logger: Logger, peripherals: Registry[Peripheral]):
+        super().__init__(Lidar2D.commands)
+        self._logger = logger
+        self._peripherals = peripherals
+
+    def get_init_args_definition(self) -> DriverInitArgsDefinition:
+        args = DriverInitArgsDefinition()
+        args.add_required("serial", ArgTypes.Component(Serial, self._peripherals))
+        return args
+
+    def create(self, args: DriverInitArgs) -> Peripheral:
+        return LD06LidarVirtual(
+            name=args.get_name(),
+            logger=self._logger,
+            serial=args.get("serial"),
         )

@@ -4,6 +4,7 @@ import math
 
 from evo_lib.drivers.lidar.virtual import Lidar2DVirtual
 from evo_lib.interfaces.lidar import Lidar2DMeasure
+from evo_lib.logger import Logger
 
 
 class TestLidar2DVirtual:
@@ -19,7 +20,7 @@ class TestLidar2DVirtual:
         ]
 
     def test_start_stop(self):
-        lidar = Lidar2DVirtual("lidar")
+        lidar = Lidar2DVirtual("lidar", Logger("test"))
         lidar.init()
         assert not lidar._running
         lidar.start().wait()
@@ -28,7 +29,7 @@ class TestLidar2DVirtual:
         assert not lidar._running
 
     def test_inject_and_iter(self):
-        lidar = Lidar2DVirtual("lidar")
+        lidar = Lidar2DVirtual("lidar", Logger("test"))
         lidar.init()
         lidar.start().wait()
         measures = self._make_measures(3)
@@ -40,7 +41,7 @@ class TestLidar2DVirtual:
         assert result[2].distance == 200.0
 
     def test_on_scan_event_fires(self):
-        lidar = Lidar2DVirtual("lidar")
+        lidar = Lidar2DVirtual("lidar", Logger("test"))
         lidar.init()
         received = []
         lidar.on_scan().register(lambda batch: received.append(batch))
