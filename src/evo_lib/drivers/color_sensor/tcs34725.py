@@ -38,7 +38,7 @@ _ATIME_STEP_MS = 2.4
 _ATIME_DEFAULT = 0xD5
 
 # Datasheet §Principles of Operation, Figure 9: 2.4 ms warm-up after PON.
-_POWER_ON_DELAY_S = 0.003
+_POWER_ON_DELAY_S = 0.0024
 
 
 def _ms_to_atime(ms: float) -> int:
