@@ -39,4 +39,7 @@ Each file documents a single concept. Files are self-contained but link to relat
 |------|------|---------|
 | [Color](types/color.md) | `types/color.md` | RGBA value object (normalized floats) |
 | [Vector and Pose Types](types/vect.md) | `types/vect.md` | Vect2D, Vect3D, Pose2D, Pose3D (quaternion-based 3D) |
+| [Geometry Vocabulary](types/geometry-vocabulary.md) | `types/geometry-vocabulary.md` | Glossary: SE(n), SO(n), pose, frame, quaternion |
+| [Geometry Examples](types/geometry-examples.md) | `types/geometry-examples.md` | Worked examples: compose vs add, frame chaining, pitfalls |
+| [Geometry Performance](types/geometry-performance.md) | `types/geometry-performance.md` | Patterns for embedded: sqr_norm, cached trig, dot-product heading comparison |
 | [Locatable Components](types/locatable-components.md) | `types/locatable-components.md` | Proposal: config-driven pose for components |
