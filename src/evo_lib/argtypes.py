@@ -746,7 +746,8 @@ ID_TO_ARGTYPE: list[type[ArgType]] = [
     ArgTypes.Array,
     ArgTypes.Struct,
     ArgTypes.Enum,
-    ArgTypes.Bool
+    ArgTypes.Bool,
+    ArgTypes.Bytes,
 ]
 
 ARGTYPE_TO_ID: dict[type[ArgType], int] = {t: i for i, t in enumerate(ID_TO_ARGTYPE)}
@@ -769,6 +770,7 @@ NAME_TO_ARGTYPE: dict[str, type[ArgType]] = {
     "struct": ArgTypes.Struct,
     "enum":   ArgTypes.Enum,
     "bool":   ArgTypes.Bool,
+    "bytes":  ArgTypes.Bytes,
 }
 
 ARGTYPE_TO_NAME: dict[type[ArgType], str] = {t: n for n, t in NAME_TO_ARGTYPE.items()}
@@ -802,3 +804,21 @@ def argtype_to_stream(argtype: ArgType, s: io.RawIOBase) -> None:
     argtype_id = ARGTYPE_TO_ID[type(argtype)]
     s.write(bytes([argtype_id]))
     argtype.self_to_stream(s)
+
+
+def _argtype_flatten_rec(name: str, argtype: ArgType) -> list[tuple[str, ArgType]]:
+    if isinstance(argtype, ArgTypes.Struct):
+        r: list[tuple[str, ArgType]] = []
+        for field_name, field_type in argtype.fields:
+            child_name = f"{name}.{field_name}" if name != "" else field_name
+            r.extend(_argtype_flatten_rec(child_name, field_type))
+        return r
+    else:
+        return [(name, argtype)]
+
+
+def argtype_flatten(argtype: ArgType, root_field_name: str = "") -> list[tuple[str, ArgType]]:
+    if isinstance(argtype, ArgTypes.Struct):
+        return _argtype_flatten_rec(root_field_name, argtype)
+    else:
+        return [(root_field_name, argtype)]
