@@ -808,6 +808,7 @@ def argtype_to_stream(argtype: ArgType, s: io.RawIOBase) -> None:
 
 def _argtype_flatten_rec(name: str, argtype: ArgType) -> list[tuple[str, ArgType]]:
     if isinstance(argtype, ArgTypes.Struct):
+        return argtype.fields
         r: list[tuple[str, ArgType]] = []
         for field_name, field_type in argtype.fields:
             child_name = f"{name}.{field_name}" if name != "" else field_name
