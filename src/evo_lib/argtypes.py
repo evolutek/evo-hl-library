@@ -19,7 +19,9 @@ class ArgType(ABC):
 
     def value_from_str(self, v: str) -> Any:
         """Parse a string to the given argument type (usefull for CLI)."""
-        return self.value_from_config(ConfigJSON5Parser().parse_from_string(v)) # Default implementation
+        return self.value_from_config(
+            ConfigJSON5Parser().parse_from_string(v)
+        )  # Default implementation
 
     @abstractmethod
     def value_from_config(self, v: ConfigValue) -> Any:
@@ -69,7 +71,7 @@ class ArgTypes:
         def __init__(self, fields: list[tuple[str, ArgType]]):
             self.fields: list[tuple[str, ArgType]] = fields
 
-        def value_from_config(self, v: ConfigValue) -> dict[str,Any]:
+        def value_from_config(self, v: ConfigValue) -> dict[str, Any]:
             r = {}
             if isinstance(v, dict):
                 for fname, ftype in self.fields:
@@ -78,7 +80,7 @@ class ArgTypes:
                 raise ConfigValidationError("Struct value must be a dict")
             return r
 
-        def value_from_stream(self, s: io.RawIOBase) -> dict[str,Any]:
+        def value_from_stream(self, s: io.RawIOBase) -> dict[str, Any]:
             r = {}
             for fname, ftype in self.fields:
                 r[fname] = ftype.value_from_stream(s)
@@ -228,7 +230,7 @@ class ArgTypes:
             encoding: str = "utf-8",
             max_size: int = 0,
             choices: list[str] | None = None,
-            regex: str | re.Pattern | None = None
+            regex: str | re.Pattern | None = None,
         ):
             self.encoding = encoding
             self.choices = choices
@@ -350,7 +352,7 @@ class ArgTypes:
             pass
 
         def self_to_config(self, c: ConfigObject) -> None:
-            pass # No specific attributes to dump
+            pass  # No specific attributes to dump
 
         def __str__(self):
             return "bool"
@@ -380,10 +382,12 @@ class ArgTypes:
             if not isinstance(v, (int, float)):
                 raise ConfigValidationError(f"{type(self).__name__} value must be a number")
             if v < self.min or v > self.max:
-                raise ConfigValidationError(f"{type(self).__name__} value must be between {self.min} and {self.max}")
+                raise ConfigValidationError(
+                    f"{type(self).__name__} value must be between {self.min} and {self.max}"
+                )
             return float(v)
 
-        def __init__(self, help = None, min: float | None = None, max: float | None = None):
+        def __init__(self, help=None, min: float | None = None, max: float | None = None):
             super().__init__(help, min, max)
             if self.min is None:
                 self.min = -math.inf
@@ -408,19 +412,22 @@ class ArgTypes:
         _default_max: int = None
 
         def __init__(self, help, min, max):
-            assert(self._default_min is not None)
-            assert(self._default_max is not None)
-            super().__init__(help,
+            assert self._default_min is not None
+            assert self._default_max is not None
+            super().__init__(
+                help,
                 min if min is not None else self._default_min,
                 max if max is not None else self._default_max,
             )
 
         def value_from_config(self, v: ConfigValue) -> int:
             if not isinstance(v, int):
-            # self.min and self.max are guaranteed to be non-None after __init__
+                # self.min and self.max are guaranteed to be non-None after __init__
                 raise ConfigValidationError(f"{type(self).__name__} value must be an integer")
             if v < self.min or v > self.max:
-                raise ConfigValidationError(f"{type(self).__name__} value must be between {self.min} and {self.max}")
+                raise ConfigValidationError(
+                    f"{type(self).__name__} value must be between {self.min} and {self.max}"
+                )
             return v
 
         def self_from_config(self, c: ConfigObject) -> None:
@@ -437,7 +444,7 @@ class ArgTypes:
                 c["max"] = self.max
 
     class F16(Float):
-        def __init__(self, help = None, min: float | None = None, max: float | None = None):
+        def __init__(self, help=None, min: float | None = None, max: float | None = None):
             super().__init__(help, min or -math.inf, max or math.inf)
 
         def value_from_stream(self, s: io.RawIOBase) -> float:
@@ -450,7 +457,7 @@ class ArgTypes:
             return "f16"
 
     class F32(Float):
-        def __init__(self, help = None, min: float | None = None, max: float | None = None):
+        def __init__(self, help=None, min: float | None = None, max: float | None = None):
             super().__init__(help, min, max)
 
         def value_from_stream(self, s: io.RawIOBase) -> float:
@@ -463,7 +470,7 @@ class ArgTypes:
             return "f32"
 
     class F64(Float):
-        def __init__(self, help = None, min: float | None = None, max: float | None = None):
+        def __init__(self, help=None, min: float | None = None, max: float | None = None):
             super().__init__(help, min, max)
 
         def value_from_stream(self, s: io.RawIOBase) -> float:
@@ -476,7 +483,9 @@ class ArgTypes:
             return "f64"
 
     class U8(Int):
-        def __init__(self, help = None, min_value: float | None = None, max_value: float | None = None):
+        def __init__(
+            self, help=None, min_value: float | None = None, max_value: float | None = None
+        ):
             self._default_min = 0
             self._default_max = 0xFF
             super().__init__(help, min_value, max_value)
@@ -491,7 +500,9 @@ class ArgTypes:
             return "u8"
 
     class U16(Int):
-        def __init__(self, help = None, min_value: float | None = None, max_value: float | None = None):
+        def __init__(
+            self, help=None, min_value: float | None = None, max_value: float | None = None
+        ):
             self._default_min = 0
             self._default_max = 0xFFFF
             super().__init__(help, min_value, max_value)
@@ -506,7 +517,9 @@ class ArgTypes:
             return "u16"
 
     class U32(Int):
-        def __init__(self, help = None, min_value: float | None = None, max_value: float | None = None):
+        def __init__(
+            self, help=None, min_value: float | None = None, max_value: float | None = None
+        ):
             self._default_min = 0
             self._default_max = 0xFFFFFFFF
             super().__init__(help, min_value, max_value)
@@ -521,7 +534,9 @@ class ArgTypes:
             return "u32"
 
     class U64(Int):
-        def __init__(self, help = None, min_value: float | None = None, max_value: float | None = None):
+        def __init__(
+            self, help=None, min_value: float | None = None, max_value: float | None = None
+        ):
             self._default_min = 0
             self._default_max = 0xFFFFFFFFFFFFFFFF
             super().__init__(help, min_value, max_value)
@@ -536,7 +551,9 @@ class ArgTypes:
             return "u64"
 
     class I8(Int):
-        def __init__(self, help = None, min_value: float | None = None, max_value: float | None = None):
+        def __init__(
+            self, help=None, min_value: float | None = None, max_value: float | None = None
+        ):
             self._default_min = -0x80
             self._default_max = 0x7F
             super().__init__(help, min_value, max_value)
@@ -551,7 +568,9 @@ class ArgTypes:
             return "i8"
 
     class I16(Int):
-        def __init__(self, help = None, min_value: float | None = None, max_value: float | None = None):
+        def __init__(
+            self, help=None, min_value: float | None = None, max_value: float | None = None
+        ):
             self._default_min = -0x8000
             self._default_max = 0x7FFF
             super().__init__(help, min_value, max_value)
@@ -566,7 +585,9 @@ class ArgTypes:
             return "i16"
 
     class I32(Int):
-        def __init__(self, help = None, min_value: float | None = None, max_value: float | None = None):
+        def __init__(
+            self, help=None, min_value: float | None = None, max_value: float | None = None
+        ):
             self._default_min = -0x80000000
             self._default_max = 0x7FFFFFFF
             super().__init__(help, min_value, max_value)
@@ -581,7 +602,9 @@ class ArgTypes:
             return "i32"
 
     class I64(Int):
-        def __init__(self, help = None, min_value: float | None = None, max_value: float | None = None):
+        def __init__(
+            self, help=None, min_value: float | None = None, max_value: float | None = None
+        ):
             self._default_min = -0x8000000000000000
             self._default_max = 0x7FFFFFFFFFFFFFFF
             super().__init__(help, min_value, max_value)
@@ -658,7 +681,7 @@ class ArgTypes:
             pass
 
         def self_to_config(self, c: ConfigObject) -> None:
-            pass # Enum type is provided at construction, not serialized to config
+            pass  # Enum type is provided at construction, not serialized to config
 
         def __str__(self):
             return f"enum({self.enum_type.__name__})"
@@ -694,14 +717,10 @@ class ArgTypes:
             raise NotImplementedError("Encoding of component reference is not implemented")
 
         def self_to_stream(self, s: io.RawIOBase) -> None:
-            raise NotImplementedError(
-                "Serialization of component reference is not implemented"
-            )
+            raise NotImplementedError("Serialization of component reference is not implemented")
 
         def self_from_stream(self, s: io.RawIOBase) -> None:
-            raise NotImplementedError(
-                "Deserialization of component reference is not implemented"
-            )
+            raise NotImplementedError("Deserialization of component reference is not implemented")
 
         def self_from_config(self, c: ConfigObject) -> None:
             # Component references don't have configuration
@@ -753,24 +772,24 @@ ID_TO_ARGTYPE: list[type[ArgType]] = [
 ARGTYPE_TO_ID: dict[type[ArgType], int] = {t: i for i, t in enumerate(ID_TO_ARGTYPE)}
 
 NAME_TO_ARGTYPE: dict[str, type[ArgType]] = {
-    "int":    ArgTypes.I64,
-    "i64":    ArgTypes.I64,
-    "i32":    ArgTypes.I32,
-    "i16":    ArgTypes.I16,
-    "i8":     ArgTypes.I8,
-    "u64":    ArgTypes.U64,
-    "u32":    ArgTypes.U32,
-    "u16":    ArgTypes.U16,
-    "u8":     ArgTypes.U8,
-    "float":  ArgTypes.F64,
-    "f64":    ArgTypes.F64,
-    "f32":    ArgTypes.F32,
-    "str":    ArgTypes.String,
-    "array":  ArgTypes.Array,
+    "int": ArgTypes.I64,
+    "i64": ArgTypes.I64,
+    "i32": ArgTypes.I32,
+    "i16": ArgTypes.I16,
+    "i8": ArgTypes.I8,
+    "u64": ArgTypes.U64,
+    "u32": ArgTypes.U32,
+    "u16": ArgTypes.U16,
+    "u8": ArgTypes.U8,
+    "float": ArgTypes.F64,
+    "f64": ArgTypes.F64,
+    "f32": ArgTypes.F32,
+    "str": ArgTypes.String,
+    "array": ArgTypes.Array,
     "struct": ArgTypes.Struct,
-    "enum":   ArgTypes.Enum,
-    "bool":   ArgTypes.Bool,
-    "bytes":  ArgTypes.Bytes,
+    "enum": ArgTypes.Enum,
+    "bool": ArgTypes.Bool,
+    "bytes": ArgTypes.Bytes,
 }
 
 ARGTYPE_TO_NAME: dict[type[ArgType], str] = {t: n for n, t in NAME_TO_ARGTYPE.items()}
@@ -809,11 +828,11 @@ def argtype_to_stream(argtype: ArgType, s: io.RawIOBase) -> None:
 def _argtype_flatten_rec(name: str, argtype: ArgType) -> list[tuple[str, ArgType]]:
     if isinstance(argtype, ArgTypes.Struct):
         return argtype.fields
-        r: list[tuple[str, ArgType]] = []
-        for field_name, field_type in argtype.fields:
-            child_name = f"{name}.{field_name}" if name != "" else field_name
-            r.extend(_argtype_flatten_rec(child_name, field_type))
-        return r
+        # r: list[tuple[str, ArgType]] = []
+        # for field_name, field_type in argtype.fields:
+        #     child_name = f"{name}.{field_name}" if name != "" else field_name
+        #     r.extend(_argtype_flatten_rec(child_name, field_type))
+        # return r
     else:
         return [(name, argtype)]
 

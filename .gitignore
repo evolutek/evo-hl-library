@@ -13,6 +13,9 @@ build/
 .coverage
 htmlcov/
 
+# Editor
+.zed/
+
 # There is not need to include the uv.lock file since versions and dependencies
 # version should be locked only for the application package, see:
 # https://github.com/astral-sh/uv/issues/10730
