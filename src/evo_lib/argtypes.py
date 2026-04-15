@@ -59,22 +59,26 @@ class ArgType(ABC):
         """Dump sel type into a config."""
         pass
 
+    @abstractmethod
+    def __str__(self) -> str:
+        pass
+
 
 class ArgTypes:
     class Struct(ArgType):
         def __init__(self, fields: list[tuple[str, ArgType]]):
             self.fields: list[tuple[str, ArgType]] = fields
 
-        def value_from_config(self, v: ConfigValue) -> dict:
+        def value_from_config(self, v: ConfigValue) -> dict[str,Any]:
             r = {}
             if isinstance(v, dict):
                 for fname, ftype in self.fields:
-                    r[fname] = ftype.value_from_config(v[fname])
+                    r[fname] = ftype.value_from_config(v.get(fname))
             else:
                 raise ConfigValidationError("Struct value must be a dict")
             return r
 
-        def value_from_stream(self, s: io.RawIOBase) -> dict[str,]:
+        def value_from_stream(self, s: io.RawIOBase) -> dict[str,Any]:
             r = {}
             for fname, ftype in self.fields:
                 r[fname] = ftype.value_from_stream(s)
@@ -114,15 +118,28 @@ class ArgTypes:
                 ftype = argtype_from_config(field.get_str("type"))
                 self.fields.append((fname, ftype))
 
-        def value_from_str(self, v) -> object:
-            r = {}
-            if isinstance(v, dict):
-                for fname, ftype in self.fields:
-                    r[fname] = ftype.value_from_str(v[fname])
-            else:
-                for fname, ftype in self.fields:
-                    r[fname] = ftype.value_from_str(getattr(v, fname))
-            return r
+        def self_to_config(self, c: ConfigObject) -> None:
+            fields = c.create_object("fields")
+            for fname, ftype in self.fields:
+                fields[fname] = argtype_from_config(ftype)
+
+        def __str__(self) -> str:
+            return "{" + ", ".join(f"{fname}: {ftype}" for fname, ftype in self.fields) + "}"
+
+    class Object[T](Struct, ABC):
+        def __init__(self, name: str, fields: list[tuple[str, ArgType]]):
+            super().__init__(fields)
+            self._name = name
+
+        @abstractmethod
+        def convert(self, v: dict[str, Any]) -> T:
+            pass
+
+        def value_from_config(self, v: ConfigValue) -> T:
+            return self.convert(ArgTypes.Struct.value_from_config(self, v))
+
+        def value_from_stream(self, s: io.RawIOBase) -> T:
+            return self.convert(ArgTypes.Struct.value_from_stream(self, s))
 
     class Array(ArgType):
         def __init__(self, element_type: ArgType, max_size: int = 0):
@@ -165,6 +182,9 @@ class ArgTypes:
                 c["max_size"] = self.max_size
             c["element_type"] = argtype_to_config(self.element_type)
 
+        def __str__(self) -> str:
+            return f"[{self.element_type}]"
+
     class Bytes(ArgType):
         def __init__(self, max_size: int = 0):
             self.max_size = max_size
@@ -198,6 +218,9 @@ class ArgTypes:
         def self_to_config(self, c: ConfigObject) -> None:
             if self.max_size != 0:
                 c["max_size"] = self.max_size
+
+        def __str__(self):
+            return "bytes"
 
     class String(ArgType):
         def __init__(
@@ -293,6 +316,10 @@ class ArgTypes:
                 c["choices"] = self.choices
             if self.regex is not None:
                 c["regex"] = self.regex.pattern
+
+        def __str__(self):
+            return "str"
+
     class Bool(ArgType):
         def value_from_config(self, v: ConfigValue) -> bool:
             if isinstance(v, bool):
@@ -324,6 +351,9 @@ class ArgTypes:
 
         def self_to_config(self, c: ConfigObject) -> None:
             pass # No specific attributes to dump
+
+        def __str__(self):
+            return "bool"
 
     class Numeric(ArgType, ABC):
         def __init__(
@@ -416,6 +446,9 @@ class ArgTypes:
         def value_to_stream(self, v: float, s: io.RawIOBase) -> None:
             s.write(struct.pack("e", v))
 
+        def __str__(self):
+            return "f16"
+
     class F32(Float):
         def __init__(self, help = None, min: float | None = None, max: float | None = None):
             super().__init__(help, min, max)
@@ -426,6 +459,9 @@ class ArgTypes:
         def value_to_stream(self, v: float, s: io.RawIOBase) -> None:
             s.write(struct.pack("f", v))
 
+        def __str__(self):
+            return "f32"
+
     class F64(Float):
         def __init__(self, help = None, min: float | None = None, max: float | None = None):
             super().__init__(help, min, max)
@@ -435,6 +471,9 @@ class ArgTypes:
 
         def value_to_stream(self, v: float, s: io.RawIOBase) -> None:
             s.write(struct.pack("d", v))
+
+        def __str__(self):
+            return "f64"
 
     class U8(Int):
         def __init__(self, help = None, min_value: float | None = None, max_value: float | None = None):
@@ -448,6 +487,9 @@ class ArgTypes:
         def value_to_stream(self, v: int, s: io.RawIOBase) -> None:
             s.write(struct.pack("B", v))
 
+        def __str__(self):
+            return "u8"
+
     class U16(Int):
         def __init__(self, help = None, min_value: float | None = None, max_value: float | None = None):
             self._default_min = 0
@@ -459,6 +501,9 @@ class ArgTypes:
 
         def value_to_stream(self, v: int, s: io.RawIOBase) -> None:
             s.write(struct.pack("H", v))
+
+        def __str__(self):
+            return "u16"
 
     class U32(Int):
         def __init__(self, help = None, min_value: float | None = None, max_value: float | None = None):
@@ -472,6 +517,9 @@ class ArgTypes:
         def value_to_stream(self, v: int, s: io.RawIOBase) -> None:
             s.write(struct.pack("I", v))
 
+        def __str__(self):
+            return "u32"
+
     class U64(Int):
         def __init__(self, help = None, min_value: float | None = None, max_value: float | None = None):
             self._default_min = 0
@@ -483,6 +531,9 @@ class ArgTypes:
 
         def value_to_stream(self, v: int, s: io.RawIOBase) -> None:
             s.write(struct.pack("Q", v))
+
+        def __str__(self):
+            return "u64"
 
     class I8(Int):
         def __init__(self, help = None, min_value: float | None = None, max_value: float | None = None):
@@ -496,6 +547,9 @@ class ArgTypes:
         def value_to_stream(self, v: int, s: io.RawIOBase) -> None:
             s.write(struct.pack("b", v))
 
+        def __str__(self):
+            return "i8"
+
     class I16(Int):
         def __init__(self, help = None, min_value: float | None = None, max_value: float | None = None):
             self._default_min = -0x8000
@@ -507,6 +561,9 @@ class ArgTypes:
 
         def value_to_stream(self, v: int, s: io.RawIOBase) -> None:
             s.write(struct.pack("h", v))
+
+        def __str__(self):
+            return "i16"
 
     class I32(Int):
         def __init__(self, help = None, min_value: float | None = None, max_value: float | None = None):
@@ -520,6 +577,9 @@ class ArgTypes:
         def value_to_stream(self, v: int, s: io.RawIOBase) -> None:
             s.write(struct.pack("i", v))
 
+        def __str__(self):
+            return "i32"
+
     class I64(Int):
         def __init__(self, help = None, min_value: float | None = None, max_value: float | None = None):
             self._default_min = -0x8000000000000000
@@ -531,6 +591,9 @@ class ArgTypes:
 
         def value_to_stream(self, v: int, s: io.RawIOBase) -> None:
             s.write(struct.pack("q", v))
+
+        def __str__(self):
+            return "i64"
 
     class Enum(ArgType):
         def __init__(
@@ -597,6 +660,9 @@ class ArgTypes:
         def self_to_config(self, c: ConfigObject) -> None:
             pass # Enum type is provided at construction, not serialized to config
 
+        def __str__(self):
+            return f"enum({self.enum_type.__name__})"
+
     # Reference to a device
     class Component(ArgType):
         def __init__(self, base_type: type[Peripheral], components: Registry[Peripheral]):
@@ -643,6 +709,9 @@ class ArgTypes:
 
         def self_to_config(self, c: ConfigObject) -> None:
             pass
+
+        def __str__(self):
+            return "component(" + self.base_type.__name__ + ")"
 
     class OptionalComponent(Component):
         """Like Component, but accepts a missing/null config value (returns None).

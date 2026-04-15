@@ -18,10 +18,10 @@ from evo_lib.drivers.pilot.serial_pilot import (
     HolonomicSerialPilotVirtualDefinition,
 )
 from evo_lib.drivers.pilot.virtual import (
+    DifferentialPilotVirtual,
+    DifferentialPilotVirtualDefinition,
     HolonomicPilotVirtual,
     HolonomicPilotVirtualDefinition,
-    PilotVirtual,
-    PilotVirtualDefinition,
 )
 
 __all__ = [
@@ -38,8 +38,8 @@ __all__ = [
     "HolonomicSerialPilotVirtual",
     "HolonomicSerialPilotVirtualDefinition",
     "NO_ACK_COMMANDS",
-    "PilotVirtual",
-    "PilotVirtualDefinition",
+    "DifferentialPilotVirtual",
+    "DifferentialPilotVirtualDefinition",
     "RESPONSE_FORMATS",
     "build_packet",
 ]

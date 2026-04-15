@@ -67,7 +67,7 @@ class DriverInitArgs:
         return r
 
 
-type DriverCommandCallback = Callable[..., Task[Any]]
+type DriverCommandCallback = Callable[..., Any]
 
 
 # A driver command is an unbound method: it takes the peripheral instance as
@@ -77,7 +77,7 @@ class DriverCommand:
     name: str
     method: str
     args: list[tuple[str, ArgType]]
-    result: list[tuple[str, ArgType]]
+    result: list[tuple[str, ArgType]] | ArgType
     help: str | None
 
     def call(self, obj: Peripheral, *args, **kwargs) -> Task[Any]:
@@ -94,7 +94,7 @@ class DriverCommands:
 
     def register(self,
         args: list[tuple[str, ArgType]],
-        result: list[tuple[str, ArgType]],
+        result: list[tuple[str, ArgType]] | ArgType,
         name: str | None = None,
         help: str | None = None
     ) -> DriverCommand:
