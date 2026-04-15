@@ -177,7 +177,7 @@ class LoggerFormatter(logging.Formatter):
     Manages timestamps, prefixes, module names, and indentation for multiline logs.
     """
 
-    def __init__(self, colored: bool = False):
+    def __init__(self, colored: bool = _are_ansi_color_supported()):
         super().__init__()
         self._strftime_format: str = "%d-%m-%Y %H:%M:%S"
         self._colored: bool = colored
@@ -430,6 +430,11 @@ class Logger:
         """Add a sink to the logger."""
         self._sinks.append(sink)
         self._logger.addHandler(sink.get_handler())
+
+    def remove_sink(self, sink: LoggerSink) -> None:
+        """Remove a sink from the logger."""
+        self._sinks.remove(sink)
+        self._logger.removeHandler(sink.get_handler())
 
     def _excepthook(self, *exc_info) -> None:
         text = "".join(traceback.format_exception(*exc_info))
