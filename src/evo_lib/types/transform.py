@@ -23,6 +23,17 @@ class Transform2D(ABC):
         pass
 
 
+class IdentityTransform2D(Transform2D):
+    def apply_to_point(self, point: Vect2D) -> None:
+        pass
+
+    def apply_to_angle(self, angle: float) -> float:
+        return angle
+
+    def copy(self) -> IdentityTransform2D:
+        return IdentityTransform2D()
+
+
 class MirrorTransform2D(ABC):
     def __init__(self, offset: Vect2D, vertical: bool):
         self._vertical: bool = vertical

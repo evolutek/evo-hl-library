@@ -16,14 +16,13 @@ from evo_lib.driver_definition import (
     DriverInitArgsDefinition,
 )
 from evo_lib.drivers.pilot.protocol import (
-    INIT_PACKET,
     NO_ACK_COMMANDS,
     RESPONSE_FORMATS,
     Commands,
     Errors,
     build_packet,
 )
-from evo_lib.drivers.pilot.virtual import HolonomicPilotVirtual, PilotVirtual
+from evo_lib.drivers.pilot.virtual import HolonomicPilotVirtual, DifferentialPilotVirtual
 from evo_lib.event import Event
 from evo_lib.interfaces.pilot import (
     DifferentialPilot,
@@ -419,7 +418,7 @@ class DifferentialSerialPilot(DifferentialPilot):
                 continue
             except Exception as e:
                 if self._running:
-                    self._log.error("Pilot reader error: %s", e)
+                    self._log.error(f"Pilot reader error: {e}")
 
     def _process_bytes(self, data: bytes) -> None:
         """Accumulate incoming bytes and parse complete packets."""
@@ -560,11 +559,7 @@ class HolonomicSerialPilot(DifferentialSerialPilot, HolonomicPilot):
     def follow_holonomic_path(
         self, waypoints: list[HolonomicPilotWaypoint]
     ) -> Task[PilotMoveStatus]:
-        # TODO: chain sequential GLOBAL_GOTO for each waypoint
-        if not waypoints:
-            return ImmediateResultTask(PilotMoveStatus.REACHED)
-        wp = waypoints[-1]
-        return self.go_to_while_head_to(wp.x, wp.y, wp.heading)
+        raise NotImplementedError("follow_holonomic_path not implemented yet")
 
     @commands.register(args=[], result=[])
     def calibrate_otos(self) -> Task[()]:
@@ -593,7 +588,7 @@ class HolonomicSerialPilotDefinition(DriverDefinition):
         )
 
 
-class DifferentialSerialPilotVirtual(PilotVirtual):
+class DifferentialSerialPilotVirtual(DifferentialPilotVirtual):
     """Drop-in virtual twin for DifferentialSerialPilot.
 
     Constructor mirrors DifferentialSerialPilot exactly so a config swap is

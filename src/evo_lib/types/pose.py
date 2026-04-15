@@ -6,7 +6,9 @@ Utility functions provide distance computation and angle normalization.
 
 import math
 from abc import ABC, abstractmethod
+from typing import Any
 
+from evo_lib.argtypes import ArgTypes
 from evo_lib.types.vect import Vect2D, Vect3D
 
 
@@ -54,6 +56,17 @@ class Pose2D(PoseBase, Vect2D):
     direction it faces. Use *transform* to convert points between reference
     frames.
     """
+
+    class ArgType(ArgTypes.Object["Pose2D"]):
+        def __init__(self):
+            super().__init__("Pose2D", [
+                ("x", ArgTypes.F32()),
+                ("y", ArgTypes.F32()),
+                ("heading", ArgTypes.F32()),
+            ])
+
+        def convert(self, v: dict[str, Any]) -> Pose2D:
+            return Pose2D(v["x"], v["y"], v["heading"])
 
     __slots__ = ("heading")
 

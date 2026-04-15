@@ -29,7 +29,7 @@ from evo_lib.types.pose import Pose2D
 from evo_lib.types.vect import Vect2D
 
 
-class PilotVirtual(DifferentialPilot):
+class DifferentialPilotVirtual(DifferentialPilot):
     """Standalone simulated differential pilot for tests and simulation.
 
     Not a drop-in twin of DifferentialSerialPilot — see
@@ -115,11 +115,7 @@ class PilotVirtual(DifferentialPilot):
         return self._start_rotation(target, duration)
 
     def follow_path(self, waypoints: list[DifferentialPilotWaypoint]) -> Task[PilotMoveStatus]:
-        # TODO: simulate sequential traversal of all waypoints
-        if not waypoints:
-            return ImmediateResultTask(PilotMoveStatus.REACHED)
-        wp = waypoints[-1]
-        return self.go_to(wp.x, wp.y)
+        raise NotImplementedError("DifferentialPilotVirtual.follow_path is not implemented yet")
 
     def stop(self) -> Task[()]:
         self._cancel.set()
@@ -224,7 +220,7 @@ class PilotVirtual(DifferentialPilot):
         task.complete(PilotMoveStatus.REACHED)
 
 
-class PilotVirtualDefinition(DriverDefinition):
+class DifferentialPilotVirtualDefinition(DriverDefinition):
     """Factory for PilotVirtual from config args."""
 
     def __init__(self, logger: Logger):
@@ -237,8 +233,8 @@ class PilotVirtualDefinition(DriverDefinition):
         defn.add_optional("speed_rot", ArgTypes.F32(), 2.0)
         return defn
 
-    def create(self, args: DriverInitArgs) -> PilotVirtual:
-        return PilotVirtual(
+    def create(self, args: DriverInitArgs) -> DifferentialPilotVirtual:
+        return DifferentialPilotVirtual(
             name=args.get_name(),
             logger=self._logger,
             speed_trsl=args.get("speed_trsl"),
@@ -246,7 +242,7 @@ class PilotVirtualDefinition(DriverDefinition):
         )
 
 
-class HolonomicPilotVirtual(PilotVirtual, HolonomicPilot):
+class HolonomicPilotVirtual(DifferentialPilotVirtual, HolonomicPilot):
     """Standalone simulated holonomic pilot: simultaneous translation+rotation.
 
     Not a drop-in twin of HolonomicSerialPilot — see
@@ -275,12 +271,7 @@ class HolonomicPilotVirtual(PilotVirtual, HolonomicPilot):
     def follow_holonomic_path(
         self, waypoints: list[HolonomicPilotWaypoint]
     ) -> Task[PilotMoveStatus]:
-        # TODO: simulate sequential traversal of all waypoints
-        if not waypoints:
-            return ImmediateResultTask(PilotMoveStatus.REACHED)
-        wp = waypoints[-1]
-        return self.go_to_while_head_to(wp.x, wp.y, wp.heading)
-
+        raise NotImplementedError("HolonomicPilotVirtual.follow_holonomic_path is not implemented yet")
 
 class HolonomicPilotVirtualDefinition(DriverDefinition):
     """Factory for HolonomicPilotVirtual from config args."""

@@ -12,7 +12,9 @@ transforms. Pose3D uses quaternions internally for gimbal-lock-free rotation.
 
 import math
 from abc import ABC, abstractmethod
-from typing import Self
+from typing import Any, Self
+
+from evo_lib.argtypes import ArgTypes
 
 # ---------------------------------------------------------------------------
 # Abstract bases
@@ -125,6 +127,16 @@ class VectBase(ABC):
 class Vect2D(VectBase):
     """2D vector (x, y) in millimeters."""
 
+    class ArgType(ArgTypes.Object["Vect2D"]):
+        def __init__(self):
+            super().__init__("Vect2D", [
+                ("x", ArgTypes.F32()),
+                ("y", ArgTypes.F32()),
+            ])
+
+        def convert(self, v: dict[str, Any]) -> Vect2D:
+            return Vect2D(v["x"], v["y"])
+
     __slots__ = ("x", "y")
 
     def __init__(self, x: float | int, y: float | int) -> None:
@@ -194,6 +206,17 @@ class Vect2D(VectBase):
 
 class Vect3D(VectBase):
     """3D vector (x, y, z) in millimeters."""
+
+    class ArgType(ArgTypes.Object["Vect3D"]):
+        def __init__(self):
+            super().__init__("Vect3D", [
+                ("x", ArgTypes.F32()),
+                ("y", ArgTypes.F32()),
+                ("z", ArgTypes.F32()),
+            ])
+
+        def convert(self, v: dict[str, Any]) -> Vect3D:
+            return Vect3D(v["x"], v["y"], v["z"])
 
     __slots__ = ("x", "y", "z")
 

@@ -81,18 +81,25 @@ class Pilot(Placable):
         pass
 
     @abstractmethod
+    @commands.register(args = [], result = Vect2D.ArgType())
     def get_velocity(self) -> Task[Vect2D]:
         pass
 
     @abstractmethod
+    @commands.register(args = [], result = Pose2D.ArgType())
     def get_pose(self) -> Task[Pose2D]:
         pass
 
     @abstractmethod
+    @commands.register(args = [], result = [
+        ("pose", Pose2D.ArgType()),
+        ("velocity", Vect2D.ArgType())
+    ])
     def get_pose_and_velocity(self) -> Task[Pose2D, Vect2D]:
         pass
 
     @abstractmethod
+    @commands.register(args = [("pose", Pose2D.ArgType())], result = [])
     def set_pose(self, pose: Pose2D) -> Task[()]:
         pass
 
