@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Callable
 
-from evo_lib.argtypes import ArgType
+from evo_lib.argtypes import ArgType, ArgTypes
 from evo_lib.registry import Registry
 from evo_lib.task import Task
 
@@ -76,8 +76,8 @@ type DriverCommandCallback = Callable[..., Any]
 class DriverCommand:
     name: str
     method: str
-    args: list[tuple[str, ArgType]]
-    result: list[tuple[str, ArgType]] | ArgType
+    args: ArgType
+    result: ArgType
     help: str | None
 
     def call(self, obj: Peripheral, *args, **kwargs) -> Task[Any]:
@@ -93,11 +93,16 @@ class DriverCommands:
                     self._commands.register(cmd.name, cmd)
 
     def register(self,
-        args: list[tuple[str, ArgType]],
-        result: list[tuple[str, ArgType]] | ArgType,
+        args: list[tuple[str, ArgType]] | ArgType = [],
+        result: list[tuple[str, ArgType]] | ArgType = [],
         name: str | None = None,
         help: str | None = None
     ) -> DriverCommand:
+        if isinstance(args, list):
+            args = ArgTypes.Struct(args)
+        if isinstance(result, list):
+            result = ArgTypes.Struct(result)
+
         def decorator(callback: DriverCommandCallback):
             # Create a wrapper to call the method of the instance class not the method on
             # which this decorator was called, because this decorator can be used on
@@ -128,12 +133,19 @@ class DriverDefinition(ABC):
         # them via ``register_command`` (typically in their own ``__init__``).
         self._commands = commands if commands is not None else DriverCommands()
         self._name: str | None = None
+        self._type: type[Peripheral] | None = None
 
     def set_name(self, name: str) -> None:
         self._name = name
 
     def get_name(self) -> str:
         return self._name
+
+    # def set_type(self, type: type[Peripheral]) -> None:
+    #     self._type = type
+
+    # def get_type(self) -> type[Peripheral]:
+    #     return self._type
 
     def get_commands(self) -> DriverCommands:
         """Return a copy of all registered commands."""

@@ -163,25 +163,25 @@ class Node(ABC):
 
     def get_flow_output(self, name: str) -> FlowOutput | None:
         for ep in self._flow_outputs:
-            if ep._name == name:
+            if ep.get_name() == name:
                 return ep
         return None
 
     def get_flow_input(self, name: str) -> FlowInput | None:
         for ep in self._flow_inputs:
-            if ep._name == name:
+            if ep.get_name() == name:
                 return ep
         return None
 
     def get_value_output(self, name: str) -> ValueOutput | None:
         for ep in self._value_outputs:
-            if ep._name == name:
+            if ep.get_name() == name:
                 return ep
         return None
 
     def get_value_input(self, name: str) -> ValueInput | None:
         for ep in self._value_inputs:
-            if ep._name == name:
+            if ep.get_name() == name:
                 return ep
         return None
 
