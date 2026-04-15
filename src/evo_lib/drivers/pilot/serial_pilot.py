@@ -69,6 +69,7 @@ class DifferentialSerialPilot(DifferentialPilot):
         self._rx_buffer = bytearray()
         self._response_event = threading.Event()
         self._response_data: tuple = ()
+        self._pose_or_velocity_update_event: Event[Pose2D, Vect2D] = Event()
 
     def init(self) -> Task[()]:
         self._running = True
@@ -142,7 +143,7 @@ class DifferentialSerialPilot(DifferentialPilot):
         return ImmediateResultTask()
 
     def on_pose_or_velocity_update(self) -> Event[Pose2D, Vect2D]:
-        pass
+        return self._pose_or_velocity_update_event
 
     def get_velocity(self) -> Task[Vect2D]:
         pass
@@ -456,11 +457,12 @@ class DifferentialSerialPilot(DifferentialPilot):
             self._last_position.y = y
             self._last_position.heading = theta
             self._last_speed = speed
+            self._pose_or_velocity_update_event.trigger(self._last_position, self._last_velocity)
         elif cmd == Commands.GET_TRAVEL_THETA:
-            # Format: bbffff (counter, cmdid, x, y, theta, speed)
-            (theta,) = struct.unpack("=f", payload)
-            # self._log.debug(f"Telemetry: travel_theta={math.degrees(theta):.1f}°")
-            self._last_velocity = Vect2D.from_polar(self._last_speed, theta)
+            # Format: f(travel_theta)
+            (travel_theta,) = struct.unpack("=f", payload)
+            # self._log.debug(f"Telemetry: travel_theta = {math.degrees(travel_theta)}°")
+            self._last_velocity = Vect2D.from_polar(self._last_speed, travel_theta)
         elif cmd == Commands.ERROR:
             self._moving = False
             if self._move_task is not None:

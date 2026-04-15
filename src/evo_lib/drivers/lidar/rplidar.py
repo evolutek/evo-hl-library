@@ -151,6 +151,7 @@ class RPLidarDriver(Lidar2D):
                         self._scan_event.trigger(batch)
                         batch = []
 
+                    angle = -angle # Lidar rotate in non trigonometric order
                     measure = Lidar2DMeasure(distance, math.radians(angle), time.monotonic(), quality / 255.0)
                     try:
                         self._measures.put(measure, block = False)
