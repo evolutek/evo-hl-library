@@ -16,6 +16,7 @@ import time
 
 from evo_lib.argtypes import ArgTypes
 from evo_lib.driver_definition import (
+    DriverCommands,
     DriverDefinition,
     DriverInitArgs,
     DriverInitArgsDefinition,
@@ -262,6 +263,8 @@ class AX12(SmartServo):
     Bus-agnostic: works with any AX12Bus (real or virtual).
     """
 
+    commands = DriverCommands(parents=[SmartServo.commands])
+
     def __init__(self, name: str, logger: Logger, bus: AX12Bus, servo_id: int):
         super().__init__(name)
         self._log = logger
@@ -302,6 +305,7 @@ class AX12(SmartServo):
         self._write_word(_GOAL_POSITION_L, position)
         return ImmediateResultTask()
 
+    @commands.register(args=[], result=[])
     def reset(self) -> Task[()]:
         """Move to the mechanical center (150°)."""
         return self.move_to_position(_POSITION_CENTER)
@@ -335,6 +339,10 @@ class AX12(SmartServo):
         self._write_word(_MOVING_SPEED_L, round(speed * _SPEED_MAX))
         return ImmediateResultTask()
 
+    @commands.register(
+        args=[],
+        result=[("speed", ArgTypes.I16(help="Present speed, signed magnitude in [-1023, 1023]"))],
+    )
     def get_speed(self) -> Task[int]:
         """Present speed as a signed magnitude in [-1023, 1023].
 
@@ -347,6 +355,10 @@ class AX12(SmartServo):
 
     # --- Load (motor current) ---
 
+    @commands.register(
+        args=[],
+        result=[("load", ArgTypes.I16(help="Present load, signed magnitude in [-1023, 1023]"))],
+    )
     def get_load(self) -> Task[int]:
         """Present load as a signed magnitude in [-1023, 1023].
 
@@ -359,11 +371,19 @@ class AX12(SmartServo):
 
     # --- Diagnostics ---
 
+    @commands.register(
+        args=[],
+        result=[("voltage", ArgTypes.F32(help="Present bus voltage (V)"))],
+    )
     def get_voltage(self) -> Task[float]:
         """Present voltage in volts (register is tenths of a volt)."""
         data = self._bus.read_register(self._id, _PRESENT_VOLTAGE, 1)
         return ImmediateResultTask(data[0] / 10.0)
 
+    @commands.register(
+        args=[],
+        result=[("temperature", ArgTypes.U8(help="Present motor temperature (°C)"))],
+    )
     def get_temperature(self) -> Task[int]:
         """Present temperature in °C (internal sensor, shutdown ~70°C)."""
         data = self._bus.read_register(self._id, _PRESENT_TEMPERATURE, 1)
@@ -478,6 +498,8 @@ class AX12BusDefinition(DriverDefinition):
     """Factory for AX12Bus from config args."""
 
     def __init__(self, logger: Logger, peripherals: Registry[Peripheral]):
+        # The bus itself has no user-facing commands; individual AX12 servos
+        # are the command targets via their own AX12Definition.
         super().__init__()
         self._logger = logger
         self._peripherals = peripherals
@@ -540,7 +562,7 @@ class AX12Definition(DriverDefinition):
     """Factory for a single AX12 servo from config args."""
 
     def __init__(self, logger: Logger, peripherals: Registry[Peripheral]):
-        super().__init__()
+        super().__init__(AX12.commands)
         self._logger = logger
         self._peripherals = peripherals
 

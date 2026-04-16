@@ -76,7 +76,7 @@ class SmartServoVirtualDefinition(DriverDefinition):
     """Factory for SmartServoVirtual from config args."""
 
     def __init__(self, logger: Logger):
-        super().__init__()
+        super().__init__(SmartServo.commands)
         self._logger = logger
 
     def get_init_args_definition(self) -> DriverInitArgsDefinition:
