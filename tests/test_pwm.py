@@ -44,20 +44,20 @@ class TestPWMVirtual:
 class TestPWMChipVirtual:
     def test_get_channel(self):
         chip = PWMChipVirtual("test", Logger("test"))
-        ch = chip.get_channel(0, "ch0")
+        ch = chip.get_channel(0)
         assert isinstance(ch, PWMVirtual)
-        assert ch.name == "ch0"
+        assert ch.name == "test.ch0"
 
     def test_get_channel_returns_same_instance(self):
         chip = PWMChipVirtual("test", Logger("test"))
-        ch1 = chip.get_channel(3, "ch3")
-        ch2 = chip.get_channel(3, "ch3")
+        ch1 = chip.get_channel(3)
+        ch2 = chip.get_channel(3)
         assert ch1 is ch2
 
     def test_get_channel_bad_number(self):
         chip = PWMChipVirtual("test", Logger("test"))
         with pytest.raises(ValueError):
-            chip.get_channel(16, "bad")
+            chip.get_channel(16)
 
 
 class TestPCA9685Chip:
@@ -93,7 +93,7 @@ class TestPCA9685Chip:
 
     def test_set_duty_cycle_half(self, bus_and_chip):
         _, dev, chip = bus_and_chip
-        ch = chip.get_channel(0, "ch0")
+        ch = chip.get_channel(0)
         ch.set_duty_cycle(0.5)
         # off_count = round(0.5 * 4096) = 2048
         # write: base_reg=0x06, on_l=0, on_h=0, off_l=0x00, off_h=0x08
@@ -101,21 +101,21 @@ class TestPCA9685Chip:
 
     def test_set_duty_cycle_full_off(self, bus_and_chip):
         _, dev, chip = bus_and_chip
-        ch = chip.get_channel(0, "ch0")
+        ch = chip.get_channel(0)
         ch.set_duty_cycle(0.0)
         # Full off: off_h has bit 4 set
         assert dev.written[-1] == bytes([0x06, 0, 0, 0, 0x10])
 
     def test_set_duty_cycle_full_on(self, bus_and_chip):
         _, dev, chip = bus_and_chip
-        ch = chip.get_channel(0, "ch0")
+        ch = chip.get_channel(0)
         ch.set_duty_cycle(1.0)
         # Full on: on_h has bit 4 set
         assert dev.written[-1] == bytes([0x06, 0, 0x10, 0, 0])
 
     def test_set_pulse_width_us(self, bus_and_chip):
         _, dev, chip = bus_and_chip
-        ch = chip.get_channel(0, "ch0")
+        ch = chip.get_channel(0)
         ch.set_pulse_width_us(1500.0)
         # duty = 1500 / 20000 = 0.075, off_count = round(0.075 * 4096) = 307
         # 307 = 0x133 -> off_l=0x33, off_h=0x01
@@ -123,7 +123,7 @@ class TestPCA9685Chip:
 
     def test_channel_2_register_offset(self, bus_and_chip):
         _, dev, chip = bus_and_chip
-        ch = chip.get_channel(2, "ch2")
+        ch = chip.get_channel(2)
         ch.set_duty_cycle(0.0)
         # Channel 2 base = 0x06 + 4*2 = 0x0E
         assert dev.written[-1][0] == 0x0E
@@ -131,7 +131,7 @@ class TestPCA9685Chip:
     def test_channel_out_of_range(self, bus_and_chip):
         _, _, chip = bus_and_chip
         with pytest.raises(ValueError):
-            chip.get_channel(16, "bad")
+            chip.get_channel(16)
 
 
 class TestRpiPWM:
@@ -191,7 +191,7 @@ class TestPCA9685ChipVirtual:
         bus.init()
         chip = PCA9685ChipVirtual("pca_virt", Logger("test"), bus)
         chip.init()
-        ch = chip.get_channel(2, "ch2")
+        ch = chip.get_channel(2)
         ch.set_duty_cycle(0.5)
         assert ch.duty_cycle == 0.5
 

@@ -144,7 +144,10 @@ class PCA9685Chip(InterfaceHolder):
         self._freq_hz = freq_hz
         self._log = logger
         self._lock = threading.Lock()
-        self._channels: dict[int, PCA9685Channel] = {}
+        self._channels: dict[int, PCA9685Channel] = {
+            i: PCA9685Channel(f"{name}.ch{i}", logger, self, i)
+            for i in range(NUM_CHANNELS)
+        }
 
     @property
     def freq_hz(self) -> float:
@@ -200,15 +203,10 @@ class PCA9685Chip(InterfaceHolder):
         """Return all channels that have been created via get_channel."""
         return list(self._channels.values())
 
-    def get_channel(self, channel: int, name: str) -> PCA9685Channel:
-        """Create or retrieve a PCA9685Channel for the given channel number."""
+    def get_channel(self, channel: int) -> PCA9685Channel:
         if not 0 <= channel < NUM_CHANNELS:
             raise ValueError(f"Channel {channel} out of range (0-{NUM_CHANNELS - 1})")
-        if channel in self._channels:
-            return self._channels[channel]
-        pwm_channel = PCA9685Channel(name, self._log, self, channel)
-        self._channels[channel] = pwm_channel
-        return pwm_channel
+        return self._channels[channel]
 
     def write_channel(self, base_reg: int, on_l: int, on_h: int, off_l: int, off_h: int) -> None:
         """Write the 4 channel registers using auto-increment."""
@@ -271,7 +269,7 @@ class PCA9685ChannelDefinition(DriverDefinition):
 
     def create(self, args: DriverInitArgs) -> PCA9685Channel:
         chip: PCA9685Chip = args.get("chip")
-        return chip.get_channel(args.get("channel"), args.get_name())
+        return chip.get_channel(args.get("channel"))
 
 
 class PCA9685ChipVirtual(PWMChipVirtual):
@@ -348,4 +346,4 @@ class PCA9685ChannelVirtualDefinition(DriverDefinition):
 
     def create(self, args: DriverInitArgs) -> PWMVirtual:
         chip: PCA9685ChipVirtual = args.get("chip")
-        return chip.get_channel(args.get("channel"), args.get_name())
+        return chip.get_channel(args.get("channel"))

@@ -35,7 +35,9 @@ class TCA9548A(InterfaceHolder):
         self.address = address
         self._lock = threading.Lock()
         self._current_channel: int | None = None
-        self._channels: dict[int, "TCA9548AChannel"] = {}
+        self._channels: dict[int, "TCA9548AChannel"] = {
+            i: TCA9548AChannel(self, i) for i in range(NUM_CHANNELS)
+        }
 
     def init(self) -> Task[()]:
         # Deselect all channels (write 0x00) to start from a known state,
@@ -71,12 +73,8 @@ class TCA9548A(InterfaceHolder):
         self._log.debug(f"TCA9548A 0x{self.address:02x}: selected channel {channel}")
 
     def get_channel(self, channel: int) -> "TCA9548AChannel":
-        """Return an I2C for the given mux channel (0-7)."""
         if not 0 <= channel < NUM_CHANNELS:
             raise ValueError(f"Channel {channel} out of range (0-{NUM_CHANNELS - 1})")
-        if channel not in self._channels:
-            self._channels[channel] = TCA9548AChannel(self, channel)
-            self._log.info(f"TCA9548A 0x{self.address:02x}: created channel {channel}")
         return self._channels[channel]
 
 
