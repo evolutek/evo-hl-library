@@ -44,6 +44,8 @@ class TCA9548A(InterfaceHolder):
         # even if a previous run left a channel active.
         self.parent_bus.write_to(self.address, bytes([0x00])).wait()
         self._current_channel = None
+        for ch in self._channels.values():
+            ch.init().wait()
         self._log.info(f"TCA9548A '{self.name}' initialized at 0x{self.address:02x}")
         return ImmediateResultTask()
 
@@ -173,6 +175,8 @@ class TCA9548AVirtual(TCA9548A):
 
     def init(self) -> Task[()]:
         self._current_channel = None
+        for ch in self._channels.values():
+            ch.init().wait()
         self._log.info(f"TCA9548AVirtual '{self.name}' initialized at 0x{self.address:02x}")
         return ImmediateResultTask()
 
