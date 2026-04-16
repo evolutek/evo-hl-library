@@ -3,7 +3,7 @@
 import struct
 
 from evo_lib.drivers.pilot.protocol import INIT_PACKET, Commands, build_packet
-from evo_lib.drivers.pilot.virtual import HolonomicPilotVirtual, PilotVirtual
+from evo_lib.drivers.pilot.virtual import DifferentialPilotVirtual, HolonomicPilotVirtual
 from evo_lib.interfaces.pilot import PilotMoveStatus
 from evo_lib.logger import Logger
 
@@ -35,9 +35,9 @@ class TestProtocol:
         assert INIT_PACKET == bytes([5, 254, 0xAA, 0xAA, 0xAA])
 
 
-class TestPilotVirtual:
+class TestDifferentialPilotVirtual:
     def test_go_to(self):
-        pilot = PilotVirtual("pilot", Logger("test"), speed_trsl=10000.0)
+        pilot = DifferentialPilotVirtual("pilot", Logger("test"), speed_trsl=10000.0)
         pilot.init()
         (status,) = pilot.go_to(100.0, 0.0).wait()
         assert status == PilotMoveStatus.REACHED
@@ -45,7 +45,7 @@ class TestPilotVirtual:
         assert abs(x - 100.0) < 0.1
 
     def test_rotate(self):
-        pilot = PilotVirtual("pilot", Logger("test"), speed_rot=100.0)
+        pilot = DifferentialPilotVirtual("pilot", Logger("test"), speed_rot=100.0)
         pilot.init()
         (status,) = pilot.rotate(1.57).wait()
         assert status == PilotMoveStatus.REACHED
@@ -53,17 +53,17 @@ class TestPilotVirtual:
         assert abs(theta - 1.57) < 0.01
 
     def test_free(self):
-        pilot = PilotVirtual("pilot", Logger("test"))
+        pilot = DifferentialPilotVirtual("pilot", Logger("test"))
         pilot.init()
         pilot.free().wait()
 
     def test_stop(self):
-        pilot = PilotVirtual("pilot", Logger("test"))
+        pilot = DifferentialPilotVirtual("pilot", Logger("test"))
         pilot.init()
         pilot.stop().wait()
 
     def test_initial_position(self):
-        pilot = PilotVirtual("pilot", Logger("test"))
+        pilot = DifferentialPilotVirtual("pilot", Logger("test"))
         assert pilot.position == (0.0, 0.0, 0.0)
 
 
