@@ -30,6 +30,9 @@ class ColorRaw:
         self.b = b
         self.c = c
 
+    def __repr__(self) -> str:
+        return f"ColorRaw(r={self.r}, g={self.g}, b={self.b}, c={self.c})"
+
 
 class Color:
     """RGBC color: red, green, blue + clear (unfiltered / brightness) channel.
