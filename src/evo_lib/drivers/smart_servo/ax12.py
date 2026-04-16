@@ -389,6 +389,29 @@ class AX12(SmartServo):
         data = self._bus.read_register(self._id, _PRESENT_TEMPERATURE, 1)
         return ImmediateResultTask(data[0])
 
+    # --- Angle limits (EEPROM, persistent across power cycles) ---
+
+    @commands.register(
+        args=[],
+        result=[("cw_limit", ArgTypes.U16(help="CW (lower) goal-position bound in native units"))],
+    )
+    def get_cw_angle_limit(self) -> Task[int]:
+        """Read the CW angle limit from EEPROM.
+
+        Goal positions below this value are rejected by the servo firmware
+        with an Angle Limit Error (status error bit 1). A value of 0 on
+        both limits puts the servo in wheel (continuous) mode.
+        """
+        return ImmediateResultTask(self._read_word(_CW_ANGLE_LIMIT_L))
+
+    @commands.register(
+        args=[],
+        result=[("ccw_limit", ArgTypes.U16(help="CCW (upper) goal-position bound in native units"))],
+    )
+    def get_ccw_angle_limit(self) -> Task[int]:
+        """Read the CCW angle limit from EEPROM."""
+        return ImmediateResultTask(self._read_word(_CCW_ANGLE_LIMIT_L))
+
     # --- Operating modes ---
 
     def mode_joint(self) -> Task[()]:
