@@ -123,7 +123,7 @@ class ArgTypes:
         def self_to_config(self, c: ConfigObject) -> None:
             fields = c.create_object("fields")
             for fname, ftype in self.fields:
-                fields[fname] = argtype_from_config(ftype)
+                fields[fname] = argtype_to_config(ftype)
 
         def __str__(self) -> str:
             return "{" + ", ".join(f"{fname}: {ftype}" for fname, ftype in self.fields) + "}"

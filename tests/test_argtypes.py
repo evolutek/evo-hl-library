@@ -9,7 +9,7 @@ from evo_lib.argtypes import (
 
 def test_argtype_lookup_tables_are_dicts():
     assert isinstance(ARGTYPE_TO_ID, dict)
-    assert isinstance(ARGTYPE_TO_NAME, dict)
+    assert isinstance(ARGTYPE_TO_NAME, list)
 
 
 def test_argtype_id_round_trip():
@@ -18,5 +18,6 @@ def test_argtype_id_round_trip():
 
 
 def test_argtype_name_round_trip():
+    name_for_type = {t: n for t, n in ARGTYPE_TO_NAME}
     for name, argtype_cls in NAME_TO_ARGTYPE.items():
-        assert NAME_TO_ARGTYPE[ARGTYPE_TO_NAME[argtype_cls]] == argtype_cls
+        assert NAME_TO_ARGTYPE[name_for_type[argtype_cls]] == argtype_cls
