@@ -65,6 +65,12 @@ _HEADER_B1 = 0xFF
 # motor load can drop a packet every few hundred transactions.
 _DEFAULT_RETRIES = 3
 _DEFAULT_RETRY_DELAY = 0.025
+# USB2AX (Xevelabs, the standard Evolutek dongle) does not echo TX on RX: it
+# handles half-duplex direction internally in its ATmega firmware. Only the
+# older USB2Dynamixel (FT232 + external tri-state) echoes. Default to no-echo
+# because that matches the hardware actually used on the robot; set echo=True
+# only if you plug a USB2Dynamixel in.
+_DEFAULT_ECHO = False
 
 # Max AX-12 packet size we ever emit: 2 header + id + len + inst + reg + up to
 # 2 data bytes + checksum = 9. Round up for headroom on future register writes.
@@ -97,6 +103,7 @@ class AX12Bus(InterfaceHolder):
         baudrate: int = _DEFAULT_BAUDRATE,
         retries: int = _DEFAULT_RETRIES,
         retry_delay: float = _DEFAULT_RETRY_DELAY,
+        echo: bool = _DEFAULT_ECHO,
     ):
         super().__init__(name)
         self._log = logger
@@ -104,10 +111,11 @@ class AX12Bus(InterfaceHolder):
         self._baudrate = baudrate
         self._retries = retries
         self._retry_delay = retry_delay
+        self._echo = echo
         self._lock = threading.Lock()
         self._servos: dict[int, "AX12"] = {}
         # Reusable TX buffer (hot path): avoids per-call bytearray allocation on
-        # every write/read. Safe under the bus lock — only one packet is ever
+        # every write/read. Safe under the bus lock, only one packet is ever
         # being built at a time. Matters on RPi 3 B+ where GC pressure adds up.
         self._tx_buf = bytearray(_TX_BUF_SIZE)
 
@@ -200,13 +208,16 @@ class AX12Bus(InterfaceHolder):
         return self._read_status(servo_id)
 
     def _send_and_drop_echo(self, packet: bytes) -> None:
-        """Write then discard the local echo (half-duplex USB2AX).
+        """Write then, if the dongle echoes, discard the local echo.
 
-        Reading exactly len(packet) bytes right after the write eats the
-        guaranteed echo without racing the servo's reply.
+        USB2AX (Xevelabs, default) does not echo: we skip the drain read
+        entirely, which is what the legacy libdxl.so-based stack has been
+        doing in production for years. USB2Dynamixel-style dongles that
+        mirror TX onto RX require echo=True in the constructor.
         """
         self._bus.write(packet)
-        _ = self._bus.read(len(packet))
+        if self._echo:
+            _ = self._bus.read(len(packet))
 
     def _read_status(self, expected_id: int) -> bytes:
         """Read and validate a Dynamixel 1.0 status packet.
@@ -410,9 +421,11 @@ class AX12BusVirtual(AX12Bus):
         baudrate: int = _DEFAULT_BAUDRATE,
         retries: int = _DEFAULT_RETRIES,
         retry_delay: float = _DEFAULT_RETRY_DELAY,
+        echo: bool = _DEFAULT_ECHO,
     ):
         super().__init__(
-            name, logger, bus, baudrate=baudrate, retries=retries, retry_delay=retry_delay
+            name, logger, bus,
+            baudrate=baudrate, retries=retries, retry_delay=retry_delay, echo=echo,
         )
         # servo_id -> {register_addr: byte}
         self._registers: dict[int, dict[int, int]] = {}
@@ -475,6 +488,7 @@ class AX12BusDefinition(DriverDefinition):
         defn.add_optional("baudrate", ArgTypes.U32(), _DEFAULT_BAUDRATE)
         defn.add_optional("retries", ArgTypes.U32(), _DEFAULT_RETRIES)
         defn.add_optional("retry_delay", ArgTypes.F32(), _DEFAULT_RETRY_DELAY)
+        defn.add_optional("echo", ArgTypes.Bool(), _DEFAULT_ECHO)
         return defn
 
     def create(self, args: DriverInitArgs) -> AX12Bus:
@@ -485,6 +499,7 @@ class AX12BusDefinition(DriverDefinition):
             baudrate=args.get("baudrate"),
             retries=args.get("retries"),
             retry_delay=args.get("retry_delay"),
+            echo=args.get("echo"),
         )
 
 
@@ -506,6 +521,7 @@ class AX12BusVirtualDefinition(DriverDefinition):
         defn.add_optional("baudrate", ArgTypes.U32(), _DEFAULT_BAUDRATE)
         defn.add_optional("retries", ArgTypes.U32(), _DEFAULT_RETRIES)
         defn.add_optional("retry_delay", ArgTypes.F32(), _DEFAULT_RETRY_DELAY)
+        defn.add_optional("echo", ArgTypes.Bool(), _DEFAULT_ECHO)
         return defn
 
     def create(self, args: DriverInitArgs) -> AX12BusVirtual:
@@ -516,6 +532,7 @@ class AX12BusVirtualDefinition(DriverDefinition):
             baudrate=args.get("baudrate"),
             retries=args.get("retries"),
             retry_delay=args.get("retry_delay"),
+            echo=args.get("echo"),
         )
 
 
