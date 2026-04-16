@@ -26,7 +26,7 @@ from evo_lib.interfaces.smart_servo import SmartServo
 from evo_lib.logger import Logger
 from evo_lib.peripheral import InterfaceHolder, Peripheral
 from evo_lib.registry import Registry
-from evo_lib.task import ImmediateResultTask, Task
+from evo_lib.task import ImmediateErrorTask, ImmediateResultTask, Task
 
 # Dynamixel 1.0 instructions
 _INST_READ = 0x02
@@ -76,6 +76,100 @@ _DEFAULT_ECHO = False
 # Max AX-12 packet size we ever emit: 2 header + id + len + inst + reg + up to
 # 2 data bytes + checksum = 9. Round up for headroom on future register writes.
 _TX_BUF_SIZE = 16
+
+
+# --- Error hierarchy ---
+# Dynamixel 1.0 status error byte (AX-12A e-manual). Inherits from OSError so
+# existing `except OSError` call sites (retry loop, REPL, close handler) keep
+# working without migration. Bus-side errors are retryable; servo-side refusals
+# are not — the servo has already rejected the packet and would refuse the
+# exact same retry, just burning bus time.
+
+
+class DynamixelError(OSError):
+    """Base for all AX-12 protocol errors."""
+
+
+class DynamixelBusError(DynamixelError):
+    """Transient bus fault (framing, timeout, crossed reply). Retryable."""
+
+
+class DynamixelServoError(DynamixelError):
+    """Servo reported an error byte in its status packet. Not retryable
+    (except PacketChecksumError, handled specially in the retry loop)."""
+
+    ERROR_BIT: int = 0
+
+    def __init__(self, servo_id: int, error_byte: int, reason: str):
+        self.servo_id = servo_id
+        self.error_byte = error_byte
+        super().__init__(f"AX12 id {servo_id}: {reason} (0x{error_byte:02x})")
+
+
+class InputVoltageError(DynamixelServoError):
+    ERROR_BIT = 0x01
+    def __init__(self, servo_id: int, error_byte: int):
+        super().__init__(servo_id, error_byte, "input voltage out of range")
+
+
+class AngleLimitError(DynamixelServoError):
+    ERROR_BIT = 0x02
+    def __init__(self, servo_id: int, error_byte: int):
+        super().__init__(servo_id, error_byte, "goal position outside angle limits")
+
+
+class OverheatingError(DynamixelServoError):
+    ERROR_BIT = 0x04
+    def __init__(self, servo_id: int, error_byte: int):
+        super().__init__(servo_id, error_byte, "overheating")
+
+
+class RangeError(DynamixelServoError):
+    ERROR_BIT = 0x08
+    def __init__(self, servo_id: int, error_byte: int):
+        super().__init__(servo_id, error_byte, "instruction parameter out of range")
+
+
+class PacketChecksumError(DynamixelServoError):
+    """Servo received a corrupted instruction packet. TX-side noise, retryable."""
+    ERROR_BIT = 0x10
+    def __init__(self, servo_id: int, error_byte: int):
+        super().__init__(servo_id, error_byte, "servo received bad checksum (TX noise)")
+
+
+class OverloadError(DynamixelServoError):
+    ERROR_BIT = 0x20
+    def __init__(self, servo_id: int, error_byte: int):
+        super().__init__(servo_id, error_byte, "overload (motor stalled)")
+
+
+class InstructionError(DynamixelServoError):
+    ERROR_BIT = 0x40
+    def __init__(self, servo_id: int, error_byte: int):
+        super().__init__(servo_id, error_byte, "unknown instruction")
+
+
+# Order matters only for diagnostics when multiple bits are set: we surface
+# the lowest-numbered bit that matched. The error_byte attribute preserves
+# the full mask so callers can inspect all flags.
+_ERROR_BITS: tuple[type[DynamixelServoError], ...] = (
+    InputVoltageError,
+    AngleLimitError,
+    OverheatingError,
+    RangeError,
+    PacketChecksumError,
+    OverloadError,
+    InstructionError,
+)
+
+
+def _decode_servo_error(servo_id: int, error_byte: int) -> DynamixelServoError:
+    for cls in _ERROR_BITS:
+        if error_byte & cls.ERROR_BIT:
+            return cls(servo_id, error_byte)
+    # Reserved bit 7 or an unknown combination — still servo-side, so not
+    # retried. Keep the raw byte visible in the message for diagnostics.
+    return DynamixelServoError(servo_id, error_byte, "unknown servo error")
 
 
 def _checksum(servo_id: int, length: int, *data: int) -> int:
@@ -157,10 +251,28 @@ class AX12Bus(InterfaceHolder):
         # On failure we flush the RX buffer before retrying: a half-received
         # status packet would desync the next framing attempt. We accept the
         # cost of dropping a valid-but-late reply (timing edge case).
+        #
+        # Servo-side refusals (DynamixelServoError) are NOT retried: the servo
+        # has already processed the packet and rejected it; retrying sends the
+        # exact same bytes and gets the exact same refusal. The one exception
+        # is PacketChecksumError: the servo reports that the instruction it
+        # received had a bad checksum, which is one-shot TX noise and safe to
+        # rejouer.
         attempts = 0
         while True:
             try:
                 return op()
+            except DynamixelServoError as err:
+                if not isinstance(err, PacketChecksumError):
+                    raise
+                self._bus.reset_input_buffer()
+                if attempts >= self._retries:
+                    raise
+                attempts += 1
+                self._log.debug(
+                    f"AX12Bus '{self.name}' retry {attempts}/{self._retries}: {err}"
+                )
+                time.sleep(self._retry_delay)
             except OSError as err:
                 self._bus.reset_input_buffer()
                 if attempts >= self._retries:
@@ -227,33 +339,33 @@ class AX12Bus(InterfaceHolder):
         """
         header = self._bus.read(2)
         if header[0] != _HEADER_B0 or header[1] != _HEADER_B1:
-            raise OSError(f"Dynamixel: invalid header {bytes(header)!r}")
+            raise DynamixelBusError(f"invalid header {bytes(header)!r}")
         id_len = self._bus.read(2)
         resp_id, resp_length = id_len[0], id_len[1]
         # Detect a crossed reply (servo X answers a request addressed to Y —
         # happens after a prior timeout leaves a stale status in the buffer).
         if resp_id != expected_id:
-            raise OSError(
-                f"Dynamixel: crossed reply (expected id {expected_id}, got {resp_id})"
+            raise DynamixelBusError(
+                f"crossed reply (expected id {expected_id}, got {resp_id})"
             )
         # AX-12 status packet: error + 0..N params + checksum. Minimum 2 bytes
         # (error + checksum). Below that, payload[0] and payload[-1] collide
         # and we'd silently misread the error byte. Upper bound guards against
         # a faulty servo making us block on the serial timeout.
         if resp_length < 2 or resp_length > 8:
-            raise OSError(f"Dynamixel: implausible status length {resp_length}")
+            raise DynamixelBusError(f"implausible status length {resp_length}")
         payload = self._bus.read(resp_length)
         cs = resp_id + resp_length
         for b in payload[:-1]:
             cs += b
         expected = (~cs) & 0xFF
         if payload[-1] != expected:
-            raise OSError(
-                f"Dynamixel: bad checksum (got {payload[-1]:#x}, expected {expected:#x})"
+            raise DynamixelBusError(
+                f"bad checksum (got {payload[-1]:#x}, expected {expected:#x})"
             )
         error = payload[0]
         if error != 0:
-            raise OSError(f"Dynamixel error flags: 0x{error:02x}")
+            raise _decode_servo_error(resp_id, error)
         return bytes(payload[1:-1])
 
 
@@ -277,7 +389,15 @@ class AX12(SmartServo):
         return self._id
 
     def init(self) -> Task[()]:
-        self._bus.write_register(self._id, _TORQUE_ENABLE, bytes([1]))
+        # Route failures through ImmediateErrorTask instead of raising
+        # synchronously: that keeps PeripheralsInitializer.on_error() reachable,
+        # which lets this servo (and its dependents) be marked as skipped
+        # rather than crashing the whole boot sequence.
+        try:
+            self._bus.write_register(self._id, _TORQUE_ENABLE, bytes([1]))
+        except OSError as err:
+            self._log.error(f"AX12 '{self.name}' (ID {self._id}) init failed: {err}")
+            return ImmediateErrorTask(err)
         self._log.info(f"AX12 '{self.name}' (ID {self._id}) torque enabled")
         return ImmediateResultTask()
 

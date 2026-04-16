@@ -3,9 +3,24 @@
 import pytest
 
 from evo_lib.drivers.serial.virtual import SerialVirtual
-from evo_lib.drivers.smart_servo.ax12 import AX12, AX12Bus, AX12BusVirtual, _checksum
+from evo_lib.drivers.smart_servo.ax12 import (
+    AX12,
+    AX12Bus,
+    AX12BusVirtual,
+    AngleLimitError,
+    DynamixelBusError,
+    DynamixelServoError,
+    InputVoltageError,
+    InstructionError,
+    OverheatingError,
+    OverloadError,
+    PacketChecksumError,
+    RangeError,
+    _checksum,
+)
 from evo_lib.drivers.smart_servo.virtual import SmartServoVirtual
 from evo_lib.logger import Logger
+from evo_lib.task import ImmediateErrorTask
 
 
 @pytest.fixture
@@ -78,7 +93,7 @@ class TestAX12BusFraming:
         bad = bytearray(_status_packet(2, 0x00, 0x02))
         bad[-1] ^= 0xFF
         serial.inject_read(bytes(bad) + b"\xde\xad\xbe\xef")
-        with pytest.raises(OSError, match="checksum"):
+        with pytest.raises(DynamixelBusError, match="checksum"):
             bus.read_register(2, 36, 2)
         assert serial.in_waiting == 0
 
@@ -104,16 +119,66 @@ class TestAX12BusFraming:
         bus.init()
         assert serial._baudrate == 500_000
 
-    def test_servo_error_flags_raise(self, log):
+    def _inject_error_status(self, serial, servo_id: int, error_byte: int) -> None:
+        """Inject a status packet carrying the given error byte (no params)."""
+        length = 2  # error + checksum
+        cs = _checksum(servo_id, length, error_byte)
+        serial.inject_read(bytes([0xFF, 0xFF, servo_id, length, error_byte, cs]))
+
+    @pytest.mark.parametrize(
+        "error_byte,exc_type",
+        [
+            (0x01, InputVoltageError),
+            (0x02, AngleLimitError),
+            (0x04, OverheatingError),
+            (0x08, RangeError),
+            (0x10, PacketChecksumError),
+            (0x20, OverloadError),
+            (0x40, InstructionError),
+        ],
+    )
+    def test_servo_error_flags_decode_to_typed_exceptions(
+        self, log, error_byte, exc_type
+    ):
         serial, bus = self._make(log, retries=0)
-        # Status packet with error byte = 0x04 (overload).
-        params = [0x04]
-        length = len(params) + 1
-        cs = _checksum(2, length, *params)
-        packet = bytes([0xFF, 0xFF, 2, length, *params, cs])
-        serial.inject_read(packet)
-        with pytest.raises(OSError, match="0x04"):
+        self._inject_error_status(serial, 2, error_byte)
+        with pytest.raises(exc_type) as excinfo:
             bus.read_register(2, 36, 2)
+        # Raw byte preserved for diagnostics when multiple bits are set.
+        assert excinfo.value.error_byte == error_byte
+        assert excinfo.value.servo_id == 2
+
+    def test_servo_error_not_retried(self, log, monkeypatch):
+        # AngleLimit is a servo-side refusal: retrying sends the same bytes
+        # and gets the same refusal. The retry loop must propagate on the
+        # first attempt, not waste 3 round-trips.
+        serial, bus = self._make(log, retries=3, retry_delay=0.0)
+        calls = [0]
+
+        def flaky(servo_id, register, count):
+            calls[0] += 1
+            raise AngleLimitError(servo_id, 0x02)
+
+        monkeypatch.setattr(bus, "_do_read", flaky)
+        with pytest.raises(AngleLimitError):
+            bus.read_register(2, 36, 2)
+        assert calls[0] == 1
+
+    def test_packet_checksum_error_is_retried(self, log, monkeypatch):
+        # PacketChecksumError is the servo saying "your TX packet was
+        # corrupt" — that is one-shot line noise and legitimately retryable.
+        serial, bus = self._make(log, retries=2, retry_delay=0.0)
+        calls = [0]
+
+        def flaky(servo_id, register, count):
+            calls[0] += 1
+            if calls[0] < 2:
+                raise PacketChecksumError(servo_id, 0x10)
+            return b"\x00\x02"
+
+        monkeypatch.setattr(bus, "_do_read", flaky)
+        assert bus.read_register(2, 36, 2) == b"\x00\x02"
+        assert calls[0] == 2
 
     def test_retry_recovers_after_transient_failure(self, log, monkeypatch):
         # Drive the retry path directly: the serial mock state after failure +
@@ -198,6 +263,26 @@ class TestAX12WithVirtualBus:
         assert bus.read_register(1, 8, 2) == b"\x00\x00"
         servo.mode_joint().wait()
         assert bus.read_register(1, 8, 2) == bytes([1023 & 0xFF, 1023 >> 8])
+
+    def test_init_returns_error_task_on_bus_failure(self, log, monkeypatch):
+        # AX12.init() must NOT raise synchronously when the bus is unreachable:
+        # a sync raise bypasses PeripheralsInitializer.on_error() and crashes
+        # the whole boot. Wrapping in ImmediateErrorTask lets the initializer
+        # skip the servo cleanly.
+        bus = self._bus(log)
+        servo = AX12("s", log, bus, servo_id=42)
+
+        def boom(servo_id, register, data):
+            raise DynamixelBusError("no reply")
+
+        monkeypatch.setattr(bus, "write_register", boom)
+
+        task = servo.init()
+        assert isinstance(task, ImmediateErrorTask)
+        seen: list[Exception] = []
+        task.on_error(seen.append)
+        assert len(seen) == 1
+        assert isinstance(seen[0], DynamixelBusError)
 
     def test_turn_sets_direction_bit(self, log):
         bus = self._bus(log)
