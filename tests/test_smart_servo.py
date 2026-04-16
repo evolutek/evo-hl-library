@@ -21,7 +21,7 @@ def _status_packet(servo_id: int, *params: int) -> bytes:
 
 
 def _write_packet(servo_id: int, register: int, data: bytes) -> bytes:
-    """Rebuild the WRITE packet the driver sends, for echo injection."""
+    """Rebuild the WRITE packet the driver sends, to assert on serial.written."""
     length = len(data) + 3
     params = [0x03, register, *data]
     cs = _checksum(servo_id, length, *params)
@@ -29,7 +29,7 @@ def _write_packet(servo_id: int, register: int, data: bytes) -> bytes:
 
 
 def _read_packet(servo_id: int, register: int, count: int) -> bytes:
-    """Rebuild the READ packet the driver sends, for echo injection."""
+    """Rebuild the READ packet the driver sends, to assert on serial.written."""
     length = 4
     params = [0x02, register, count]
     cs = _checksum(servo_id, length, *params)
@@ -50,8 +50,9 @@ class TestSmartServoVirtual:
 class TestAX12BusFraming:
     """Exercise the real AX12Bus protocol layer against SerialVirtual.
 
-    Real USB2AX is half-duplex: every write is echoed back. We simulate
-    that by injecting echo + status together.
+    Default mode is echo=False, which matches the USB2AX dongle used on
+    the robot: the dongle does not mirror TX onto RX. One dedicated test
+    covers the echo=True path for USB2Dynamixel-style dongles.
     """
 
     def _make(self, log, **kwargs):
@@ -61,32 +62,39 @@ class TestAX12BusFraming:
         bus.init()
         return serial, bus
 
-    def test_write_register_frames_and_drains_echo(self, log):
+    def test_write_register_frames_and_reads_status(self, log):
         serial, bus = self._make(log)
-        echo = _write_packet(2, 24, bytes([1]))
-        serial.inject_read(echo + _status_packet(2))
+        serial.inject_read(_status_packet(2))
         bus.write_register(2, 24, bytes([1]))
-        assert serial.written == [echo]
+        assert serial.written == [_write_packet(2, 24, bytes([1]))]
 
     def test_read_register_parses_status(self, log):
         serial, bus = self._make(log)
-        serial.inject_read(_read_packet(2, 36, 2) + _status_packet(2, 0x00, 0x02))
+        serial.inject_read(_status_packet(2, 0x00, 0x02))
         assert bus.read_register(2, 36, 2) == b"\x00\x02"
 
     def test_bad_checksum_resyncs_and_raises(self, log):
         serial, bus = self._make(log, retries=0)
         bad = bytearray(_status_packet(2, 0x00, 0x02))
         bad[-1] ^= 0xFF
-        serial.inject_read(_read_packet(2, 36, 2) + bytes(bad) + b"\xde\xad\xbe\xef")
+        serial.inject_read(bytes(bad) + b"\xde\xad\xbe\xef")
         with pytest.raises(OSError, match="checksum"):
             bus.read_register(2, 36, 2)
         assert serial.in_waiting == 0
 
     def test_broadcast_skips_status_read(self, log):
         serial, bus = self._make(log)
-        echo = _write_packet(0xFE, 24, bytes([0]))
-        serial.inject_read(echo)
         bus.write_register(0xFE, 24, bytes([0]))
+        assert serial.written == [_write_packet(0xFE, 24, bytes([0]))]
+
+    def test_echo_mode_drains_local_echo(self, log):
+        # USB2Dynamixel-style dongles mirror the TX packet onto RX before
+        # the servo's reply. With echo=True, the bus must consume that
+        # mirror instead of mistaking it for the status reply.
+        serial, bus = self._make(log, echo=True)
+        echo = _write_packet(2, 24, bytes([1]))
+        serial.inject_read(echo + _status_packet(2))
+        bus.write_register(2, 24, bytes([1]))
         assert serial.written == [echo]
 
     def test_init_sets_baudrate_on_underlying_serial(self, log):
@@ -103,7 +111,7 @@ class TestAX12BusFraming:
         length = len(params) + 1
         cs = _checksum(2, length, *params)
         packet = bytes([0xFF, 0xFF, 2, length, *params, cs])
-        serial.inject_read(_read_packet(2, 36, 2) + packet)
+        serial.inject_read(packet)
         with pytest.raises(OSError, match="0x04"):
             bus.read_register(2, 36, 2)
 
