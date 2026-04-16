@@ -792,7 +792,7 @@ NAME_TO_ARGTYPE: dict[str, type[ArgType]] = {
     "bytes": ArgTypes.Bytes,
 }
 
-ARGTYPE_TO_NAME: dict[type[ArgType], str] = {t: n for n, t in NAME_TO_ARGTYPE.items()}
+ARGTYPE_TO_NAME: list[tuple[type[ArgType], str]] = [(t, n) for n, t in NAME_TO_ARGTYPE.items()]
 
 
 def argtype_from_config(config: ConfigObject) -> ArgType:
@@ -806,7 +806,12 @@ def argtype_from_config(config: ConfigObject) -> ArgType:
 
 def argtype_to_config(argtype: ArgType) -> ConfigObject:
     config = ConfigObject()
-    config["type"] = ARGTYPE_TO_NAME[type(argtype)]
+    for t, n in ARGTYPE_TO_NAME:
+        if isinstance(argtype, t):
+            config["type"] = n
+            break
+    else:
+        raise ValueError(f"Unknown argtype {type(argtype)}")
     argtype.self_to_config(config)
     return config
 
