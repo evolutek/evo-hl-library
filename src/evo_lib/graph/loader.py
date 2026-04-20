@@ -1,20 +1,11 @@
 """Graph loader: builds a Graph from JSON5 config and node definitions."""
 
-from evo_lib.argtypes import ArgType, ArgTypes, argtype_to_config
+from evo_lib.argtypes import argtype_to_config
 from evo_lib.config import ConfigObject
 from evo_lib.graph.graph import Graph, NodeDefinition
 from evo_lib.graph.nodes.flow import EntryNodeDefinition, IfElseNodeDefinition
 from evo_lib.graph.nodes.utils import WaitNodeDefinition
 from evo_lib.registry import Registry
-
-
-def _input_choice_values(argtype: ArgType) -> list | None:
-    # Closed choice set => editor renders a dropdown. None => open input.
-    if isinstance(argtype, ArgTypes.Enum):
-        return [m.name for m in argtype.enum_type]
-    if isinstance(argtype, ArgTypes.String) and argtype.choices is not None:
-        return list(argtype.choices)
-    return None
 
 
 class GraphLoader:
@@ -46,9 +37,6 @@ class GraphLoader:
             for name, vi in node_def.get_value_inputs().items():
                 vi_entry = argtype_to_config(vi.type)
                 vi_entry["default"] = vi.default
-                choice_values = _input_choice_values(vi.type)
-                if choice_values is not None:
-                    vi_entry["values"] = choice_values
                 vi_config[name] = vi_entry
 
             vo_config = node_config.create_object("value_outputs")

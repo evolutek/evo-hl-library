@@ -681,7 +681,9 @@ class ArgTypes:
             pass
 
         def self_to_config(self, c: ConfigObject) -> None:
-            pass  # Enum type is provided at construction, not serialized to config
+            values = c.create_object("values")
+            for e in list(self.enum_type):
+                values[e.name] = e.value
 
         def __str__(self):
             return f"enum({self.enum_type.__name__})"
