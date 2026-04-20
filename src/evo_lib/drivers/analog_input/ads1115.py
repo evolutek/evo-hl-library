@@ -7,17 +7,21 @@ The ADS1115 is a precision ADC with programmable gain. This module exposes it as
 Uses the I2C abstraction for all I2C operations, no Adafruit dependency.
 """
 
-import logging
 import struct
 import threading
 import time
 
 from evo_lib.argtypes import ArgTypes
-from evo_lib.driver_definition import DriverDefinition, DriverInitArgs, DriverInitArgsDefinition
+from evo_lib.driver_definition import (
+    DriverDefinition,
+    DriverInitArgs,
+    DriverInitArgsDefinition,
+)
 from evo_lib.interfaces.analog_input import AnalogInput
 from evo_lib.interfaces.i2c import I2C
 from evo_lib.logger import Logger
 from evo_lib.peripheral import InterfaceHolder, Peripheral
+from evo_lib.registry import Registry
 from evo_lib.task import ImmediateResultTask, Task
 
 NUM_CHANNELS = 4
@@ -57,15 +61,16 @@ _CONVERSION_DELAY = 0.008
 class ADS1115Channel(AnalogInput):
     """A single analog input channel on an ADS1115 chip."""
 
-    def __init__(self, name: str, chip: "ADS1115Chip", channel: int):
+    def __init__(self, name: str, logger: Logger, chip: "ADS1115Chip", channel: int):
         super().__init__(name)
         if not 0 <= channel < NUM_CHANNELS:
             raise ValueError(f"Channel {channel} out of range (0-{NUM_CHANNELS - 1})")
+        self._log = logger
         self._chip = chip
         self._channel = channel
 
-    def init(self) -> None:
-        pass
+    def init(self) -> Task[()]:
+        return ImmediateResultTask()
 
     def close(self) -> None:
         pass
@@ -86,17 +91,17 @@ class ADS1115Chip(InterfaceHolder):
     def __init__(
         self,
         name: str,
+        logger: Logger,
         bus: I2C,
         address: int = 0x48,
         fsr: float = 2.048,
-        logger: logging.Logger | None = None,
     ):
         super().__init__(name)
+        self._log = logger
         self._bus = bus
         self._address = address
         self._fsr = fsr
         self._pga_bits = _PGA_FSR.get(fsr, _PGA_FSR[2.048])
-        self._log = logger or logging.getLogger(__name__)
         self._lock = threading.Lock()
         self._channels: dict[int, ADS1115Channel] = {}
 
@@ -104,17 +109,16 @@ class ADS1115Chip(InterfaceHolder):
     def fsr(self) -> float:
         return self._fsr
 
-    def init(self) -> None:
+    def init(self) -> Task[()]:
         self._log.info(
-            "ADS1115 '%s' initialized at 0x%02x, FSR=±%.3fV",
-            self.name,
-            self._address,
-            self._fsr,
+            f"ADS1115 '{self.name}' initialized at 0x{self._address:02x}, "
+            f"FSR=±{self._fsr:.3f}V"
         )
+        return ImmediateResultTask()
 
     def close(self) -> None:
         self._channels.clear()
-        self._log.info("ADS1115 '%s' closed", self.name)
+        self._log.info(f"ADS1115 '{self.name}' closed")
 
     def get_subcomponents(self) -> list[Peripheral]:
         return list(self._channels.values())
@@ -125,7 +129,7 @@ class ADS1115Chip(InterfaceHolder):
             raise ValueError(f"Channel {channel} out of range (0-{NUM_CHANNELS - 1})")
         if channel in self._channels:
             return self._channels[channel]
-        ch = ADS1115Channel(name, self, channel)
+        ch = ADS1115Channel(name, self._log, self, channel)
         self._channels[channel] = ch
         return ch
 
@@ -141,32 +145,58 @@ class ADS1115Chip(InterfaceHolder):
         )
         config_bytes = struct.pack(">H", config)
         with self._lock:
-            self._bus.write_to(self._address, bytes([_REG_CONFIG]) + config_bytes)
+            self._bus.write_to(self._address, bytes([_REG_CONFIG]) + config_bytes).wait()
             time.sleep(_CONVERSION_DELAY)
-            data = self._bus.write_then_read(self._address, bytes([_REG_CONVERSION]), 2)
+            (data,) = self._bus.write_then_read(
+                self._address, bytes([_REG_CONVERSION]), 2
+            ).wait()
         return struct.unpack(">h", data)[0]
 
 
 class ADS1115ChipDefinition(DriverDefinition):
-    """Factory for ADS1115Chip from config args."""
+    """Factory for ADS1115Chip from config args. Parent bus resolved by name."""
 
-    def __init__(self, bus: I2C, logger: Logger):
-        self._bus = bus
+    def __init__(self, logger: Logger, peripherals: Registry[Peripheral]):
+        super().__init__()
         self._logger = logger
+        self._peripherals = peripherals
 
     def get_init_args_definition(self) -> DriverInitArgsDefinition:
         defn = DriverInitArgsDefinition()
-        defn.add_required("name", ArgTypes.String())
+        defn.add_required("bus", ArgTypes.Component(I2C, self._peripherals))
         defn.add_optional("address", ArgTypes.U8(), 0x48)
         defn.add_optional("fsr", ArgTypes.F32(), 2.048)
         return defn
 
     def create(self, args: DriverInitArgs) -> ADS1115Chip:
-        name = args.get("name")
         return ADS1115Chip(
-            name=name,
-            bus=self._bus,
+            name=args.get_name(),
+            logger=self._logger,
+            bus=args.get("bus"),
             address=args.get("address"),
             fsr=args.get("fsr"),
-            logger=self._logger.get_sublogger(name).get_stdlib_logger(),
         )
+
+
+class ADS1115ChannelDefinition(DriverDefinition):
+    """Factory for an ADS1115Channel on a parent ADS1115Chip.
+
+    The channel is created (or retrieved) via chip.get_channel(), so the
+    chip remains the single source of truth for its 4 channels and will
+    close them alongside its own close().
+    """
+
+    def __init__(self, logger: Logger, peripherals: Registry[Peripheral]):
+        super().__init__()
+        self._logger = logger
+        self._peripherals = peripherals
+
+    def get_init_args_definition(self) -> DriverInitArgsDefinition:
+        defn = DriverInitArgsDefinition()
+        defn.add_required("chip", ArgTypes.Component(ADS1115Chip, self._peripherals))
+        defn.add_required("channel", ArgTypes.U8(min_value=0, max_value=NUM_CHANNELS - 1))
+        return defn
+
+    def create(self, args: DriverInitArgs) -> ADS1115Channel:
+        chip: ADS1115Chip = args.get("chip")
+        return chip.get_channel(args.get("channel"), args.get_name())
