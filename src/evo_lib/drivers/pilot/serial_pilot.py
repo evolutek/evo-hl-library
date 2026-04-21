@@ -563,9 +563,9 @@ class HolonomicSerialPilot(DifferentialSerialPilot, HolonomicPilot):
     ) -> Task[PilotMoveStatus]:
         raise NotImplementedError("follow_holonomic_path not implemented yet")
 
-    @commands.register(args=[], result=[])
     def calibrate_otos(self) -> Task[()]:
-        """Calibrate the optical tracking sensor (OTOS)."""
+        """Override `Pilot.calibrate_otos` to forward the calibration
+        request to the firmware via the serial command bus."""
         return self._send_command(Commands.OTOS_CAL)
 
 

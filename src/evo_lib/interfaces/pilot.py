@@ -9,6 +9,7 @@ from evo_lib.argtypes import ArgTypes
 from evo_lib.driver_definition import DriverCommands
 from evo_lib.event import Event
 from evo_lib.peripheral import Placable
+from evo_lib.task import ImmediateResultTask
 from evo_lib.types.pose import Pose2D
 from evo_lib.types.vect import Vect2D
 
@@ -102,6 +103,15 @@ class Pilot(Placable):
     @commands.register(args = [("pose", Pose2D.ArgType())], result = [])
     def set_pose(self, pose: Pose2D) -> Task[()]:
         pass
+
+    @commands.register(args = [], result = [])
+    def calibrate_otos(self) -> "Task[()]":
+        """Calibrate an optional optical tracking sensor (OTOS).
+
+        Default: no-op. Pilots backed by a firmware exposing an OTOS
+        calibration command override this to run it on the MCU.
+        """
+        return ImmediateResultTask()
 
     @abstractmethod
     @commands.register(args = [
