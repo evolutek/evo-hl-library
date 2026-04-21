@@ -10,7 +10,7 @@ from evo_lib.types.color import NamedColor
 
 if TYPE_CHECKING:
     from evo_lib.task import Task
-    from evo_lib.types.color import ColorRaw
+    from evo_lib.types.color import ColorRGBC
 
 
 class ColorSensor(Placable):
@@ -28,7 +28,7 @@ class ColorSensor(Placable):
             ("c", ArgTypes.U16(help="Clear ADC counts")),
         ],
     )
-    def read_color(self) -> Task[ColorRaw]:
+    def read_color(self) -> Task[ColorRGBC]:
         """Read one raw RGBC sample straight off the sensor."""
 
     @abstractmethod
