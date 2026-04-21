@@ -359,9 +359,16 @@ class TestTCS34725:
         sensor.auto_expose(target_c=30000).wait()
         assert sensor._atime == atime_before
 
-    def test_calibrate_not_exposed_as_command(self):
+    def test_calibrate_exposed_as_command(self):
+        # Exposed so operators can recalibrate in-situ from the REPL before a match,
+        # presenting a pad of the target color to the sensor.
         names = {cmd.name for cmd in TCS34725.commands.get_all()}
-        assert "calibrate" not in names
+        assert "calibrate" in names
+
+    def test_diagnostic_commands_exposed(self):
+        names = {cmd.name for cmd in TCS34725.commands.get_all()}
+        assert "get_chip_id" in names
+        assert "get_status" in names
 
 
 # ── TCS34725Virtual ──────────────────────────────────────────────────────

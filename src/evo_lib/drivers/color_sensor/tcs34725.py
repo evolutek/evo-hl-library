@@ -40,8 +40,12 @@ _COMMAND_BIT = 0x80
 _ENABLE = 0x00
 _ATIME = 0x01
 _CONTROL = 0x0F
+_ID = 0x12
 _STATUS = 0x13
 _CDATA = 0x14
+
+_CHIP_ID_TCS34725 = 0x44
+_CHIP_ID_TCS34727 = 0x4D
 
 _ENABLE_PON = 0x01
 _ENABLE_AEN = 0x02
@@ -180,10 +184,18 @@ class TCS34725(ColorSensor):
         (raw,) = self.read_color().wait()
         return ImmediateResultTask(self._palette.classify(Color(rgbc=raw)))
 
+    @commands.register(
+        args=[
+            ("name", ArgTypes.Enum(NamedColor, help="Color to calibrate against the presented pad")),
+        ],
+        result=[],
+    )
     def calibrate(self, name: NamedColor, samples: int = 10) -> Task[()]:
         """Average ``samples`` live readings and store the result as the palette ref for ``name``.
 
         Each sample goes through ``read_color``, so flash-differential applies when enabled.
+        Exposed as a REPL command for on-table commissioning (present a pad of the target
+        color in front of the sensor, then run ``<sensor>.calibrate <Color>``).
         """
         if samples < 1:
             raise ValueError(f"samples must be >= 1, got {samples}")
@@ -310,6 +322,22 @@ class TCS34725(ColorSensor):
     )
     def get_flash_differential(self) -> Task[bool]:
         return ImmediateResultTask(self._use_flash_differential)
+
+    @commands.register(
+        args=[],
+        result=[("chip_id", ArgTypes.U8(help="0x44 for TCS34725, 0x4D for TCS34727"))],
+    )
+    def get_chip_id(self) -> Task[int]:
+        """Read the chip ID register (0x12). Useful to confirm the I2C path on the right mux channel."""
+        return ImmediateResultTask(self._read_register(_ID))
+
+    @commands.register(
+        args=[],
+        result=[("status", ArgTypes.U8(help="STATUS register — bit 0 = AVALID"))],
+    )
+    def get_status(self) -> Task[int]:
+        """Read the STATUS register (0x13). Bit 0 = AVALID; should flip on every new integration."""
+        return ImmediateResultTask(self._read_register(_STATUS))
 
     # ── Internal helpers ─────────────────────────────────────────────────
 
