@@ -3,7 +3,7 @@
 import threading
 
 from evo_lib.argtypes import ArgTypes
-from evo_lib.driver_definition import DriverDefinition, DriverInitArgs, DriverInitArgsDefinition
+from evo_lib.driver_definition import DriverDefinition, DriverInitArgs, DriverInitArgsDefinition, DriverCommands
 from evo_lib.event import Event
 from evo_lib.interfaces.gpio import GPIO, GPIODirection, GPIOEdge
 from evo_lib.logger import Logger
@@ -15,6 +15,8 @@ NUM_MCP23017_PINS = 16
 
 class GPIOPinVirtual(GPIO):
     """In-memory GPIO for tests and simulation, one pin per instance."""
+
+    commands = DriverCommands([GPIO.commands])
 
     def __init__(
         self,
@@ -32,8 +34,11 @@ class GPIOPinVirtual(GPIO):
         self._lock = threading.Lock()
         self._initialized = False
         self._state: bool = False
-        self._event: Event[bool] | None = None
-        self._edge: GPIOEdge = GPIOEdge.BOTH
+        self._events: dict[GPIOEdge, Event[bool]] = {
+            GPIOEdge.RISING: Event(),
+            GPIOEdge.FALLING: Event(),
+            GPIOEdge.BOTH: Event(),
+        }
 
     def _check_ready(self) -> None:
         if not self._initialized:
@@ -68,25 +73,23 @@ class GPIOPinVirtual(GPIO):
         self._check_ready()
         if self._direction != GPIODirection.INPUT:
             raise NotImplementedError("interrupt() requires INPUT direction")
-        self._edge = edge
-        self._event = Event()
-        return self._event
+        return self._events[edge]
 
-    def inject_input(self, value: bool) -> None:
+    @commands.register(args = [
+        ("state", ArgTypes.Bool())
+    ])
+    def inject(self, state: bool) -> None:
         """Inject a value for testing. Triggers the interrupt event if active."""
         with self._lock:
-            old = self._state
-            self._state = value
-            event = self._event
-            edge = self._edge
-        if event is not None and value != old:
-            fire = (
-                edge == GPIOEdge.BOTH
-                or (edge == GPIOEdge.RISING and value)
-                or (edge == GPIOEdge.FALLING and not value)
-            )
-            if fire:
-                event.trigger(value)
+            if state == self._state:
+                return
+            self._state = state
+        if state:
+            self._events[GPIOEdge.RISING].trigger(state)
+            self._events[GPIOEdge.BOTH].trigger(state)
+        else:
+            self._events[GPIOEdge.FALLING].trigger(state)
+            self._events[GPIOEdge.BOTH].trigger(state)
 
 
 class GPIOPinVirtualDefinition(DriverDefinition):
