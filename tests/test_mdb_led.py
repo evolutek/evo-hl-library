@@ -29,6 +29,22 @@ def strip(logger):
         name="mdb",
         logger=logger,
         num_pixels=4,
+        loading_chase_length=1,  # legacy width — most rendering tests assume single-pixel chase
+        auto_start_animator=False,
+    )
+    s.init().wait()
+    yield s
+    s.close()
+
+
+@pytest.fixture
+def wide_strip(logger):
+    """Strip large enough to observe a 5-pixel chase without wrap."""
+    s = MdbLedVirtual(
+        name="mdb_wide",
+        logger=logger,
+        num_pixels=12,
+        loading_chase_length=5,
         auto_start_animator=False,
     )
     s.init().wait()
@@ -93,6 +109,27 @@ class TestRendering:
                     assert abs(b - 1.0) < 1 / 255 + 1e-9
                 else:
                     assert (r, g, b) == (0.0, 0.0, 0.0)
+
+    def test_loading_chase_width(self, wide_strip):
+        # 12-pixel strip, 5-pixel chase. Step 0 should light pixels 0..4
+        # in team color and leave the other 7 black.
+        wide_strip.set_team_color(0.0, 0.0, 1.0).wait()  # blue
+        wide_strip.set_state(MdbLedState.Loading).wait()
+        wide_strip.tick()
+        frame = wide_strip.get_shown_frame()
+        for i in range(5):
+            assert abs(frame[i][2] - 1.0) < 1 / 255 + 1e-9, f"pixel {i} should be blue"
+        for i in range(5, 12):
+            assert frame[i] == (0.0, 0.0, 0.0), f"pixel {i} should be black"
+
+        # Step 1 → window slides by one (pixels 1..5 lit).
+        wide_strip.tick()
+        frame = wide_strip.get_shown_frame()
+        assert frame[0] == (0.0, 0.0, 0.0)
+        for i in range(1, 6):
+            assert abs(frame[i][2] - 1.0) < 1 / 255 + 1e-9
+        for i in range(6, 12):
+            assert frame[i] == (0.0, 0.0, 0.0)
 
     def test_state_change_resets_step(self, strip):
         # In Loading, step n picks pixel n % num_pixels. After advancing,
