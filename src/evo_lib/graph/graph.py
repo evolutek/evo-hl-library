@@ -296,8 +296,7 @@ class NodeDefinition:
         for endpoint_name, endpoint_def in self._value_outputs.items():
             node._value_outputs.append(ValueOutput(node, endpoint_name, endpoint_def.type))
 
-        definition_value_inputs = self._value_inputs
-        for endpoint_name, endpoint_def in definition_value_inputs.items():
+        for endpoint_name, endpoint_def in self._value_inputs.items():
             node._value_inputs.append(
                 ValueInput(node, endpoint_name, endpoint_def.type, endpoint_def.default)
             )
@@ -305,7 +304,7 @@ class NodeDefinition:
         # Apply config overrides for value input defaults
         config_inputs = config.get_object_or("inputs", ConfigObject())
         for endpoint_name, default_value in config_inputs.items():
-            if endpoint_name not in definition_value_inputs:
+            if endpoint_name not in self._value_inputs:
                 raise ConfigValidationError(
                     f"Unknown value input '{endpoint_name}' for node type {self.get_name()}"
                 )
