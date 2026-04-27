@@ -13,9 +13,9 @@ State semantics, mirroring legacy ``LightningMode``:
 
 - ``Off``      — all pixels black, no animation (default at boot).
 - ``Disabled`` — alternating orange/black per pixel, flips every 250 ms.
-- ``Loading``  — single-pixel chase in the team color, 50 ms / step.
-                 Used during pre-match setup; ``set_team_color`` matters
-                 here.
+- ``Loading``  — wide chase in the team color (configurable width via
+                 ``loading_chase_length``, default 5), 50 ms / step. Used
+                 during pre-match setup; ``set_team_color`` matters here.
 - ``Running``  — solid green, static (refreshed only on state change).
 - ``Error``    — full-strip red blink, 500 ms.
 
@@ -97,6 +97,7 @@ class MdbLed(WS2812B):
         team_color_r: float = 1.0,
         team_color_g: float = 0.8,
         team_color_b: float = 0.0,
+        loading_chase_length: int = 5,
         auto_start_animator: bool = True,
     ):
         super().__init__(name, logger, num_pixels, pin, brightness, frequency_hz, dma_channel)
@@ -106,6 +107,9 @@ class MdbLed(WS2812B):
             _clamp_unit(team_color_g),
             _clamp_unit(team_color_b),
         )
+        # Width of the comet head in Loading state. Clamped so it never
+        # exceeds the strip length (would lit every pixel and look static).
+        self._loading_chase_length: int = max(1, min(loading_chase_length, num_pixels))
         self._step: int = 0
         # Lock guards _state / _team_color / _step against animator vs
         # caller-thread races. Held only briefly — never around hardware
@@ -250,11 +254,14 @@ class MdbLed(WS2812B):
                 r, g, b = on_color if lit else off_color
                 self.set_pixel(i, r, g, b).wait()
         elif state == MdbLedState.Loading:
-            # Single-pixel chase in team color. On 3-pixel MDB strips this
-            # boils down to a "running light" cycle through each LED.
+            # Wide chase in team color: a comet of `loading_chase_length`
+            # consecutive lit pixels advances by one slot per step, with
+            # wrap-around at the strip end.
             self.fill(0.0, 0.0, 0.0).wait()
             tcr, tcg, tcb = team_color
-            self.set_pixel(step % self._num_pixels, tcr, tcg, tcb).wait()
+            for offset in range(self._loading_chase_length):
+                idx = (step + offset) % self._num_pixels
+                self.set_pixel(idx, tcr, tcg, tcb).wait()
         self.show().wait()
 
 
@@ -287,6 +294,11 @@ class MdbLedDefinition(DriverDefinition):
         defn.add_optional("team_color_r", ArgTypes.F32(help="Default team red"), 1.0)
         defn.add_optional("team_color_g", ArgTypes.F32(help="Default team green"), 0.8)
         defn.add_optional("team_color_b", ArgTypes.F32(help="Default team blue"), 0.0)
+        defn.add_optional(
+            "loading_chase_length",
+            ArgTypes.U8(help="Comet width in Loading state (number of lit pixels)"),
+            5,
+        )
         return defn
 
     def create(self, args: DriverInitArgs) -> MdbLed:
@@ -302,6 +314,7 @@ class MdbLedDefinition(DriverDefinition):
             team_color_r=args.get("team_color_r"),
             team_color_g=args.get("team_color_g"),
             team_color_b=args.get("team_color_b"),
+            loading_chase_length=args.get("loading_chase_length"),
         )
 
 
@@ -328,6 +341,7 @@ class MdbLedVirtual(MdbLed):
         team_color_r: float = 1.0,
         team_color_g: float = 0.8,
         team_color_b: float = 0.0,
+        loading_chase_length: int = 5,
         auto_start_animator: bool = True,
     ):
         super().__init__(
@@ -341,6 +355,7 @@ class MdbLedVirtual(MdbLed):
             team_color_r=team_color_r,
             team_color_g=team_color_g,
             team_color_b=team_color_b,
+            loading_chase_length=loading_chase_length,
             auto_start_animator=auto_start_animator,
         )
         self._buffer: list[int] = [0] * num_pixels
@@ -415,6 +430,11 @@ class MdbLedVirtualDefinition(DriverDefinition):
         defn.add_optional("team_color_r", ArgTypes.F32(help="Default team red"), 1.0)
         defn.add_optional("team_color_g", ArgTypes.F32(help="Default team green"), 0.8)
         defn.add_optional("team_color_b", ArgTypes.F32(help="Default team blue"), 0.0)
+        defn.add_optional(
+            "loading_chase_length",
+            ArgTypes.U8(help="Comet width in Loading state (number of lit pixels)"),
+            5,
+        )
         return defn
 
     def create(self, args: DriverInitArgs) -> MdbLedVirtual:
@@ -430,4 +450,5 @@ class MdbLedVirtualDefinition(DriverDefinition):
             team_color_r=args.get("team_color_r"),
             team_color_g=args.get("team_color_g"),
             team_color_b=args.get("team_color_b"),
+            loading_chase_length=args.get("loading_chase_length"),
         )
