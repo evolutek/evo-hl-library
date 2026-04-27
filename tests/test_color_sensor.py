@@ -167,13 +167,27 @@ class TestTCS34725Virtual:
         (raw,) = sensor.read_color().wait()
         assert (raw.r, raw.g, raw.b, raw.c) == (500, 250, 100, 1000)
 
-    def test_get_color_uses_palette(self, logger):
+    def test_get_color_classifies_yellow_via_hsv(self, logger):
         sensor = TCS34725Virtual(name="cs0", logger=logger)
         sensor.init().wait()
-        # Default palette is the TCS34725 hardcoded one — pick a near-Red.
-        sensor.inject_color(r=8500, g=1200, b=800, c=10500).wait()
+        sensor.inject_color(r=8500, g=6500, b=800, c=15000).wait()
         (name,) = sensor.get_color().wait()
-        assert name is NamedColor.Red
+        assert name is NamedColor.Yellow
+
+    def test_get_color_classifies_blue_via_hsv(self, logger):
+        sensor = TCS34725Virtual(name="cs0", logger=logger)
+        sensor.init().wait()
+        # R=500, G=3500, B=5000 → hue ≈ 200 (inside 150-220 → Blue)
+        sensor.inject_color(r=500, g=3500, b=5000, c=9000).wait()
+        (name,) = sensor.get_color().wait()
+        assert name is NamedColor.Blue
+
+    def test_get_color_low_saturation_is_unknown(self, logger):
+        sensor = TCS34725Virtual(name="cs0", logger=logger)
+        sensor.init().wait()
+        sensor.inject_color(r=1000, g=1000, b=950, c=3000).wait()
+        (name,) = sensor.get_color().wait()
+        assert name is NamedColor.Unknown
 
     def test_set_color_simulates_perception_of_named_entry(self, logger):
         sensor = TCS34725Virtual(name="cs0", logger=logger)
@@ -189,14 +203,13 @@ class TestTCS34725Virtual:
         with pytest.raises(ValueError):
             sensor.set_color(NamedColor.Red).wait()
 
-    def test_calibrate_stores_current_raw(self, logger):
+    def test_calibrate_stores_current_raw_in_palette(self, logger):
         sensor = TCS34725Virtual(name="cs0", logger=logger)
         sensor.init().wait()
         sensor.inject_color(r=42, g=43, b=44, c=45).wait()
         sensor.calibrate(NamedColor.Red, samples=3).wait()
-        sensor.inject_color(r=42, g=43, b=44, c=45).wait()
-        (name,) = sensor.get_color().wait()
-        assert name is NamedColor.Red
+        ref = sensor._palette.get(NamedColor.Red)
+        assert (ref.r, ref.g, ref.b, ref.c) == (42, 43, 44, 45)
 
     def test_set_light_noop_without_led(self, logger):
         sensor = TCS34725Virtual(name="cs0", logger=logger)

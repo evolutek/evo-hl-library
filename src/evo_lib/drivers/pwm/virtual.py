@@ -83,7 +83,10 @@ class PWMChipVirtual(InterfaceHolder):
         super().__init__(name)
         self._log = logger
         self._freq_hz = freq_hz
-        self._channels: dict[int, PWMVirtual] = {}
+        self._channels: dict[int, PWMVirtual] = {
+            i: PWMVirtual(f"{name}.ch{i}", logger, freq_hz)
+            for i in range(NUM_CHANNELS)
+        }
 
     def init(self) -> Task[()]:
         self._log.info(f"PWMChipVirtual '{self.name}' initialized")
@@ -95,15 +98,10 @@ class PWMChipVirtual(InterfaceHolder):
     def get_subcomponents(self) -> list[Peripheral]:
         return list(self._channels.values())
 
-    def get_channel(self, channel: int, name: str) -> PWMVirtual:
-        """Create or retrieve a PWMVirtual for the given channel number."""
+    def get_channel(self, channel: int) -> PWMVirtual:
         if not 0 <= channel < NUM_CHANNELS:
             raise ValueError(f"Channel {channel} out of range (0-{NUM_CHANNELS - 1})")
-        if channel in self._channels:
-            return self._channels[channel]
-        pwm = PWMVirtual(name, self._log, self._freq_hz)
-        self._channels[channel] = pwm
-        return pwm
+        return self._channels[channel]
 
 
 class PWMChipVirtualDefinition(DriverDefinition):

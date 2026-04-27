@@ -30,6 +30,32 @@ class ColorRaw:
         self.b = b
         self.c = c
 
+    def __repr__(self) -> str:
+        return f"ColorRaw(r={self.r}, g={self.g}, b={self.b}, c={self.c})"
+
+    def to_hsv(self) -> tuple[float, float, float]:
+        """Convert RGB channels to HSV. Hue in [0,360), S and V in [0,1].
+
+        Uses raw integer channels directly; hue and saturation are
+        ratio-based so the result is identical regardless of ADC scale.
+        Value is normalized to ``max(r, g, b) / 65535``.
+        """
+        r, g, b = self.r, self.g, self.b
+        cmax = max(r, g, b)
+        cmin = min(r, g, b)
+        delta = cmax - cmin
+        if delta == 0:
+            h = 0.0
+        elif cmax == r:
+            h = (60.0 * ((g - b) / delta)) % 360
+        elif cmax == g:
+            h = 60.0 * ((b - r) / delta) + 120
+        else:
+            h = 60.0 * ((r - g) / delta) + 240
+        s = 0.0 if cmax == 0 else delta / cmax
+        v = cmax / 65535.0
+        return (h, s, v)
+
 
 class Color:
     """RGBC color: red, green, blue + clear (unfiltered / brightness) channel.

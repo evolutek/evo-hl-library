@@ -127,9 +127,14 @@ class TCS34725(ColorSensor):
 
     def get_color(self) -> Task[NamedColor]:
         (raw,) = self.read_color().wait()
-        return ImmediateResultTask(
-            self._palette.classify(raw, self._unknown_threshold_squared)
-        )
+        h, s, _v = raw.to_hsv()
+        if s < 0.15:
+            return ImmediateResultTask(NamedColor.Unknown)
+        if h < 65 or h > 300:
+            return ImmediateResultTask(NamedColor.Yellow)
+        if 150 < h < 270:
+            return ImmediateResultTask(NamedColor.Blue)
+        return ImmediateResultTask(NamedColor.Unknown)
 
     def calibrate(self, name: NamedColor, samples: int = 10) -> Task[()]:
         if samples < 1:
@@ -287,9 +292,14 @@ class TCS34725Virtual(ColorSensor):
         return ImmediateResultTask(self._raw)
 
     def get_color(self) -> Task[NamedColor]:
-        return ImmediateResultTask(
-            self._palette.classify(self._raw, self._unknown_threshold_squared)
-        )
+        h, s, _v = self._raw.to_hsv()
+        if s < 0.15:
+            return ImmediateResultTask(NamedColor.Unknown)
+        if h < 65 or h > 300:
+            return ImmediateResultTask(NamedColor.Yellow)
+        if 150 < h < 270:
+            return ImmediateResultTask(NamedColor.Blue)
+        return ImmediateResultTask(NamedColor.Unknown)
 
     @commands.register(
         args=[("name", ArgTypes.Enum(NamedColor, help="Named color to simulate"))],

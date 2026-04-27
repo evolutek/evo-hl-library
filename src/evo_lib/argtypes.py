@@ -123,7 +123,7 @@ class ArgTypes:
         def self_to_config(self, c: ConfigObject) -> None:
             fields = c.create_object("fields")
             for fname, ftype in self.fields:
-                fields[fname] = argtype_from_config(ftype)
+                fields[fname] = argtype_to_config(ftype)
 
         def __str__(self) -> str:
             return "{" + ", ".join(f"{fname}: {ftype}" for fname, ftype in self.fields) + "}"
@@ -681,7 +681,9 @@ class ArgTypes:
             pass
 
         def self_to_config(self, c: ConfigObject) -> None:
-            pass  # Enum type is provided at construction, not serialized to config
+            values = c.create_object("values")
+            for e in list(self.enum_type):
+                values[e.name] = e.value
 
         def __str__(self):
             return f"enum({self.enum_type.__name__})"
@@ -792,7 +794,7 @@ NAME_TO_ARGTYPE: dict[str, type[ArgType]] = {
     "bytes": ArgTypes.Bytes,
 }
 
-ARGTYPE_TO_NAME: dict[type[ArgType], str] = {t: n for n, t in NAME_TO_ARGTYPE.items()}
+ARGTYPE_TO_NAME: list[tuple[type[ArgType], str]] = [(t, n) for n, t in NAME_TO_ARGTYPE.items()]
 
 
 def argtype_from_config(config: ConfigObject) -> ArgType:
@@ -806,7 +808,12 @@ def argtype_from_config(config: ConfigObject) -> ArgType:
 
 def argtype_to_config(argtype: ArgType) -> ConfigObject:
     config = ConfigObject()
-    config["type"] = ARGTYPE_TO_NAME[type(argtype)]
+    for t, n in ARGTYPE_TO_NAME:
+        if isinstance(argtype, t):
+            config["type"] = n
+            break
+    else:
+        raise ValueError(f"Unknown argtype {type(argtype)}")
     argtype.self_to_config(config)
     return config
 
