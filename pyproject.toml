@@ -30,6 +30,9 @@ rpi = [
     "pyserial>=3.5",
     # RPLidar A-series driver.
     "adafruit-circuitpython-rplidar>=1.2.20",
+    # WS2812B / NeoPixel addressable LED strip — DMA-driven, requires root
+    # for PWM/PCM modes (or SPI mode on GPIO 10 only, no root).
+    "rpi-ws281x>=5.0",
 ]
 
 # -- Development dependencies --
