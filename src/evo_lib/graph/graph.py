@@ -114,6 +114,13 @@ class ValueInput(ValueEndpoint):
     def reset(self) -> None:
         self._value = self._default
 
+    def set_default(self, value: Any) -> None:
+        self._default = value
+        self._value = value
+
+    def set_value(self, value: Any) -> None:
+        self._value = value
+
     def get_value(self) -> Any:
         return self._value
 
@@ -125,7 +132,7 @@ class ValueOutput(ValueEndpoint):
 
     def set(self, value: Any) -> None:
         for inp in self._connections:
-            inp._value = value
+            inp.set_value(value)
 
     def link(self, peer: ValueInput) -> None:
         self._connections.append(peer)
@@ -202,6 +209,7 @@ class Node(ABC):
         pass
 
     def run(self) -> None:
+        self.get_runner()._logger.debug(f"Run node '{self.get_name()}'")
         self.get_graph().schedule_run_node(self)
 
     def reset(self) -> None:
@@ -288,8 +296,7 @@ class NodeDefinition:
         for endpoint_name, endpoint_def in self._value_outputs.items():
             node._value_outputs.append(ValueOutput(node, endpoint_name, endpoint_def.type))
 
-        definition_value_inputs = self._value_inputs
-        for endpoint_name, endpoint_def in definition_value_inputs.items():
+        for endpoint_name, endpoint_def in self._value_inputs.items():
             node._value_inputs.append(
                 ValueInput(node, endpoint_name, endpoint_def.type, endpoint_def.default)
             )
@@ -297,13 +304,15 @@ class NodeDefinition:
         # Apply config overrides for value input defaults
         config_inputs = config.get_object_or("inputs", ConfigObject())
         for endpoint_name, default_value in config_inputs.items():
-            if endpoint_name not in definition_value_inputs:
+            if endpoint_name not in self._value_inputs:
                 raise ConfigValidationError(
                     f"Unknown value input '{endpoint_name}' for node type {self.get_name()}"
                 )
             endpoint = node.get_value_input(endpoint_name)
             assert endpoint is not None
-            endpoint._default = default_value
+            endpoint.set_default(default_value)
+
+        node.reset()
 
         return node
 
