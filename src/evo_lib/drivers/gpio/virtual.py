@@ -52,9 +52,10 @@ class GPIOPinVirtual(GPIO):
         self._event = None
 
     def read(self) -> Task[bool]:
+        # Works on both INPUT and OUTPUT pins. On OUTPUT, returns the last
+        # value written — matches RPi.GPIO behavior and lets tests assert
+        # on what a driver has written to a virtual output pin.
         self._check_ready()
-        if self._direction != GPIODirection.INPUT:
-            return ImmediateErrorTask(NotImplementedError("read() requires INPUT direction"))
         return ImmediateResultTask(self._state)
 
     def write(self, state: bool) -> Task[None]:
