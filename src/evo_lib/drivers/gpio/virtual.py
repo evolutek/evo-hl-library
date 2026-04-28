@@ -79,7 +79,7 @@ class GPIOPinVirtual(GPIO):
     @commands.register(args = [
         ("state", ArgTypes.Bool())
     ])
-    def inject(self, state: bool) -> None:
+    def inject_input(self, state: bool) -> None:
         """Inject a value for testing. Triggers the interrupt event if active."""
         with self._lock:
             if state == self._state:
