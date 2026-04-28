@@ -56,7 +56,7 @@ class Task[*T](ABC):
     def on_error(self, callback: Callable[[Exception], None]) -> Task[*T]:
         """Register a callback invoked with the exception on failure."""
 
-    def on_end(self, callback: Callable[[], None]) -> Task[*T]:
+    def on_done(self, callback: Callable[[], None]) -> Task[*T]:
         """Register a callback invoked on success or failure."""
         self.on_complete(lambda *args: callback())
         self.on_error(lambda e: callback())
