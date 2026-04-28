@@ -76,8 +76,11 @@ class ArgTypes:
             if isinstance(v, dict):
                 for fname, ftype in self.fields:
                     r[fname] = ftype.value_from_config(v.get(fname))
+            elif isinstance(v, list) or isinstance(v, tuple):
+                for i, (fname, ftype) in enumerate(self.fields):
+                    ftype.value_from_config(v[i] if i < len(v) else None)
             else:
-                raise ConfigValidationError("Struct value must be a dict")
+                raise ConfigValidationError("Struct value must be a dict, a list or a tuple")
             return r
 
         def value_from_stream(self, s: io.RawIOBase) -> dict[str, Any]:
