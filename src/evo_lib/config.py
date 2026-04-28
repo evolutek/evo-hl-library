@@ -59,8 +59,8 @@ class ConfigObject(dict[str, ConfigValue]):
             return argtype.value_from_config(value)
         return value
 
-    def get_bool(self, key: str) -> bool:
-        return self._get_required(key, [bool], "a boolean", None)
+    def get_bool(self, key: str, argtype: "ArgTypes.Bool | None" = None) -> bool:
+        return self._get_required(key, [bool], "a boolean", argtype)
 
     def get_str(self, key: str, argtype: ArgTypes.String | None = None) -> str:
         return self._get_required(key, [str], "a string", argtype)
