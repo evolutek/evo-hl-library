@@ -296,21 +296,20 @@ class NodeDefinition:
         for endpoint_name, endpoint_def in self._value_outputs.items():
             node._value_outputs.append(ValueOutput(node, endpoint_name, endpoint_def.type))
 
-        definition_value_inputs = self._value_inputs
-        for endpoint_name, endpoint_def in definition_value_inputs.items():
+        for endpoint_name, endpoint_def in self._value_inputs.items():
             node._value_inputs.append(
                 ValueInput(node, endpoint_name, endpoint_def.type, endpoint_def.default)
             )
 
         # Apply config overrides for value input defaults
         config_inputs = config.get_object_or("inputs", ConfigObject())
-        for endpoint_name, default_value in config_inputs.items():
-            if endpoint_name not in definition_value_inputs:
+        for endpoint_name, raw_default_value in config_inputs.items():
+            endpoint = node.get_value_input(endpoint_name)
+            if endpoint is None:
                 raise ConfigValidationError(
                     f"Unknown value input '{endpoint_name}' for node type {self.get_name()}"
                 )
-            endpoint = node.get_value_input(endpoint_name)
-            assert endpoint is not None
+            default_value = self._value_inputs[endpoint_name].type.value_from_config(raw_default_value)
             endpoint.set_default(default_value)
 
         node.reset()
@@ -439,6 +438,7 @@ class Graph:
         if end:
             assert self._running_graph_task is not None
             self._running_graph_task.complete()
+            self._runner.get_logger().debug("Graph finished")
 
     def _remove_node_run_task(self, task: Task) -> None:
         with self._lock:
