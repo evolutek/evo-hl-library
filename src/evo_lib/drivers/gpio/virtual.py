@@ -70,12 +70,12 @@ class GPIOPinVirtual(GPIO):
         self._check_ready()
         return ImmediateResultTask(self._state)
 
-    def write(self, state: bool) -> Task[None]:
+    def write(self, state: bool) -> Task[()]:
         self._check_ready()
         if self._direction != GPIODirection.OUTPUT:
             return ImmediateErrorTask(NotImplementedError("write() requires OUTPUT direction"))
         self._state = state
-        return ImmediateResultTask(None)
+        return ImmediateResultTask()
 
     def interrupt(self, edge: GPIOEdge = GPIOEdge.BOTH) -> Event[bool]:
         self._check_ready()
