@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+# Cancel superseded runs on the same ref (e.g. successive PR pushes).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Test (ARM64, matches RPi target)
+    # ARM runner: same architecture as the Raspberry Pi the library targets.
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # uv installs Python 3.14 (not preinstalled on the runner) and caches
+      # the resolved virtualenv between runs.
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      # Skip the rpi extra: gpiod / smbus2 / rpi-ws281x need real Pi hardware.
+      - name: Sync dev dependencies
+        run: uv sync --group dev
+
+      - name: Pytest
+        run: uv run pytest -q
