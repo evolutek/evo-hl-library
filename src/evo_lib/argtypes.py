@@ -78,7 +78,7 @@ class ArgTypes:
                     r[fname] = ftype.value_from_config(v.get(fname))
             elif isinstance(v, list) or isinstance(v, tuple):
                 for i, (fname, ftype) in enumerate(self.fields):
-                    ftype.value_from_config(v[i] if i < len(v) else None)
+                    r[fname] = ftype.value_from_config(v[i] if i < len(v) else None)
             else:
                 raise ConfigValidationError("Struct value must be a dict, a list or a tuple")
             return r
