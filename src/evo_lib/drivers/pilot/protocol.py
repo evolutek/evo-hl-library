@@ -34,6 +34,7 @@ class Commands(IntEnum):
     RECALAGE = 110
     SET_PWM = 111
     STOP_ASAP = 112
+    RESET = 113  # Triggers HAL_NVIC_SystemReset() on the STM32; no ACK because the board reboots before it could send one.
 
     # Events (received from board)
     DEBUG = 126
@@ -80,6 +81,7 @@ class Errors(IntEnum):
 # Commands that do not expect an ACK from the board (from firmware trajman_commands.h)
 NO_ACK_COMMANDS: set[Commands] = {
     Commands.SET_PWM,
+    Commands.RESET,
     Commands.GET_PID_TRSL,
     Commands.GET_PID_ROT,
     Commands.GET_POSITION,
@@ -108,6 +110,7 @@ FORMATS: dict[Commands, str] = {
     Commands.STOP_ASAP: "ff",
     Commands.RECALAGE: "BfB",  # direction, offset, set
     Commands.SET_PWM: "ff",
+    Commands.RESET: "",
     # Position
     Commands.SET_X: "f",
     Commands.SET_Y: "f",
