@@ -134,6 +134,11 @@ class DifferentialPilotVirtual(DifferentialPilot):
         self._cancel.clear()
         return ImmediateResultTask()
 
+    def reset(self) -> Task[()]:
+        # No firmware to reboot in simulation; behave like stop() so a
+        # config-level swap real↔virtual keeps consumer call sites valid.
+        return self.stop()
+
     def on_pose_or_velocity_update(self) -> Event[Pose2D, Vect2D]:
         return self._pose_velocity_event
 

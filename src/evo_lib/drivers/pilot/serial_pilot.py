@@ -142,6 +142,19 @@ class DifferentialSerialPilot(DifferentialPilot):
         self._send_command(Commands.UNFREE)
         return ImmediateResultTask()
 
+    @commands.register(args=[], result=[])
+    def reset(self) -> Task[()]:
+        """Reboot the carte-asserv (HAL_NVIC_SystemReset on the STM32).
+
+        Cancels any in-flight move locally because the board is about to
+        restart and won't ACK or report MOVE_END for ongoing trajectories.
+        """
+        self._send_command(Commands.RESET)
+        if self._move_task is not None:
+            self._move_task.complete(PilotMoveStatus.CANCELLED)
+            self._move_task = None
+        return ImmediateResultTask()
+
     def on_pose_or_velocity_update(self) -> Event[Pose2D, Vect2D]:
         return self._pose_or_velocity_update_event
 
