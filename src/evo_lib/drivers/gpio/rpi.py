@@ -98,13 +98,13 @@ class RpiGPIO(GPIO):
             return ImmediateErrorTask(NotImplementedError("read() requires INPUT direction"))
         return ImmediateResultTask(self._request.get_value(self._pin) == _gpiod.line.Value.ACTIVE)
 
-    def write(self, state: bool) -> Task[None]:
+    def write(self, state: bool) -> Task[()]:
         self._check_ready()
         if self._direction != GPIODirection.OUTPUT:
             return ImmediateErrorTask(NotImplementedError("write() requires OUTPUT direction"))
         value = _gpiod.line.Value.ACTIVE if state else _gpiod.line.Value.INACTIVE
         self._request.set_value(self._pin, value)
-        return ImmediateResultTask(None)
+        return ImmediateResultTask()
 
     def interrupt(self, edge: GPIOEdge = GPIOEdge.BOTH) -> Event[bool]:
         self._check_ready()
@@ -207,7 +207,7 @@ class RpiGPIOVirtual(GPIO):
     def read(self) -> Task[bool]:
         return self._inner.read()
 
-    def write(self, state: bool) -> Task[None]:
+    def write(self, state: bool) -> Task[()]:
         return self._inner.write(state)
 
     def interrupt(self, edge: GPIOEdge = GPIOEdge.BOTH) -> Event[bool]:

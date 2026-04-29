@@ -44,7 +44,7 @@ class GPIO(Interface):
     @commands.register(args = [
         ("state", ArgTypes.Bool(help = "The state to set"))
     ], result = [])
-    def write(self, state: bool) -> Task[None]:
+    def write(self, state: bool) -> Task[()]:
         """Set the output state (True = high, False = low)."""
 
     @abstractmethod
