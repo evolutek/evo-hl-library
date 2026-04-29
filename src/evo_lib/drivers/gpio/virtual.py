@@ -3,7 +3,12 @@
 import threading
 
 from evo_lib.argtypes import ArgTypes
-from evo_lib.driver_definition import DriverDefinition, DriverInitArgs, DriverInitArgsDefinition, DriverCommands
+from evo_lib.driver_definition import (
+    DriverCommands,
+    DriverDefinition,
+    DriverInitArgs,
+    DriverInitArgsDefinition,
+)
 from evo_lib.event import Event
 from evo_lib.interfaces.gpio import GPIO, GPIODirection, GPIOEdge
 from evo_lib.logger import Logger
@@ -48,7 +53,9 @@ class GPIOPinVirtual(GPIO):
         self._initialized = True
         self._state = False
         self._event = None
-        self._log.info(f"GPIOPinVirtual '{self.name}' initialized (pin {self._pin}, {self._direction})",)
+        self._log.info(
+            f"GPIOPinVirtual '{self.name}' initialized (pin {self._pin}, {self._direction})",
+        )
         return ImmediateResultTask()
 
     def close(self) -> None:
@@ -75,10 +82,8 @@ class GPIOPinVirtual(GPIO):
             raise NotImplementedError("interrupt() requires INPUT direction")
         return self._events[edge]
 
-    @commands.register(args = [
-        ("state", ArgTypes.Bool())
-    ])
-    def inject(self, state: bool) -> None:
+    @commands.register(args=[("state", ArgTypes.Bool())])
+    def inject_input(self, state: bool) -> None:
         """Inject a value for testing. Triggers the interrupt event if active."""
         with self._lock:
             if state == self._state:
@@ -98,11 +103,8 @@ class GPIOPinVirtualDefinition(DriverDefinition):
         self._logger = logger
 
     def create(self, args: DriverInitArgs) -> Peripheral:
-        return  GPIOPinVirtual(
-            args.get_name(),
-            self._logger,
-            args.get("direction"),
-            args.get("pull_up")
+        return GPIOPinVirtual(
+            args.get_name(), self._logger, args.get("direction"), args.get("pull_up")
         )
 
     def get_init_args_definition(self) -> DriverInitArgsDefinition:
