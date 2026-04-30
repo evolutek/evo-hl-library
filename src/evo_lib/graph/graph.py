@@ -4,422 +4,58 @@ A graph is a set of nodes connected by execution flow and value connections.
 Flow connections describe execution order. Value connections pass data between nodes.
 """
 
-from abc import ABC, abstractmethod
-from dataclasses import dataclass
-from enum import Enum
 from threading import Lock
 from typing import TYPE_CHECKING, Any
 
 from evo_lib.argtypes import ArgType
-from evo_lib.config import ConfigObject, ConfigValidationError
+from evo_lib.graph.node import (
+    FlowInput,
+    Node,
+    ValueInputDefinition,
+    ValueOutputDefinition,
+)
+from evo_lib.graph.nodes.flow import CallNodeDefinition
 from evo_lib.task import DelayedTask, Task
 
 if TYPE_CHECKING:
+    from evo_lib.graph.nodes.flow import EntryNode, ExitNode
     from evo_lib.graph.runner import GraphRunner
 
 
-# -- Endpoints --
-
-
-class Endpoint(ABC):
-    def __init__(self, node: Node, name: str):
-        self._node = node
-        self._name = name
-
-    def get_name(self) -> str:
-        return self._name
-
-    def get_node(self) -> Node:
-        return self._node
-
-    def reset(self) -> None:
-        pass
-
-
-class FlowInputState(Enum):
-    ACTIVE = 0
-    INACTIVE = 1
-    RUN = 2
-
-
-class FlowInput(Endpoint):
-    def __init__(self, node: Node, name: str):
-        super().__init__(node, name)
-        self.connections: list[FlowOutput] = []
-        self.state: FlowInputState = FlowInputState.ACTIVE
-        self._triggered_by: FlowOutput | None = None
-
-    def reset(self) -> None:
-        self.state = FlowInputState.ACTIVE
-        self._triggered_by = None
-
-    def get_triggered_by(self) -> FlowOutput | None:
-        return self._triggered_by
-
-    def run(self, source: FlowOutput) -> None:
-        self._triggered_by = source
-        self.get_node().get_graph().schedule_run_flow_input(self)
-
-    def ignore(self, source: FlowOutput) -> None:
-        self.get_node().get_graph().schedule_ignore_flow_input(self)
-
-
-class FlowOutput(Endpoint):
-    def __init__(self, node: Node, name: str):
-        super().__init__(node, name)
-        self._connections: list[FlowInput] = []
-
-    def link(self, peer: FlowInput) -> None:
-        self._connections.append(peer)
-        peer.connections.append(self)
-
-    def get_connections(self) -> list[FlowInput]:
-        return self._connections
-
-    def run(self) -> None:
-        # Run every flow input connected to this flow output
-        for inp in self._connections:
-            inp.run(source=self)
-
-    def ignore(self) -> None:
-        # Ignore every flow input connected to this flow output
-        for inp in self._connections:
-            inp.ignore(source=self)
-
-
-@dataclass
-class ValueInputDefinition:
-    type: ArgType
-    default: Any
-
-
-@dataclass
-class ValueOutputDefinition:
-    type: ArgType
-
-
-class ValueEndpoint(Endpoint):
-    def __init__(self, node: Node, name: str, type: ArgType):
-        super().__init__(node, name)
-        self.type = type
-
-
-class ValueInput(ValueEndpoint):
-    def __init__(self, node: Node, name: str, type: ArgType, default: Any):
-        super().__init__(node, name, type)
-        self._default: Any = default
-        self._value: Any = default
-        self._connections: list[ValueOutput] = []
-
-    def reset(self) -> None:
-        self._value = self._default
-
-    def set_default(self, value: Any) -> None:
-        self._default = value
-        self._value = value
-
-    def set_value(self, value: Any) -> None:
-        self._value = value
-
-    def get_value(self) -> Any:
-        return self._value
-
-
-class ValueOutput(ValueEndpoint):
-    def __init__(self, node: Node, name: str, type: ArgType):
-        super().__init__(node, name, type)
-        self._connections: list[ValueInput] = []
-
-    def set(self, value: Any) -> None:
-        for inp in self._connections:
-            inp.set_value(value)
-
-    def link(self, peer: ValueInput) -> None:
-        self._connections.append(peer)
-        peer._connections.append(self)
-
-
-# -- Node --
-
-
-class Node(ABC):
-    def __init__(self, definition: NodeDefinition, name: str, graph: Graph):
-        self._definition = definition
-        self._name = name
-        self._graph = graph
-        self._value_inputs: list[ValueInput] = []
-        self._value_outputs: list[ValueOutput] = []
-        self._flow_inputs: list[FlowInput] = []
-        self._flow_outputs: list[FlowOutput] = []
-        self._nb_active_input_flow: int = 0
-        self._nb_run_input_flow: int = 0
-
-    def get_graph(self) -> Graph:
-        return self._graph
-
-    def get_runner(self) -> GraphRunner:
-        runner = self.get_graph().get_runner()
-        assert runner is not None
-        return runner
-
-    def get_definition(self) -> NodeDefinition:
-        return self._definition
-
-    def get_name(self) -> str:
-        return self._name
-
-    def get_flow_output(self, name: str) -> FlowOutput | None:
-        for ep in self._flow_outputs:
-            if ep.get_name() == name:
-                return ep
-        return None
-
-    def get_flow_input(self, name: str) -> FlowInput | None:
-        for ep in self._flow_inputs:
-            if ep.get_name() == name:
-                return ep
-        return None
-
-    def get_value_output(self, name: str) -> ValueOutput | None:
-        for ep in self._value_outputs:
-            if ep.get_name() == name:
-                return ep
-        return None
-
-    def get_value_input(self, name: str) -> ValueInput | None:
-        for ep in self._value_inputs:
-            if ep.get_name() == name:
-                return ep
-        return None
-
-    def get_value_inputs(self) -> list[ValueInput]:
-        return self._value_inputs
-
-    def get_value_outputs(self) -> list[ValueOutput]:
-        return self._value_outputs
-
-    def get_flow_inputs(self) -> list[FlowInput]:
-        return self._flow_inputs
-
-    def get_flow_outputs(self) -> list[FlowOutput]:
-        return self._flow_outputs
-
-    @abstractmethod
-    def on_run(self) -> Task[()]:
-        pass
-
-    def run(self) -> None:
-        self.get_runner()._logger.debug(f"Run node '{self.get_name()}'")
-        self.get_graph().schedule_run_node(self)
-
-    def reset(self) -> None:
-        for inp in self._value_inputs:
-            inp.reset()
-
-    def on_run_flow_input(self, input: FlowInput) -> None:
-        assert input.state != FlowInputState.INACTIVE
-        if input.state == FlowInputState.ACTIVE:
-            input.state = FlowInputState.RUN
-            self._nb_run_input_flow += 1
-            if self._nb_run_input_flow >= self._nb_active_input_flow:
-                self.run()
-
-    def on_ignore_flow_input(self, input: FlowInput) -> None:
-        assert input.state != FlowInputState.RUN
-        if input.state == FlowInputState.ACTIVE:
-            input.state = FlowInputState.INACTIVE
-            self._nb_active_input_flow -= 1
-            if self._nb_active_input_flow == 0:
-                for output in self._flow_outputs:
-                    output.ignore()
-
-
-# -- Node definition --
-
-
-class NodeDefinition:
-    def __init__(self, type: type[Node], name: str, title: str):
-        self._type = type
-        self._name = name
-        self._title = title
-        self._flow_inputs: set[str] = set()
-        self._flow_outputs: set[str] = set()
-        self._value_inputs: dict[str, ValueInputDefinition] = {}
-        self._value_outputs: dict[str, ValueOutputDefinition] = {}
-
-    def add_flow_input(self, name: str) -> None:
-        self._flow_inputs.add(name)
-
-    def add_flow_output(self, name: str) -> None:
-        self._flow_outputs.add(name)
-
-    def add_value_input(self, name: str, type: ArgType, default: Any = None) -> None:
-        self._value_inputs[name] = ValueInputDefinition(type, default)
-
-    def add_value_output(self, name: str, type: ArgType) -> None:
-        self._value_outputs[name] = ValueOutputDefinition(type)
-
-    def get_type(self) -> type[Node]:
-        return self._type
-
-    def get_name(self) -> str:
-        return self._name
-
-    def get_title(self) -> str:
-        return self._title
-
-    def get_value_inputs(self) -> dict[str, ValueInputDefinition]:
-        return self._value_inputs
-
-    def get_value_outputs(self) -> dict[str, ValueOutputDefinition]:
-        return self._value_outputs
-
-    def get_flow_inputs(self) -> set[str]:
-        return self._flow_inputs
-
-    def get_flow_outputs(self) -> set[str]:
-        return self._flow_outputs
-
-    def create(self, graph: Graph, name: str, config: ConfigObject) -> Node:
-        """Instantiate a node, create its endpoints, apply config defaults."""
-        node = self._type(self, name, graph)
-
-        # Create endpoints (only here, NOT in node constructors)
-        for endpoint_name in self._flow_outputs:
-            node._flow_outputs.append(FlowOutput(node, endpoint_name))
-
-        for endpoint_name in self._flow_inputs:
-            fi = FlowInput(node, endpoint_name)
-            node._flow_inputs.append(fi)
-            node._nb_active_input_flow += 1
-
-        for endpoint_name, endpoint_def in self._value_outputs.items():
-            node._value_outputs.append(ValueOutput(node, endpoint_name, endpoint_def.type))
-
-        for endpoint_name, endpoint_def in self._value_inputs.items():
-            node._value_inputs.append(
-                ValueInput(node, endpoint_name, endpoint_def.type, endpoint_def.default)
-            )
-
-        # Apply config overrides for value input defaults
-        config_inputs = config.get_object_or("inputs", ConfigObject())
-        for endpoint_name, raw_default_value in config_inputs.items():
-            endpoint = node.get_value_input(endpoint_name)
-            if endpoint is None:
-                raise ConfigValidationError(
-                    f"Unknown value input '{endpoint_name}' for node type {self.get_name()}"
-                )
-            default_value = self._value_inputs[endpoint_name].type.value_from_config(raw_default_value)
-            endpoint.set_default(default_value)
-
-        node.reset()
-
-        return node
-
-    def _link_flow_output(self, graph: Graph, endpoint: FlowOutput, connections: list[str]) -> None:
-        for connection in connections:
-            parts = connection.split(":")
-            if len(parts) < 1 or len(parts) > 2:
-                raise ConfigValidationError(
-                    f"Invalid endpoint reference '{connection}' for flow output "
-                    f"'{endpoint.get_name()}' of node '{endpoint.get_node().get_name()}'"
-                )
-
-            peer_node = graph.get_node(parts[0])
-            if peer_node is None:
-                raise ConfigValidationError(
-                    f"Unknown node '{parts[0]}' referenced from flow output "
-                    f"'{endpoint.get_name()}' of node '{endpoint.get_node().get_name()}'"
-                )
-
-            if len(parts) == 1:
-                peer_inputs = peer_node.get_flow_inputs()
-                if len(peer_inputs) != 1:
-                    raise ConfigValidationError(
-                        f"Ambiguous: node '{parts[0]}' has {len(peer_inputs)} flow inputs, "
-                        f"specify which one"
-                    )
-                endpoint.link(peer_inputs[0])
-            else:
-                peer_ep = peer_node.get_flow_input(parts[1])
-                if peer_ep is None:
-                    raise ConfigValidationError(
-                        f"Unknown flow input '{parts[1]}' on node '{parts[0]}'"
-                    )
-                endpoint.link(peer_ep)
-
-    def _link_value_output(
-        self, graph: Graph, endpoint: ValueOutput, connections: list[str]
-    ) -> None:
-        for connection in connections:
-            parts = connection.split(":")
-            if len(parts) < 1 or len(parts) > 2:
-                raise ConfigValidationError(
-                    f"Invalid endpoint reference '{connection}' for value output "
-                    f"'{endpoint.get_name()}' of node '{endpoint.get_node().get_name()}'"
-                )
-
-            peer_node = graph.get_node(parts[0])
-            if peer_node is None:
-                raise ConfigValidationError(
-                    f"Unknown node '{parts[0]}' referenced from value output "
-                    f"'{endpoint.get_name()}' of node '{endpoint.get_node().get_name()}'"
-                )
-
-            if len(parts) == 1:
-                peer_inputs = peer_node.get_value_inputs()
-                if len(peer_inputs) != 1:
-                    raise ConfigValidationError(
-                        f"Ambiguous: node '{parts[0]}' has {len(peer_inputs)} value inputs, "
-                        f"specify which one"
-                    )
-                endpoint.link(peer_inputs[0])
-            else:
-                peer_ep = peer_node.get_value_input(parts[1])
-                if peer_ep is None:
-                    raise ConfigValidationError(
-                        f"Unknown value input '{parts[1]}' on node '{parts[0]}'"
-                    )
-                endpoint.link(peer_ep)
-
-    def link(self, graph: Graph, node: Node, config: ConfigObject) -> None:
-        """Connect a node's outputs to other nodes based on config."""
-        connections: list[Any]
-
-        # Connect flow outputs
-        flow = config.get_object_or("flow", ConfigObject())
-        for endpoint_name in flow.keys():
-            connections = flow.get_array(endpoint_name)
-            endpoint = node.get_flow_output(endpoint_name)
-            if endpoint is None:
-                raise ConfigValidationError(
-                    f"Unknown flow output '{endpoint_name}' for node type {self.get_name()}"
-                )
-            self._link_flow_output(graph, endpoint, connections)
-
-        # Connect value outputs
-        outputs = config.get_object_or("outputs", ConfigObject())
-        for endpoint_name in outputs.keys():
-            connections = outputs.get_array(endpoint_name)
-            endpoint = node.get_value_output(endpoint_name)
-            if endpoint is None:
-                raise ConfigValidationError(
-                    f"Unknown value output '{endpoint_name}' for node type {self.get_name()}"
-                )
-            self._link_value_output(graph, endpoint, connections)
-
-
-# -- Graph --
-
-
 class Graph:
-    def __init__(self):
-        self._runner: GraphRunner | None = None
+    def __init__(self, name: str):
+        self._name = name
         self._nodes: dict[str, Node] = {}
+        self._call_node_definition = CallNodeDefinition(self)
+        self._runner: GraphRunner | None = None
         self._running_graph_task: DelayedTask | None = None
         self._running_nodes_tasks: set[Task] = set()
         self._nb_scheduled_flow_input = 0
         self._lock = Lock()
+
+    def get_name(self) -> str:
+        return self._name
+
+    def add_value_input(self, name: str, type: ArgType, default: Any = None) -> None:
+        self._call_node_definition.add_value_input(name, type, default)
+
+    def add_value_output(self, name: str, type: ArgType) -> None:
+        self._call_node_definition.add_value_output(name, type)
+
+    def add_flow_output(self, name: str) -> None:
+        self._call_node_definition.add_flow_output(name)
+
+    def get_value_outputs(self) -> dict[str, ValueOutputDefinition]:
+        return self._call_node_definition.get_value_outputs()
+
+    def get_value_inputs(self) -> dict[str, ValueInputDefinition]:
+        return self._call_node_definition.get_value_inputs()
+
+    def get_flow_outputs(self) -> set[str]:
+        return self._call_node_definition.get_flow_outputs()
+
+    def get_call_node_definition(self) -> CallNodeDefinition:
+        return self._call_node_definition
 
     def is_running(self) -> bool:
         return self._running_graph_task is not None and not self._running_graph_task.is_done()
@@ -427,10 +63,11 @@ class Graph:
     def is_terminate(self) -> bool:
         return self._running_graph_task is not None and self._running_graph_task.is_done()
 
-    def get_running_task(self) -> Task | None:
+    def get_running_task(self) -> Task[()] | None:
         return self._running_graph_task
 
     def _check_end(self) -> None:
+        assert self._runner is not None
         # Check if nothing is running or pending on the graph,
         # if that the case, complete _running_graph_task
         with self._lock:
@@ -474,10 +111,7 @@ class Graph:
         with self._lock:
             self._nb_scheduled_flow_input += 1
         self._runner.get_scheduler().schedule_after(
-            delay = delay,
-            priority = 0,
-            callback = self._do_run_flow_input,
-            args = (input_flow,)
+            delay=delay, priority=0, callback=self._do_run_flow_input, args=(input_flow,)
         )
 
     def _do_ignore_flow_input(self, input_flow: FlowInput) -> None:
@@ -492,9 +126,7 @@ class Graph:
         with self._lock:
             self._nb_scheduled_flow_input += 1
         self._runner.get_scheduler().schedule_now(
-            priority = 0,
-            callback = self._do_ignore_flow_input,
-            args = (input_flow,)
+            priority=0, callback=self._do_ignore_flow_input, args=(input_flow,)
         )
 
     def get_runner(self) -> GraphRunner | None:
@@ -505,6 +137,7 @@ class Graph:
             raise RuntimeError("You can only activate a graph that is inactive")
         self._runner = runner
         self._running_graph_task = DelayedTask()
+        self._nb_scheduled_flow_input = 0
 
     def deactivate(self) -> None:
         if not self.is_terminate():
@@ -512,11 +145,78 @@ class Graph:
         self._running_graph_task = None
         self._runner = None
 
+    def reset(self) -> None:
+        self.deactivate()
+        for node in self.get_nodes().values():
+            node.reset()
+
+    def clone(self) -> "Graph":
+        cloned_graph = Graph(self.get_name())
+
+        # Clone flow outputs
+        for flow_output in self.get_flow_outputs():
+            cloned_graph.add_flow_output(flow_output)
+
+        # Clone value outputs
+        for name, value_output in self.get_value_outputs().items():
+            cloned_graph.add_value_output(name, value_output.type)
+
+        # Clone value inputs
+        for name, value_input in self.get_value_inputs().items():
+            cloned_graph.add_value_input(name, value_input.type, value_input.default)
+
+        # Clone nodes
+        for node in self.get_nodes().values():
+            cloned_node = node.clone()
+            cloned_graph.add_node(cloned_node)
+
+        # Relink nodes
+        for cloned_node in cloned_graph.get_nodes().values():
+            node = self.get_node(cloned_node.get_name())
+            assert node is not None
+
+            for cloned_flow_output in cloned_node.get_flow_outputs():
+                flow_output = node.get_flow_output(cloned_flow_output.get_name())
+                assert flow_output is not None
+                for flow_input in flow_output.get_connections():
+                    cloned_peer_node = cloned_graph.get_node(flow_input.get_node().get_name())
+                    assert cloned_peer_node is not None
+                    cloned_flow_input = cloned_peer_node.get_flow_input(flow_input.get_name())
+                    assert cloned_flow_input is not None
+                    cloned_flow_output.link(cloned_flow_input)
+
+            for cloned_value_output in cloned_node.get_value_outputs():
+                value_output = node.get_value_output(cloned_value_output.get_name())
+                assert value_output is not None
+                for value_input in value_output.get_connections():
+                    cloned_peer_node = cloned_graph.get_node(value_input.get_node().get_name())
+                    assert cloned_peer_node is not None
+                    cloned_value_input = cloned_peer_node.get_value_input(value_input.get_name())
+                    assert cloned_value_input is not None
+                    cloned_value_output.link(cloned_value_input)
+
+        return cloned_graph
+
     def get_node(self, name: str) -> Node | None:
         return self._nodes.get(name)
 
     def get_nodes(self) -> dict[str, Node]:
         return self._nodes
 
+    def get_entry_node(self) -> EntryNode | None:
+        for node in self._nodes.values():
+            if isinstance(node, EntryNode):
+                return node
+        return None
+
+    def get_exit_node(self) -> ExitNode | None:
+        for node in self._nodes.values():
+            if isinstance(node, ExitNode):
+                return node
+        return None
+
     def add_node(self, node: Node) -> None:
+        if node.get_graph() is not None:
+            raise RuntimeError(f"Node '{node.get_name()}' is already part of a graph")
+        node.set_graph(self)
         self._nodes[node.get_name()] = node

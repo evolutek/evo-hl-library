@@ -1,9 +1,10 @@
 """Graph loader: builds a Graph from JSON5 config and node definitions."""
 
-from evo_lib.argtypes import argtype_to_config
+from evo_lib.argtypes import argtype_from_config, argtype_to_config
 from evo_lib.config import ConfigObject
-from evo_lib.graph.graph import Graph, NodeDefinition
-from evo_lib.graph.nodes.flow import EntryNodeDefinition, IfElseNodeDefinition
+from evo_lib.graph.graph import Graph
+from evo_lib.graph.node import NodeDefinition
+from evo_lib.graph.nodes.flow import EntryNodeDefinition, ExitNodeDefinition, IfElseNodeDefinition
 from evo_lib.graph.nodes.utils import WaitNodeDefinition
 from evo_lib.registry import Registry
 
@@ -11,6 +12,7 @@ from evo_lib.registry import Registry
 class GraphLoader:
     def __init__(self):
         self._node_definitions: Registry[NodeDefinition] = Registry("node_definitions")
+        self._partially_loaded_graphes: dict[str, tuple[Graph, ConfigObject]] = {}
 
     def register_node_type(self, node: NodeDefinition) -> None:
         self._node_definitions.register(node.get_name(), node)
@@ -20,6 +22,7 @@ class GraphLoader:
         self.register_node_type(WaitNodeDefinition())
         self.register_node_type(IfElseNodeDefinition())
         self.register_node_type(EntryNodeDefinition())
+        self.register_node_type(ExitNodeDefinition())
 
     def export_node_types(self) -> ConfigObject:
         """Export all registered node definitions as a config object."""
@@ -46,20 +49,63 @@ class GraphLoader:
 
         return config
 
-    def load_config(self, config: ConfigObject) -> Graph:
-        """Build a Graph from a config object."""
-        graph = Graph()
+    def partially_load_graph(self, name: str, config: ConfigObject) -> Graph:
+        """Load a Graph from a config object.
+        To finalize the loading, call `finalize_loading_graphes`.
+        Graph loading is stopped in two steps because, some graph
+        can call other graphs, so graph objects must instantiate
+        first before their nodes can be loaded (their can be a
+        subgraph call node that is linked to another graph)."""
 
-        # Create nodes
-        for node_name in config.keys():
-            node_config = config.get_object(node_name)
-            node_type = node_config.get_str("type")
-            node_def = self._node_definitions.get(node_type)
-            graph.add_node(node_def.create(graph, node_name, node_config))
+        if name in self._partially_loaded_graphes:
+            raise ValueError(f"Graph {name} is already partially loaded")
 
-        # Link nodes
-        for node_name, node in graph.get_nodes().items():
-            node_config = config.get_object(node_name)
-            node.get_definition().link(graph, node, node_config)
+        graph = Graph(name)
+
+        # Create value inputs
+        value_inputs_config = config.get_object_or("value_inputs", {})
+        for name in value_inputs_config.keys():
+            input_config = value_inputs_config.get_object(name)
+            input_type = argtype_from_config(input_config)
+            default_value = input_config.get_str("default")
+            graph.add_value_input(name, input_type, default_value)
+
+        # Create value outputs
+        value_outputs_config = config.get_object_or("value_outputs", {})
+        for name in value_outputs_config.keys():
+            output_config = value_outputs_config.get_object(name)
+            output_type = argtype_from_config(output_config)
+            graph.add_value_output(name, output_type)
+
+        # Create flow outputs
+        flow_outputs_config = config.get_array_or("flow_outputs", [])
+        for name in flow_outputs_config:
+            graph.add_flow_output(name)
+
+        self.register_node_type(graph.get_call_node_definition())
+
+        self._partially_loaded_graphes[name] = (graph, config)
 
         return graph
+
+    def finalize_loading_graphes(self) -> None:
+        """Finalize loading of all partially loaded graphs
+        (i.e., create nodes and link them).
+        This method should be called after all graphs have been
+        partially loaded."""
+
+        for graph, config in self._partially_loaded_graphes.values():
+            # Create nodes for all graphs
+            nodes_config = config.get_object("nodes")
+            for node_name in nodes_config.keys():
+                node_config = nodes_config.get_object(node_name)
+                node_type = node_config.get_str("type")
+                node_def = self._node_definitions.get(node_type)
+                graph.add_node(node_def.create(graph, node_name, node_config))
+
+            # Link nodes
+            for node_name, node in graph.get_nodes().items():
+                node_config = nodes_config.get_object(node_name)
+                node.get_definition().link(graph, node, node_config)
+
+        self._partially_loaded_graphes.clear()
