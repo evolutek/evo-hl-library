@@ -256,7 +256,11 @@ class Node(ABC):
         called after all flow inputs has been run.
         This method should return a task that completes when
         the node is done running. The task must not complete
-        before all flow output has been runned or ignored."""
+        before all flow output has been runned or ignored.
+        Default implement is to run all flow outputs and return
+        an immediate result task."""
+        for flow_output in self._flow_outputs:
+            flow_output.run()
         return ImmediateResultTask()
 
     def run(self) -> None:
