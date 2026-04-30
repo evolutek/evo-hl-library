@@ -1,13 +1,13 @@
 """Built-in utility nodes: Wait."""
 
 from evo_lib.argtypes import ArgTypes
-from evo_lib.graph.graph import Graph, Node, NodeDefinition
+from evo_lib.graph.node import Node, NodeDefinition
 from evo_lib.task import ImmediateResultTask, Task
 
 
 class WaitNode(Node):
-    def __init__(self, definition: NodeDefinition, name: str, graph: Graph):
-        super().__init__(definition, name, graph)
+    def __init__(self, definition: NodeDefinition, name: str):
+        super().__init__(definition, name)
 
     def on_run(self) -> Task[()]:
         delay_input = self.get_value_input("delay")
