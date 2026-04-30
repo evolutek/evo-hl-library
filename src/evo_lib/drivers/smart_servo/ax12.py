@@ -9,6 +9,8 @@ Layout:
 - AX12 (SmartServo): one instance per servo ID on the bus.
 - AX12BusVirtual: drop-in replacement for AX12Bus with an in-memory
   servo state dict. Same constructor signature so configs can swap.
+
+init() does no bus I/O — torque arming is in enable().
 """
 
 import threading
@@ -26,7 +28,7 @@ from evo_lib.interfaces.smart_servo import SmartServo
 from evo_lib.logger import Logger
 from evo_lib.peripheral import InterfaceHolder, Peripheral
 from evo_lib.registry import Registry
-from evo_lib.task import ImmediateErrorTask, ImmediateResultTask, Task
+from evo_lib.task import ImmediateResultTask, Task
 
 # Dynamixel 1.0 instructions
 _INST_READ = 0x02
@@ -389,15 +391,17 @@ class AX12(SmartServo):
         return self._id
 
     def init(self) -> Task[()]:
-        # Route failures through ImmediateErrorTask instead of raising
-        # synchronously: that keeps PeripheralsInitializer.on_error() reachable,
-        # which lets this servo (and its dependents) be marked as skipped
-        # rather than crashing the whole boot sequence.
-        try:
-            self._bus.write_register(self._id, _TORQUE_ENABLE, bytes([1]))
-        except OSError as err:
-            self._log.error(f"AX12 '{self.name}' (ID {self._id}) init failed: {err}")
-            return ImmediateErrorTask(err)
+        # No bus I/O: torque is armed later via enable().
+        return ImmediateResultTask()
+
+    @commands.register(args=[], result=[])
+    def enable(self) -> Task[()]:
+        """Power torque so the servo can hold or move to a position.
+
+        AX-12A boots with Torque Enable = 0 (datasheet). Call after the
+        12V motor rail is up.
+        """
+        self._bus.write_register(self._id, _TORQUE_ENABLE, bytes([1]))
         self._log.info(f"AX12 '{self.name}' (ID {self._id}) torque enabled")
         return ImmediateResultTask()
 

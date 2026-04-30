@@ -20,7 +20,6 @@ from evo_lib.drivers.smart_servo.ax12 import (
 )
 from evo_lib.drivers.smart_servo.virtual import SmartServoVirtual
 from evo_lib.logger import Logger
-from evo_lib.task import ImmediateErrorTask
 
 
 @pytest.fixture
@@ -264,25 +263,22 @@ class TestAX12WithVirtualBus:
         servo.mode_joint().wait()
         assert bus.read_register(1, 8, 2) == bytes([1023 & 0xFF, 1023 >> 8])
 
-    def test_init_returns_error_task_on_bus_failure(self, log, monkeypatch):
-        # AX12.init() must NOT raise synchronously when the bus is unreachable:
-        # a sync raise bypasses PeripheralsInitializer.on_error() and crashes
-        # the whole boot. Wrapping in ImmediateErrorTask lets the initializer
-        # skip the servo cleanly.
+    def test_init_does_no_bus_io(self, log, monkeypatch):
+        # init() must not touch the bus: the 12V rail may be down at boot.
         bus = self._bus(log)
         servo = AX12("s", log, bus, servo_id=42)
 
         def boom(servo_id, register, data):
-            raise DynamixelBusError("no reply")
+            raise AssertionError("init() must not write to the bus")
 
         monkeypatch.setattr(bus, "write_register", boom)
+        servo.init().wait()
 
-        task = servo.init()
-        assert isinstance(task, ImmediateErrorTask)
-        seen: list[Exception] = []
-        task.on_error(seen.append)
-        assert len(seen) == 1
-        assert isinstance(seen[0], DynamixelBusError)
+    def test_enable_writes_torque_register(self, log):
+        bus = self._bus(log)
+        servo = AX12("s", log, bus, servo_id=7)
+        servo.enable().wait()
+        assert bus.read_register(7, 24, 1) == b"\x01"
 
     def test_turn_sets_direction_bit(self, log):
         bus = self._bus(log)
