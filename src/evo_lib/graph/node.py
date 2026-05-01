@@ -343,11 +343,12 @@ class NodeDefinition:
     def get_flow_outputs(self) -> set[str]:
         return self._flow_outputs
 
-    def create_node(self, name: str, config: ConfigObject) -> Node:
-        """Instantiate a node, create its endpoints, apply config defaults."""
+    def instantiate_node(self, name: str, config: ConfigObject) -> Node:
+        """Instantiate a node, create its endpoints"""
         node = self._type(self, name)
+        return node
 
-        # Create endpoints (only here, NOT in node constructors)
+    def create_node_endpoints(self, node: Node, config: ConfigObject) -> None:
         for endpoint_name in self._flow_outputs:
             node._flow_outputs.append(FlowOutput(node, endpoint_name))
 
@@ -363,8 +364,6 @@ class NodeDefinition:
             node._value_inputs.append(
                 ValueInput(node, endpoint_name, endpoint_def.type, endpoint_def.default)
             )
-
-        return node
 
     def _link_flow_output(self, graph: Graph, endpoint: FlowOutput, connections: list[str]) -> None:
         for connection in connections:
@@ -432,7 +431,7 @@ class NodeDefinition:
                     )
                 endpoint.link(peer_ep)
 
-    def link_node(self, node: Node, config: ConfigObject) -> None:
+    def link_node_endpoints(self, node: Node, config: ConfigObject) -> None:
         """Connect a node's outputs to other nodes based on config."""
         graph: Graph = node.get_graph()
         connections: list[Any]
@@ -459,7 +458,7 @@ class NodeDefinition:
                 )
             self._link_value_output(graph, endpoint, connections)
 
-    def apply_default_inputs(self, node: Node, config: ConfigObject):
+    def config_node_inputs(self, node: Node, config: ConfigObject):
         # Apply config overrides for value input defaults
         config_inputs = config.get_object_or("inputs", ConfigObject())
         for endpoint_name, raw_default_value in config_inputs.items():

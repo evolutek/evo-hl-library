@@ -102,14 +102,16 @@ class GraphLoader:
                 node_config = nodes_config.get_object(node_name)
                 node_type = node_config.get_str("type")
                 node_def = self._node_definitions.get(node_type)
-                graph.add_node(node_def.create_node(node_name, node_config))
+                node = node_def.instantiate_node(node_name, node_config)
+                node_def.create_node_endpoints(node, node_config)
+                graph.add_node(node)
 
             # Link nodes and apply config default inputs
             for node_name, node in graph.get_nodes().items():
                 node_config = nodes_config.get_object(node_name)
                 node_def = node.get_definition()
-                node_def.link_node(node, node_config)
-                node_def.apply_default_inputs(node, node_config)
+                node_def.link_node_endpoints(node, node_config)
+                node_def.config_node_inputs(node, node_config)
                 # Reset to be sure to be in the correct state to run
                 node.reset()
 
