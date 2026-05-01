@@ -64,23 +64,24 @@ class GraphLoader:
 
         # Create value inputs
         value_inputs_config = config.get_object_or("value_inputs", ConfigObject())
-        for name in value_inputs_config.keys():
-            input_config = value_inputs_config.get_object(name)
+        for input_name in value_inputs_config.keys():
+            input_config = value_inputs_config.get_object(input_name)
             input_type = argtype_from_config(input_config)
-            default_value = input_config.get_str_or("default", None)
-            graph.add_value_input(name, input_type, default_value)
+            raw_default = input_config.get("default", None)
+            default_value = input_type.value_from_config(raw_default) if raw_default is not None else None
+            graph.add_value_input(input_name, input_type, default_value)
 
         # Create value outputs
         value_outputs_config = config.get_object_or("value_outputs", ConfigObject())
-        for name in value_outputs_config.keys():
-            output_config = value_outputs_config.get_object(name)
+        for output_name in value_outputs_config.keys():
+            output_config = value_outputs_config.get_object(output_name)
             output_type = argtype_from_config(output_config)
             graph.add_value_output(name, output_type)
 
         # Create flow outputs
         flow_outputs_config = config.get_array_or("flow_outputs", [])
-        for name in flow_outputs_config:
-            graph.add_flow_output(name)
+        for flow_output_name in flow_outputs_config:
+            graph.add_flow_output(flow_output_name)
 
         call_node_definition = graph.get_call_node_definition()
         self.register_node_type(call_node_definition)
