@@ -72,5 +72,7 @@ line-length = 100
 target-version = "py314"
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "W", "T201"]
+select = ["E", "F", "I", "W", "T201", "PLW2901", "ERA001"]
 # E = pycodestyle errors, F = pyflakes, I = isort, W = warnings, T201 = no print()
+# PLW2901 = outer for-loop variable overwritten by inner assignment target
+# ERA001  = commented-out code left in source
