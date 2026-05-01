@@ -50,19 +50,14 @@ class FlowInput(Endpoint):
         self._state: FlowEndpointState = FlowEndpointState.WAITING
         self._nb_ignored_input_connections: int = 0
         self._nb_runned_input_connections: int = 0
-        # self._triggered_by: FlowOutput | None = None
 
     def reset(self) -> None:
         self._state = FlowEndpointState.WAITING
         self._nb_ignored_input_connections = 0
         self._nb_runned_input_connections = 0
-        # self._triggered_by = None
 
     def get_connections(self) -> list[FlowOutput]:
         return self._connections
-
-    # def get_triggered_by(self) -> FlowOutput | None:
-    #     return self._triggered_by
 
     def _update_state(self) -> None:
         if self._state != FlowEndpointState.WAITING:
@@ -132,7 +127,10 @@ class ValueOutputDefinition:
 class ValueEndpoint(Endpoint):
     def __init__(self, node: Node, name: str, type: ArgType):
         super().__init__(node, name)
-        self.type = type
+        self._type = type
+
+    def get_type(self) -> ArgType:
+        return self._type
 
 
 class ValueInput(ValueEndpoint):
@@ -345,7 +343,7 @@ class NodeDefinition:
     def get_flow_outputs(self) -> set[str]:
         return self._flow_outputs
 
-    def create(self, name: str, config: ConfigObject) -> Node:
+    def create_node(self, name: str, config: ConfigObject) -> Node:
         """Instantiate a node, create its endpoints, apply config defaults."""
         node = self._type(self, name)
 
@@ -365,21 +363,6 @@ class NodeDefinition:
             node._value_inputs.append(
                 ValueInput(node, endpoint_name, endpoint_def.type, endpoint_def.default)
             )
-
-        # Apply config overrides for value input defaults
-        config_inputs = config.get_object_or("inputs", ConfigObject())
-        for endpoint_name, raw_default_value in config_inputs.items():
-            endpoint = node.get_value_input(endpoint_name)
-            if endpoint is None:
-                raise ConfigValidationError(
-                    f"Unknown value input '{endpoint_name}' for node type {self.get_name()}"
-                )
-            default_value = self._value_inputs[endpoint_name].type.value_from_config(
-                raw_default_value
-            )
-            endpoint.set_default(default_value)
-
-        node.reset()
 
         return node
 
@@ -449,8 +432,9 @@ class NodeDefinition:
                     )
                 endpoint.link(peer_ep)
 
-    def link(self, graph: Graph, node: Node, config: ConfigObject) -> None:
+    def link_node(self, node: Node, config: ConfigObject) -> None:
         """Connect a node's outputs to other nodes based on config."""
+        graph: Graph = node.get_graph()
         connections: list[Any]
 
         # Connect flow outputs
@@ -474,3 +458,15 @@ class NodeDefinition:
                     f"Unknown value output '{endpoint_name}' for node type {self.get_name()}"
                 )
             self._link_value_output(graph, endpoint, connections)
+
+    def apply_default_inputs(self, node: Node, config: ConfigObject):
+        # Apply config overrides for value input defaults
+        config_inputs = config.get_object_or("inputs", ConfigObject())
+        for endpoint_name, raw_default_value in config_inputs.items():
+            endpoint = node.get_value_input(endpoint_name)
+            if endpoint is None:
+                raise ConfigValidationError(
+                    f"Unknown value input '{endpoint_name}' for node type {self.get_name()}"
+                )
+            default_value = endpoint.get_type().value_from_config(raw_default_value)
+            endpoint.set_default(default_value)
