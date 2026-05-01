@@ -1,8 +1,8 @@
 from enum import IntEnum
 
 from evo_lib.argtypes import ArgTypes
-from evo_lib.graph.graph import Node, NodeDefinition
 from evo_lib.graph.loader import GraphLoader
+from evo_lib.graph.node import Node, NodeDefinition
 
 
 class _DummyNode(Node):
