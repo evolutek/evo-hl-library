@@ -34,3 +34,21 @@ jobs:
 
       - name: Pytest
         run: uv run pytest -q
+
+  ruff:
+    # Run ruff in its own job so a lint failure does not hide the test status.
+    name: Ruff
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - name: Ruff check
+        run: uvx ruff check src/ tests/
