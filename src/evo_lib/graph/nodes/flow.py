@@ -3,7 +3,7 @@
 from typing import TYPE_CHECKING, override
 
 from evo_lib.argtypes import ArgTypes
-from evo_lib.graph.node import FlowInput, Node, NodeDefinition
+from evo_lib.graph.node import FlowInput, Node, NodeDefinition, ValueInput, ValueOutput
 from evo_lib.task import ImmediateErrorTask, ImmediateResultTask, Task
 
 if TYPE_CHECKING:
@@ -13,6 +13,17 @@ if TYPE_CHECKING:
 class EntryNode(Node):
     def __init__(self, definition: NodeDefinition, name: str):
         super().__init__(definition, name)
+
+    @override
+    def set_graph(self, graph: Graph) -> None:
+        super().set_graph(graph)
+        # Override set_graph to configure this node value and flow outputs
+        self._value_outputs.clear()
+        for name, output in graph.get_value_inputs().items():
+            self._value_outputs.append(ValueOutput(self, name, output.type))
+        # self._flow_outputs.clear()
+        # for name in graph.get_flow_inputs():
+        #     self._flow_outputs.append(FlowOutput(name))
 
     def on_run(self) -> Task[()]:
         output = self.get_flow_output("next")
@@ -34,6 +45,17 @@ class ExitNode(Node):
 
     def set_caller_node(self, node: CallNode) -> None:
         self._caller_node = node
+
+    @override
+    def set_graph(self, graph: Graph) -> None:
+        super().set_graph(graph)
+        # Override set_graph to configure this node value and flow inputs
+        self._value_inputs.clear()
+        for name, output in graph.get_value_outputs().items():
+            self._value_inputs.append(ValueInput(self, name, output.type, None))
+        self._flow_inputs.clear()
+        for name in graph.get_flow_outputs():
+            self._flow_inputs.append(FlowInput(self, name))
 
     @override
     def on_run_flow_input(self, input: FlowInput) -> None:
@@ -95,9 +117,9 @@ class CallNode(Node):
 
 class CallNodeDefinition(NodeDefinition):
     def __init__(self, called_graph: Graph):
-        super().__init__(ExitNode, f"graph:call:{called_graph.get_name()}", "Call")
+        super().__init__(CallNode, f"graph:call:{called_graph.get_name()}", "Call")
         self._graph = called_graph
-        self.add_flow_output("next")
+        self.add_flow_input("flow")
 
     def get_called_graph(self) -> Graph:
         return self._graph
@@ -122,6 +144,7 @@ class IfElseNode(Node):
                 true_output.ignore()
             if false_output:
                 false_output.run()
+
         return ImmediateResultTask()
 
 

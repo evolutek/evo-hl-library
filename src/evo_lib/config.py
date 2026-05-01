@@ -86,24 +86,32 @@ class ConfigObject(dict[str, ConfigValue]):
             return default
 
     def get_float_or(
-        self, key: str, default: float, argtype: ArgTypes.Float | None = None
+        self, key: str, default: float | None, argtype: ArgTypes.Float | None = None
     ) -> float:
         return self._get_optional(key, default, argtype, self.get_float)
 
-    def get_int_or(self, key: str, default: int, argtype: ArgTypes.Float | None = None) -> int:
+    def get_int_or(
+        self, key: str, default: int | None, argtype: ArgTypes.Float | None = None
+    ) -> int:
         return self._get_optional(key, default, argtype, self.get_int)
 
-    def get_bool_or(self, key: str, default: bool, argtype: ArgTypes.Float | None = None) -> bool:
+    def get_bool_or(
+        self, key: str, default: bool | None, argtype: ArgTypes.Float | None = None
+    ) -> bool:
         return self._get_optional(key, default, argtype, self.get_bool)
 
-    def get_str_or(self, key: str, default: str, argtype: ArgTypes.Float | None = None) -> str:
+    def get_str_or(
+        self, key: str, default: str | None, argtype: ArgTypes.Float | None = None
+    ) -> str:
         return self._get_optional(key, default, argtype, self.get_str)
 
-    def get_array_or(self, key: str, default: list, argtype: ArgTypes.Float | None = None) -> list:
+    def get_array_or(
+        self, key: str, default: list | None, argtype: ArgTypes.Float | None = None
+    ) -> list:
         return self._get_optional(key, default, argtype, self.get_array)
 
     def get_object_or(
-        self, key: str, default: ConfigObject, argtype: ArgTypes.Float | None = None
+        self, key: str, default: ConfigObject | None, argtype: ArgTypes.Float | None = None
     ) -> ConfigObject:
         return self._get_optional(key, default, argtype, self.get_object)
 
@@ -161,11 +169,11 @@ class ConfigJSON5Formatter(ConfigFormatter):
 
     def format_to_file(self, config: ConfigValue, file_path: str) -> None:
         with open(file_path, "w", encoding="utf-8") as f:
-            json5.dump(config, f, indent = self._indent, quote_keys = True)
+            json5.dump(config, f, indent=self._indent, quote_keys=True)
             f.write("\n")
 
     def format_to_string(self, config: ConfigValue) -> str:
-        return json5.dumps(config, indent = self._indent, quote_keys = True)
+        return json5.dumps(config, indent=self._indent, quote_keys=True)
 
 
 class ConfigSchema(ABC):

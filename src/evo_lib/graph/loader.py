@@ -63,15 +63,15 @@ class GraphLoader:
         graph = Graph(name)
 
         # Create value inputs
-        value_inputs_config = config.get_object_or("value_inputs", {})
+        value_inputs_config = config.get_object_or("value_inputs", ConfigObject())
         for name in value_inputs_config.keys():
             input_config = value_inputs_config.get_object(name)
             input_type = argtype_from_config(input_config)
-            default_value = input_config.get_str("default")
+            default_value = input_config.get_str_or("default", None)
             graph.add_value_input(name, input_type, default_value)
 
         # Create value outputs
-        value_outputs_config = config.get_object_or("value_outputs", {})
+        value_outputs_config = config.get_object_or("value_outputs", ConfigObject())
         for name in value_outputs_config.keys():
             output_config = value_outputs_config.get_object(name)
             output_type = argtype_from_config(output_config)
@@ -82,7 +82,8 @@ class GraphLoader:
         for name in flow_outputs_config:
             graph.add_flow_output(name)
 
-        self.register_node_type(graph.get_call_node_definition())
+        call_node_definition = graph.get_call_node_definition()
+        self.register_node_type(call_node_definition)
 
         self._partially_loaded_graphes[name] = (graph, config)
 
@@ -101,11 +102,15 @@ class GraphLoader:
                 node_config = nodes_config.get_object(node_name)
                 node_type = node_config.get_str("type")
                 node_def = self._node_definitions.get(node_type)
-                graph.add_node(node_def.create(graph, node_name, node_config))
+                graph.add_node(node_def.create_node(node_name, node_config))
 
-            # Link nodes
+            # Link nodes and apply config default inputs
             for node_name, node in graph.get_nodes().items():
                 node_config = nodes_config.get_object(node_name)
-                node.get_definition().link(graph, node, node_config)
+                node_def = node.get_definition()
+                node_def.link_node(node, node_config)
+                node_def.apply_default_inputs(node, node_config)
+                # Reset to be sure to be in the correct state to run
+                node.reset()
 
         self._partially_loaded_graphes.clear()

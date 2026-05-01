@@ -146,7 +146,10 @@ class Graph:
         self._runner = None
 
     def reset(self) -> None:
-        self.deactivate()
+        if self.is_running():
+            raise RuntimeError("You can only reset a graph that is not running")
+        if self.is_terminate():
+            self.deactivate()
         for node in self.get_nodes().values():
             node.reset()
 
