@@ -701,8 +701,6 @@ class ArgTypes:
             if not isinstance(v, str):
                 raise ConfigValidationError("Component reference must be a string")
             component = self.components.get(v)
-            if component is None:
-                raise ConfigValidationError(f"Component '{v}' not found")
             if not isinstance(component, self.base_type):
                 raise ConfigValidationError(
                     f"Component '{v}' is not of type {self.base_type.__name__}"
