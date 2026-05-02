@@ -16,11 +16,10 @@ from evo_lib.graph.node import (
     ValueOutput,
     ValueOutputDefinition,
 )
-from evo_lib.graph.nodes.flow import CallNodeDefinition
+from evo_lib.graph.nodes.flow import CallNodeDefinition, EntryNode, ExitNode
 from evo_lib.task import DelayedTask, Task
 
 if TYPE_CHECKING:
-    from evo_lib.graph.nodes.flow import EntryNode, ExitNode
     from evo_lib.graph.runner import GraphRunner
 
 
