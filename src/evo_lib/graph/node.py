@@ -7,10 +7,18 @@ Flow connections describe execution order. Value connections pass data between n
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import Enum
+from threading import local
 from typing import TYPE_CHECKING, Any
 
 from evo_lib.argtypes import ArgType
 from evo_lib.config import ConfigObject, ConfigValidationError
+from evo_lib.graph.eval_context import (
+    EvalContext,
+    current_context,
+    next_tick,
+    pop_context,
+    push_context,
+)
 from evo_lib.task import ImmediateResultTask, Task
 
 if TYPE_CHECKING:
@@ -160,6 +168,8 @@ class ValueInput(ValueEndpoint):
         self._value = value
 
     def get_value(self) -> Any:
+        if self._connections:
+            return self._connections[0].pull()
         return self._value
 
     def clone(self) -> ValueInput:
@@ -170,20 +180,52 @@ class ValueOutput(ValueEndpoint):
     def __init__(self, node: Node, name: str, type: ArgType):
         super().__init__(node, name, type)
         self._connections: list[ValueInput] = []
+        self._cached_value: Any = None
+        self._tls = local()
 
     def get_connections(self) -> list[ValueInput]:
         return self._connections
 
     def set_value(self, value: Any) -> None:
+        node = self.get_node()
+        if node.is_pure() and current_context() is not None:
+            self._tls.value = value
+            return
+        self._cached_value = value
         for inp in self._connections:
             inp.set_value(value)
+
+    def pull(self) -> Any:
+        node = self.get_node()
+        if not node.is_pure():
+            return self._cached_value
+
+        ctx = current_context()
+        own_ctx = ctx is None
+        prev = None
+        if own_ctx:
+            ctx = EvalContext(next_tick())
+            prev = push_context(ctx)
+        try:
+            cache_tick = getattr(self._tls, "tick", -1)
+            if cache_tick != ctx.tick:
+                ctx.enter(node)
+                try:
+                    node.on_compute()
+                finally:
+                    ctx.exit(node)
+                self._tls.tick = ctx.tick
+            return self._tls.value
+        finally:
+            if own_ctx:
+                pop_context(prev)
 
     def link(self, peer: ValueInput) -> None:
         self._connections.append(peer)
         peer._connections.append(self)
 
     def reset(self) -> None:
-        pass
+        self._cached_value = None
 
     def clone(self) -> ValueOutput:
         return self.__class__(self._node, self._name, self._type)
@@ -203,6 +245,13 @@ class Node(ABC):
         self._flow_outputs: list[FlowOutput] = []
         self._nb_ignored_input_flow: int = 0
         self._nb_runned_input_flow: int = 0
+
+    def is_pure(self) -> bool:
+        return len(self._flow_inputs) == 0 and len(self._flow_outputs) == 0
+
+    def on_compute(self) -> None:
+        """Override on pure nodes to read value_inputs and set value_outputs."""
+        pass
 
     def clone(self) -> "Node":
         cloned = self.__class__(self._definition, self._name)
