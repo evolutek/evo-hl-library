@@ -385,8 +385,12 @@ class Node(ABC):
         self._run_requested = False
         for value_input in self._value_inputs:
             value_input.reset()
+        for value_output in self._value_outputs:
+            value_output.reset()
         for flow_input in self._flow_inputs:
             flow_input.reset()
+        for flow_output in self._flow_outputs:
+            flow_output.reset()
 
     def _check_need_to_run_or_ignore(self) -> None:
         total_completed_connections = self._nb_runned_input_flow + self._nb_ignored_input_flow
