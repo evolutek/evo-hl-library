@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any, Callable, overload
 
 import json5
 import pydantic
@@ -85,34 +85,92 @@ class ConfigObject(dict[str, ConfigValue]):
         else:
             return default
 
+    # Overloads (typing)
+
+    @overload
     def get_float_or(
-        self, key: str, default: float | None, argtype: ArgTypes.Float | None = None
+        self, key: str, default: None, argtype: ArgTypes.Float | None = None
+    ) -> float | None:
+        pass
+
+    @overload
+    def get_float_or(
+        self, key: str, default: float, argtype: ArgTypes.Float | None = None
     ) -> float:
+        pass
+
+    @overload
+    def get_int_or(
+        self, key: str, default: None, argtype: ArgTypes.Int | None = None
+    ) -> int | None:
+        pass
+
+    @overload
+    def get_int_or(self, key: str, default: int, argtype: ArgTypes.Int | None = None) -> int:
+        pass
+
+    @overload
+    def get_bool_or(
+        self, key: str, default: None, argtype: ArgTypes.Bool | None = None
+    ) -> bool | None:
+        pass
+
+    @overload
+    def get_bool_or(self, key: str, default: bool, argtype: ArgTypes.Bool | None = None) -> bool:
+        pass
+
+    @overload
+    def get_str_or(
+        self, key: str, default: None, argtype: ArgTypes.String | None = None
+    ) -> str | None:
+        pass
+
+    @overload
+    def get_str_or(self, key: str, default: str, argtype: ArgTypes.String | None = None) -> str:
+        pass
+
+    @overload
+    def get_array_or(
+        self, key: str, default: None, argtype: ArgTypes.Array | None = None
+    ) -> list[ConfigValue] | None:
+        pass
+
+    @overload
+    def get_array_or(
+        self, key: str, default: list[ConfigValue], argtype: ArgTypes.Array | None = None
+    ) -> list[ConfigValue]:
+        pass
+
+    @overload
+    def get_object_or(
+        self, key: str, default: None, argtype: ArgTypes.Struct | None = None
+    ) -> ConfigObject | None:
+        pass
+
+    @overload
+    def get_object_or(
+        self, key: str, default: ConfigObject, argtype: ArgTypes.Struct | None = None
+    ) -> ConfigObject:
+        pass
+
+    # Implementation
+
+    def get_float_or(self, key, default, argtype=None):
         return self._get_optional(key, default, argtype, self.get_float)
 
-    def get_int_or(
-        self, key: str, default: int | None, argtype: ArgTypes.Float | None = None
-    ) -> int:
+    def get_int_or(self, key, default, argtype=None):
         return self._get_optional(key, default, argtype, self.get_int)
 
-    def get_bool_or(
-        self, key: str, default: bool | None, argtype: ArgTypes.Float | None = None
-    ) -> bool:
+    def get_bool_or(self, key, default, argtype=None):
         return self._get_optional(key, default, argtype, self.get_bool)
 
-    def get_str_or(
-        self, key: str, default: str | None, argtype: ArgTypes.Float | None = None
-    ) -> str:
+    def get_str_or(self, key, default, argtype=None):
         return self._get_optional(key, default, argtype, self.get_str)
 
-    def get_array_or(
-        self, key: str, default: list | None, argtype: ArgTypes.Float | None = None
-    ) -> list:
+    def get_array_or(self, key, default, argtype=None):
         return self._get_optional(key, default, argtype, self.get_array)
 
-    def get_object_or(
-        self, key: str, default: ConfigObject | None, argtype: ArgTypes.Float | None = None
-    ) -> ConfigObject:
+    def get_object_or(self, key, default, argtype=None):
         return self._get_optional(key, default, argtype, self.get_object)
 
 
@@ -153,8 +211,8 @@ class ConfigJSON5Parser(ConfigParser):
                 raw[i] = self._transform_raw_config(raw[i], str(i), parent)
         return raw
 
-    def parse_from_file(self, filepath: str) -> ConfigValue:
-        with open(filepath, "r", encoding="utf8") as f:
+    def parse_from_file(self, file_path: str) -> ConfigValue:
+        with open(file_path, "r", encoding="utf8") as f:
             raw_config = json5.load(f)
         return self._transform_raw_config(raw_config)
 

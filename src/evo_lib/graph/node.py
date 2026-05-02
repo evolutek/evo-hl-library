@@ -81,6 +81,9 @@ class FlowInput(Endpoint):
         self._nb_ignored_input_connections += 1
         self._update_state()
 
+    def clone(self) -> FlowInput:
+        return self.__class__(self._node, self._name)
+
 
 class FlowOutput(Endpoint):
     def __init__(self, node: Node, name: str):
@@ -111,6 +114,9 @@ class FlowOutput(Endpoint):
         for inp in self._connections:
             inp.ignore(source=self)
         self._state = FlowEndpointState.IGNORED
+
+    def clone(self) -> FlowOutput:
+        return self.__class__(self._node, self._name)
 
 
 @dataclass
@@ -156,6 +162,9 @@ class ValueInput(ValueEndpoint):
     def get_value(self) -> Any:
         return self._value
 
+    def clone(self) -> ValueInput:
+        return self.__class__(self._node, self._name, self._type, self._default)
+
 
 class ValueOutput(ValueEndpoint):
     def __init__(self, node: Node, name: str, type: ArgType):
@@ -176,6 +185,9 @@ class ValueOutput(ValueEndpoint):
     def reset(self) -> None:
         pass
 
+    def clone(self) -> ValueOutput:
+        return self.__class__(self._node, self._name, self._type)
+
 
 # -- Node --
 
@@ -194,6 +206,21 @@ class Node(ABC):
 
     def clone(self) -> "Node":
         cloned = self.__class__(self._definition, self._name)
+
+        cloned._value_inputs.clear()
+        cloned._value_outputs.clear()
+        cloned._flow_inputs.clear()
+        cloned._flow_outputs.clear()
+
+        for value_input in self._value_inputs:
+            cloned._value_inputs.append(value_input.clone())
+        for value_output in self._value_outputs:
+            cloned._value_outputs.append(value_output.clone())
+        for flow_input in self._flow_inputs:
+            cloned._flow_inputs.append(flow_input.clone())
+        for flow_output in self._flow_outputs:
+            cloned._flow_outputs.append(flow_output.clone())
+
         return cloned
 
     def get_graph(self) -> Graph | None:
