@@ -8,6 +8,7 @@ from threading import Lock
 from typing import TYPE_CHECKING, Any
 
 from evo_lib.argtypes import ArgType
+from evo_lib.graph.eval_context import EvalContext, next_tick, pop_context, push_context
 from evo_lib.graph.node import (
     FlowInput,
     Node,
@@ -94,7 +95,12 @@ class Graph:
             self._running_nodes_tasks.add(task)
 
     def schedule_run_node(self, node: Node) -> None:
-        task = node.on_run()
+        ctx = EvalContext(next_tick())
+        prev = push_context(ctx)
+        try:
+            task = node.on_run()
+        finally:
+            pop_context(prev)
         self._add_node_run_task(task)
         task.on_complete(lambda: self._on_node_run_complete(task))
         task.on_error(lambda error: self._on_node_run_error(task, error))
