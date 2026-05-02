@@ -24,7 +24,7 @@ class Peripheral(ABC):
         self._init_args: DriverInitArgs | None = None
         self._dependencies: set[Peripheral] = set()
         self._dependents: set[Peripheral] = set()
-        self._required: bool = True # TODO: Use a value from config
+        self._required: bool = True  # TODO: Use a value from config
 
     def add_dependency(self, peripheral: Peripheral) -> None:
         self._dependencies.add(peripheral)
@@ -46,12 +46,12 @@ class Peripheral(ABC):
         """Return the name of this peripheral instance."""
         return self._name
 
-    def get_init_args(self) -> DriverInitArgs:
-        if self._init_args is None:
-            raise RuntimeError(
-                f"Peripheral '{self._name}' has no init arguments "
-                "(not instantiated through the ComponentsManager?)"
-            )
+    def get_init_args(self) -> DriverInitArgs | None:
+        # if self._init_args is None:
+        #     raise RuntimeError(
+        #         f"Peripheral '{self._name}' has no init arguments "
+        #         "(not instantiated through the ComponentsManager?)"
+        #     )
         return self._init_args
 
     def get_definition(self) -> DriverDefinition:
