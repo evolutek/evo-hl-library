@@ -13,8 +13,10 @@ Layout:
 init() does no bus I/O — torque arming is in enable().
 """
 
+import math
 import threading
 import time
+from typing import Callable
 
 from evo_lib.argtypes import ArgTypes
 from evo_lib.driver_definition import (
@@ -24,11 +26,12 @@ from evo_lib.driver_definition import (
     DriverInitArgsDefinition,
 )
 from evo_lib.interfaces.serial import Serial
-from evo_lib.interfaces.smart_servo import SmartServo
+from evo_lib.interfaces.smart_servo import ServoAngleUnit, ServoSpeedUnit, SmartServo
 from evo_lib.logger import Logger
 from evo_lib.peripheral import InterfaceHolder, Peripheral
 from evo_lib.registry import Registry
 from evo_lib.task import ImmediateResultTask, Task
+from evo_lib.thread_pool import ThreadPoolExecutor
 
 # Dynamixel 1.0 instructions
 _INST_READ = 0x02
@@ -52,9 +55,9 @@ _PRESENT_TEMPERATURE = 43
 
 # AX-12A constants (datasheet: Dynamixel 1.0 / AX-12A control table)
 _POSITION_MAX = 1023
-_POSITION_CENTER = 512  # 150° — mechanical midpoint of the 0..300° range
 _ANGLE_MAX = 300.0  # degrees
 _SPEED_MAX = 1023
+_SPEED_MAX_RPM = 114
 _LOAD_MAX = 1023
 _DIRECTION_BIT = 0x400  # bit 10 of moving_speed / present_speed / present_load: 1 = CW
 _MAGNITUDE_MASK = 0x3FF  # bits 0-9 of present_speed / present_load
@@ -68,6 +71,7 @@ _HEADER_B1 = 0xFF
 # motor load can drop a packet every few hundred transactions.
 _DEFAULT_RETRIES = 3
 _DEFAULT_RETRY_DELAY = 0.025
+_DEFAULT_MAX_REQUESTS_PER_SECOND = 50
 # USB2AX (Xevelabs, the standard Evolutek dongle) does not echo TX on RX: it
 # handles half-duplex direction internally in its ATmega firmware. Only the
 # older USB2Dynamixel (FT232 + external tri-state) echoes. Default to no-echo
@@ -110,43 +114,51 @@ class DynamixelServoError(DynamixelError):
 
 class InputVoltageError(DynamixelServoError):
     ERROR_BIT = 0x01
+
     def __init__(self, servo_id: int, error_byte: int):
         super().__init__(servo_id, error_byte, "input voltage out of range")
 
 
 class AngleLimitError(DynamixelServoError):
     ERROR_BIT = 0x02
+
     def __init__(self, servo_id: int, error_byte: int):
         super().__init__(servo_id, error_byte, "goal position outside angle limits")
 
 
 class OverheatingError(DynamixelServoError):
     ERROR_BIT = 0x04
+
     def __init__(self, servo_id: int, error_byte: int):
         super().__init__(servo_id, error_byte, "overheating")
 
 
 class RangeError(DynamixelServoError):
     ERROR_BIT = 0x08
+
     def __init__(self, servo_id: int, error_byte: int):
         super().__init__(servo_id, error_byte, "instruction parameter out of range")
 
 
 class PacketChecksumError(DynamixelServoError):
     """Servo received a corrupted instruction packet. TX-side noise, retryable."""
+
     ERROR_BIT = 0x10
+
     def __init__(self, servo_id: int, error_byte: int):
         super().__init__(servo_id, error_byte, "servo received bad checksum (TX noise)")
 
 
 class OverloadError(DynamixelServoError):
     ERROR_BIT = 0x20
+
     def __init__(self, servo_id: int, error_byte: int):
         super().__init__(servo_id, error_byte, "overload (motor stalled)")
 
 
 class InstructionError(DynamixelServoError):
     ERROR_BIT = 0x40
+
     def __init__(self, servo_id: int, error_byte: int):
         super().__init__(servo_id, error_byte, "unknown instruction")
 
@@ -196,18 +208,22 @@ class AX12Bus(InterfaceHolder):
         self,
         name: str,
         logger: Logger,
+        thread_pool: ThreadPoolExecutor,
         bus: Serial,
         baudrate: int = _DEFAULT_BAUDRATE,
         retries: int = _DEFAULT_RETRIES,
         retry_delay: float = _DEFAULT_RETRY_DELAY,
+        max_requests_per_second: int = _DEFAULT_MAX_REQUESTS_PER_SECOND,
         echo: bool = _DEFAULT_ECHO,
     ):
         super().__init__(name)
         self._log = logger
+        self._thread_pool = thread_pool
         self._bus = bus
         self._baudrate = baudrate
         self._retries = retries
         self._retry_delay = retry_delay
+        self._max_requests_per_second = max_requests_per_second
         self._echo = echo
         self._lock = threading.Lock()
         self._servos: dict[int, "AX12"] = {}
@@ -239,17 +255,21 @@ class AX12Bus(InterfaceHolder):
             )
         self._servos[servo.servo_id] = servo
 
-    def write_register(self, servo_id: int, register: int, data: bytes) -> None:
+    def write_register(self, servo_id: int, register: int, data: bytes) -> Task[()]:
         """Send a WRITE instruction. Broadcast (0xFE) gets no status reply."""
         with self._lock:
-            self._retry(lambda: self._do_write(servo_id, register, data))
+            return self._request(lambda: self._do_write(servo_id, register, data))
 
-    def read_register(self, servo_id: int, register: int, count: int) -> bytes:
+    def read_register(self, servo_id: int, register: int, count: int) -> Task[bytes]:
         """Send a READ instruction and return the payload bytes."""
         with self._lock:
-            return self._retry(lambda: self._do_read(servo_id, register, count))
+            return self._request(lambda: self._do_read(servo_id, register, count))
 
-    def _retry(self, op):
+    def _request[T](self, op: Callable[[], T]) -> Task[T]:
+        """Send a WRITE instruction. Broadcast (0xFE) gets no status reply."""
+        return self._thread_pool.exec(op)
+
+    def _request_sync[T](self, op: Callable[[], T]) -> T:
         # On failure we flush the RX buffer before retrying: a half-received
         # status packet would desync the next framing attempt. We accept the
         # cost of dropping a valid-but-late reply (timing edge case).
@@ -271,18 +291,14 @@ class AX12Bus(InterfaceHolder):
                 if attempts >= self._retries:
                     raise
                 attempts += 1
-                self._log.debug(
-                    f"AX12Bus '{self.name}' retry {attempts}/{self._retries}: {err}"
-                )
+                self._log.debug(f"AX12Bus '{self.name}' retry {attempts}/{self._retries}: {err}")
                 time.sleep(self._retry_delay)
             except OSError as err:
                 self._bus.reset_input_buffer()
                 if attempts >= self._retries:
                     raise
                 attempts += 1
-                self._log.debug(
-                    f"AX12Bus '{self.name}' retry {attempts}/{self._retries}: {err}"
-                )
+                self._log.debug(f"AX12Bus '{self.name}' retry {attempts}/{self._retries}: {err}")
                 time.sleep(self._retry_delay)
 
     def _do_write(self, servo_id: int, register: int, data: bytes) -> None:
@@ -347,9 +363,7 @@ class AX12Bus(InterfaceHolder):
         # Detect a crossed reply (servo X answers a request addressed to Y —
         # happens after a prior timeout leaves a stale status in the buffer).
         if resp_id != expected_id:
-            raise DynamixelBusError(
-                f"crossed reply (expected id {expected_id}, got {resp_id})"
-            )
+            raise DynamixelBusError(f"crossed reply (expected id {expected_id}, got {resp_id})")
         # AX-12 status packet: error + 0..N params + checksum. Minimum 2 bytes
         # (error + checksum). Below that, payload[0] and payload[-1] collide
         # and we'd silently misread the error byte. Upper bound guards against
@@ -362,9 +376,7 @@ class AX12Bus(InterfaceHolder):
             cs += b
         expected = (~cs) & 0xFF
         if payload[-1] != expected:
-            raise DynamixelBusError(
-                f"bad checksum (got {payload[-1]:#x}, expected {expected:#x})"
-            )
+            raise DynamixelBusError(f"bad checksum (got {payload[-1]:#x}, expected {expected:#x})")
         error = payload[0]
         if error != 0:
             raise _decode_servo_error(resp_id, error)
@@ -379,11 +391,21 @@ class AX12(SmartServo):
 
     commands = DriverCommands(parents=[SmartServo.commands])
 
-    def __init__(self, name: str, logger: Logger, bus: AX12Bus, servo_id: int):
+    def __init__(
+        self,
+        name: str,
+        logger: Logger,
+        thread_pool: ThreadPoolExecutor,
+        bus: AX12Bus,
+        servo_id: int,
+        goal_reached_tolerance: int = 10,
+    ):
         super().__init__(name)
         self._log = logger
+        self._thread_pool = thread_pool
         self._bus = bus
         self._id = servo_id
+        self._goal_reached_tolerance = goal_reached_tolerance
         bus.register_servo(self)
 
     @property
@@ -401,14 +423,13 @@ class AX12(SmartServo):
         AX-12A boots with Torque Enable = 0 (datasheet). Call after the
         12V motor rail is up.
         """
-        self._bus.write_register(self._id, _TORQUE_ENABLE, bytes([1]))
         self._log.info(f"AX12 '{self.name}' (ID {self._id}) torque enabled")
-        return ImmediateResultTask()
+        return self._bus.write_register(self._id, _TORQUE_ENABLE, bytes([1]))
 
     def close(self) -> None:
         # TimeoutError is an OSError subclass in Py3, so one clause covers both.
         try:
-            self._bus.write_register(self._id, _TORQUE_ENABLE, bytes([0]))
+            self._bus.write_register(self._id, _TORQUE_ENABLE, bytes([0])).wait()
         except OSError as err:
             self._log.warning(
                 f"AX12 '{self.name}' (ID {self._id}) close: torque-disable failed: {err}"
@@ -416,58 +437,85 @@ class AX12(SmartServo):
 
     # --- Movement ---
 
-    def move_to_angle(self, angle: float) -> Task[()]:
-        angle = max(0.0, min(_ANGLE_MAX, angle))
-        return self.move_to_position(round(angle / _ANGLE_MAX * _POSITION_MAX))
+    def _wait_move_to_sync(
+        self, raw_position: int, wait_multiplier: float, timeout: float | None
+    ) -> None:
+        if wait_multiplier == 0:
+            return
 
-    def move_to_fraction(self, fraction: float) -> Task[()]:
-        fraction = max(0.0, min(1.0, fraction))
-        return self.move_to_position(round(fraction * _POSITION_MAX))
+        current_position = self.get_position(ServoAngleUnit.NATIVE).wait()[0]
+        wait_position = current_position + (raw_position - current_position) * wait_multiplier
+        move_direction = 1 if wait_position > current_position else -1
 
-    def move_to_position(self, position: int) -> Task[()]:
-        position = max(0, min(_POSITION_MAX, position))
-        self._write_word(_GOAL_POSITION_L, position)
-        return ImmediateResultTask()
+        start_time = time.time()
+        while True:
+            if timeout is not None and time.time() - start_time > timeout:
+                raise TimeoutError("Move timed out")
+            current_position = self.get_position(ServoAngleUnit.NATIVE).wait()[0]
+            remaining_distance = wait_position - current_position
+            if abs(remaining_distance) < self._goal_reached_tolerance:
+                break  # If we're close enough, return
+            if remaining_distance * move_direction < 0:
+                break  # If we go beyond the target, return
 
-    @commands.register(args=[], result=[])
-    def reset(self) -> Task[()]:
-        """Move to the mechanical center (150°)."""
-        return self.move_to_position(_POSITION_CENTER)
+    def move_to(
+        self,
+        position: float,
+        unit: ServoAngleUnit,
+        wait_multiplier: float = 1.0,
+        timeout: float | None = None,
+    ) -> Task[()]:
+        if unit == ServoAngleUnit.DEGREES:
+            raw_position = max(0.0, min(_ANGLE_MAX, position))
+        elif unit == ServoAngleUnit.FRACTION:
+            raw_position = max(0.0, min(1.0, position))
+        elif unit == ServoAngleUnit.RADIANS:
+            raw_position = max(0.0, min(_ANGLE_MAX, position * 180.0 / math.pi))
+        elif unit == ServoAngleUnit.NATIVE:
+            raw_position = position
+        else:
+            raise ValueError(f"Invalid unit: {unit}")
+
+        raw_position = max(0, min(_POSITION_MAX, int(raw_position)))
+        self._write_word(_GOAL_POSITION_L, raw_position)
+
+        if wait_multiplier == 0:
+            return ImmediateResultTask()
+
+        return self._thread_pool.exec(
+            lambda: self._wait_move_to_sync(raw_position, wait_multiplier, timeout)
+        )
 
     # --- Position feedback ---
 
     def _read_word(self, register: int) -> int:
-        data = self._bus.read_register(self._id, register, 2)
+        (data,) = self._bus.read_register(self._id, register, 2).wait()
         return data[0] | (data[1] << 8)
 
     def _write_word(self, register: int, value: int) -> None:
         self._bus.write_register(
             self._id, register, bytes([value & 0xFF, (value >> 8) & 0xFF])
-        )
+        ).wait()
 
-    def get_position(self) -> Task[int]:
+    def get_position(self, unit: ServoAngleUnit) -> Task[int]:
         return ImmediateResultTask(self._read_word(_PRESENT_POSITION_L))
-
-    def get_angle(self) -> Task[float]:
-        return ImmediateResultTask(
-            self._read_word(_PRESENT_POSITION_L) / _POSITION_MAX * _ANGLE_MAX
-        )
-
-    def get_fraction(self) -> Task[float]:
-        return ImmediateResultTask(self._read_word(_PRESENT_POSITION_L) / _POSITION_MAX)
 
     # --- Speed ---
 
-    def set_speed(self, speed: float) -> Task[()]:
-        speed = max(0.0, min(1.0, speed))
-        self._write_word(_MOVING_SPEED_L, round(speed * _SPEED_MAX))
+    def set_speed(self, speed: float, unit: ServoSpeedUnit) -> Task[()]:
+        if unit == ServoSpeedUnit.NATIVE:
+            pass  # speed is already in native units (0..1023)
+        elif unit == ServoSpeedUnit.RPM:
+            speed = speed / _SPEED_MAX_RPM * _SPEED_MAX
+        elif unit == ServoSpeedUnit.DEGREES_PER_SECOND:
+            speed = speed * 60 / 360 * _SPEED_MAX / _SPEED_MAX_RPM
+        elif unit == ServoSpeedUnit.RADIANS_PER_SECOND:
+            speed = speed * 60 / (math.pi * 2) * _SPEED_MAX / _SPEED_MAX_RPM
+        speed = max(0, min(_SPEED_MAX, int(speed)))
+        self._write_word(_MOVING_SPEED_L, speed)
         return ImmediateResultTask()
 
-    @commands.register(
-        args=[],
-        result=[("speed", ArgTypes.I16(help="Present speed, signed magnitude in [-1023, 1023]"))],
-    )
-    def get_speed(self) -> Task[int]:
+    def get_speed(self, unit: ServoSpeedUnit) -> Task[float]:
         """Present speed as a signed magnitude in [-1023, 1023].
 
         Per Dynamixel datasheet, bit 10 of present_speed is 1 = CW, 0 = CCW;
@@ -475,15 +523,21 @@ class AX12(SmartServo):
         (bit 10 set -> negative), matching the trigonometric direct sense used
         by Position/Pose. Callers who want a fraction divide by 1023.
         """
-        return ImmediateResultTask(_decode_signed(self._read_word(_PRESENT_SPEED_L)))
+        raw = _decode_signed(self._read_word(_PRESENT_SPEED_L))
+        if unit == ServoSpeedUnit.NATIVE:
+            return ImmediateResultTask(raw)
+        rpm = raw * _SPEED_MAX_RPM / _SPEED_MAX
+        if unit == ServoSpeedUnit.RPM:
+            pass  # already in RPM units
+        elif unit == ServoSpeedUnit.RADIANS_PER_SECOND:
+            rpm *= 2.0 * math.pi / 60
+        elif unit == ServoSpeedUnit.DEGREES_PER_SECOND:
+            rpm *= 360.0 / 60
+        return ImmediateResultTask(rpm)
 
     # --- Load (motor current) ---
 
-    @commands.register(
-        args=[],
-        result=[("load", ArgTypes.I16(help="Present load, signed magnitude in [-1023, 1023]"))],
-    )
-    def get_load(self) -> Task[int]:
+    def get_load(self) -> Task[float]:
         """Present load as a signed magnitude in [-1023, 1023].
 
         Same encoding as present_speed (CCW-positive): positive = CCW torque,
@@ -501,7 +555,7 @@ class AX12(SmartServo):
     )
     def get_voltage(self) -> Task[float]:
         """Present voltage in volts (register is tenths of a volt)."""
-        data = self._bus.read_register(self._id, _PRESENT_VOLTAGE, 1)
+        (data,) = self._bus.read_register(self._id, _PRESENT_VOLTAGE, 1).wait()
         return ImmediateResultTask(data[0] / 10.0)
 
     @commands.register(
@@ -510,8 +564,15 @@ class AX12(SmartServo):
     )
     def get_temperature(self) -> Task[int]:
         """Present temperature in °C (internal sensor, shutdown ~70°C)."""
-        data = self._bus.read_register(self._id, _PRESENT_TEMPERATURE, 1)
-        return ImmediateResultTask(data[0])
+        return self._bus.read_register(self._id, _PRESENT_TEMPERATURE, 1).transform(
+            lambda d: (d[0],)
+        )
+
+    @commands.register(args=[], result=[])
+    def reset(self) -> Task[()]:
+        """Move to the mechanical center (150°)."""
+        # TODO: implement reset for AX-12A (power cycle via an optionnal GPIO given at initialization)
+        raise NotImplementedError("reset is currently not supported by AX-12A")
 
     # --- Angle limits (EEPROM, persistent across power cycles) ---
 
@@ -530,10 +591,9 @@ class AX12(SmartServo):
 
     @commands.register(
         args=[],
-        result=[(
-            "ccw_limit",
-            ArgTypes.U16(help="CCW (upper) goal-position bound in native units"),
-        )],
+        result=[
+            ("ccw_limit", ArgTypes.U16(help="CCW (upper) goal-position bound in native units"))
+        ],
     )
     def get_ccw_angle_limit(self) -> Task[int]:
         """Read the CCW angle limit from EEPROM."""
@@ -587,6 +647,7 @@ class AX12BusVirtual(AX12Bus):
         self,
         name: str,
         logger: Logger,
+        thread_pool: ThreadPoolExecutor,
         bus: Serial,
         baudrate: int = _DEFAULT_BAUDRATE,
         retries: int = _DEFAULT_RETRIES,
@@ -594,8 +655,14 @@ class AX12BusVirtual(AX12Bus):
         echo: bool = _DEFAULT_ECHO,
     ):
         super().__init__(
-            name, logger, bus,
-            baudrate=baudrate, retries=retries, retry_delay=retry_delay, echo=echo,
+            name,
+            logger,
+            thread_pool=thread_pool,
+            bus=bus,
+            baudrate=baudrate,
+            retries=retries,
+            retry_delay=retry_delay,
+            echo=echo,
         )
         # servo_id -> {register_addr: byte}
         self._registers: dict[int, dict[int, int]] = {}
@@ -609,14 +676,15 @@ class AX12BusVirtual(AX12Bus):
     def _regs(self, servo_id: int) -> dict[int, int]:
         return self._registers.setdefault(servo_id, {})
 
-    def write_register(self, servo_id: int, register: int, data: bytes) -> None:
+    def write_register(self, servo_id: int, register: int, data: bytes) -> Task[()]:
         regs = self._regs(servo_id)
         for offset, byte in enumerate(data):
             regs[register + offset] = byte
+        return ImmediateResultTask()
 
-    def read_register(self, servo_id: int, register: int, count: int) -> bytes:
+    def read_register(self, servo_id: int, register: int, count: int) -> Task[bytes]:
         regs = self._regs(servo_id)
-        return bytes(regs.get(register + i, 0) for i in range(count))
+        return ImmediateResultTask(bytes(regs.get(register + i, 0) for i in range(count)))
 
     def _inject_word(self, servo_id: int, register: int, value: int) -> None:
         regs = self._regs(servo_id)
@@ -647,12 +715,15 @@ class AX12BusVirtual(AX12Bus):
 class AX12BusDefinition(DriverDefinition):
     """Factory for AX12Bus from config args."""
 
-    def __init__(self, logger: Logger, peripherals: Registry[Peripheral]):
+    def __init__(
+        self, logger: Logger, peripherals: Registry[Peripheral], thread_pool: ThreadPoolExecutor
+    ):
         # The bus itself has no user-facing commands; individual AX12 servos
         # are the command targets via their own AX12Definition.
         super().__init__()
         self._logger = logger
         self._peripherals = peripherals
+        self._thread_pool = thread_pool
 
     def get_init_args_definition(self) -> DriverInitArgsDefinition:
         defn = DriverInitArgsDefinition()
@@ -667,6 +738,7 @@ class AX12BusDefinition(DriverDefinition):
         return AX12Bus(
             name=args.get_name(),
             logger=self._logger,
+            thread_pool=self._thread_pool,
             bus=args.get("bus"),
             baudrate=args.get("baudrate"),
             retries=args.get("retries"),
@@ -675,31 +747,23 @@ class AX12BusDefinition(DriverDefinition):
         )
 
 
-class AX12BusVirtualDefinition(DriverDefinition):
+class AX12BusVirtualDefinition(AX12BusDefinition):
     """Factory for AX12BusVirtual from config args.
 
     Accepts a Serial dependency for signature parity with AX12BusDefinition:
     the swap real <-> virtual must not touch any other config line.
     """
 
-    def __init__(self, logger: Logger, peripherals: Registry[Peripheral]):
-        super().__init__()
-        self._logger = logger
-        self._peripherals = peripherals
-
-    def get_init_args_definition(self) -> DriverInitArgsDefinition:
-        defn = DriverInitArgsDefinition()
-        defn.add_required("bus", ArgTypes.Component(Serial, self._peripherals))
-        defn.add_optional("baudrate", ArgTypes.U32(), _DEFAULT_BAUDRATE)
-        defn.add_optional("retries", ArgTypes.U32(), _DEFAULT_RETRIES)
-        defn.add_optional("retry_delay", ArgTypes.F32(), _DEFAULT_RETRY_DELAY)
-        defn.add_optional("echo", ArgTypes.Bool(), _DEFAULT_ECHO)
-        return defn
+    def __init__(
+        self, logger: Logger, peripherals: Registry[Peripheral], thread_pool: ThreadPoolExecutor
+    ):
+        super().__init__(logger, peripherals, thread_pool)
 
     def create(self, args: DriverInitArgs) -> AX12BusVirtual:
         return AX12BusVirtual(
             name=args.get_name(),
             logger=self._logger,
+            thread_pool=self._thread_pool,
             bus=args.get("bus"),
             baudrate=args.get("baudrate"),
             retries=args.get("retries"),
@@ -711,10 +775,13 @@ class AX12BusVirtualDefinition(DriverDefinition):
 class AX12Definition(DriverDefinition):
     """Factory for a single AX12 servo from config args."""
 
-    def __init__(self, logger: Logger, peripherals: Registry[Peripheral]):
+    def __init__(
+        self, logger: Logger, peripherals: Registry[Peripheral], thread_pool: ThreadPoolExecutor
+    ):
         super().__init__(AX12.commands)
         self._logger = logger
         self._peripherals = peripherals
+        self._thread_pool = thread_pool
 
     def get_init_args_definition(self) -> DriverInitArgsDefinition:
         defn = DriverInitArgsDefinition()
@@ -732,6 +799,7 @@ class AX12Definition(DriverDefinition):
         return AX12(
             name=args.get_name(),
             logger=self._logger,
+            thread_pool=self._thread_pool,
             bus=args.get("bus"),
             servo_id=servo_id,
         )

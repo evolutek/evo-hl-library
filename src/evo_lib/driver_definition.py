@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from ast import Call
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Callable
 
@@ -87,17 +88,16 @@ class DriverCommand:
 class DriverCommands:
     def __init__(self, parents: list[DriverCommands] | None = None):
         self._commands: Registry[DriverCommand] = Registry("driver_commands")
-        for parent in (parents or []):
-            for cmd in parent._commands.get_all():
-                if not self._commands.has(cmd.name):
-                    self._commands.register(cmd.name, cmd)
+        for parent in parents or []:
+            self.extend(parent)
 
-    def register(self,
+    def register(
+        self,
         args: list[tuple[str, ArgType]] | ArgType = [],
         result: list[tuple[str, ArgType]] | ArgType = [],
         name: str | None = None,
-        help: str | None = None
-    ) -> DriverCommand:
+        help: str | None = None,
+    ) -> Callable[[DriverCommandCallback], DriverCommandCallback]:
         if isinstance(args, list):
             args = ArgTypes.Struct(args)
         if isinstance(result, list):
@@ -108,15 +108,16 @@ class DriverCommands:
             # which this decorator was called, because this decorator can be used on
             # interface's method, but interface method do not have any implementation.
             command = DriverCommand(
-                name = callback.__name__ if name is None else name,
-                method = callback.__name__,
-                args = args,
-                result = result,
-                help = help
+                name=callback.__name__ if name is None else name,
+                method=callback.__name__,
+                args=args,
+                result=result,
+                help=help,
             )
             self._commands.register(command.name, command)
 
             return callback
+
         return decorator
 
     def get(self, name: str) -> DriverCommand:
@@ -124,6 +125,11 @@ class DriverCommands:
 
     def get_all(self) -> list[DriverCommand]:
         return self._commands.get_all()
+
+    def extend(self, commands: DriverCommands) -> None:
+        for cmd in commands._commands.get_all():
+            if not self._commands.has(cmd.name):
+                self._commands.register(cmd.name, cmd)
 
 
 class DriverDefinition(ABC):
@@ -150,6 +156,9 @@ class DriverDefinition(ABC):
     def get_commands(self) -> DriverCommands:
         """Return a copy of all registered commands."""
         return self._commands
+
+    def add_commands(self, commands: DriverCommands) -> None:
+        self._commands.extend(commands)
 
     @abstractmethod
     def create(self, args: DriverInitArgs) -> Peripheral:

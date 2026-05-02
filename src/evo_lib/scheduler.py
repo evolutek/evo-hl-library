@@ -7,6 +7,7 @@ from typing import Callable
 
 from evo_lib.executor import Executor
 from evo_lib.logger import Logger
+from evo_lib.task import DelayedTask, Task
 
 
 class SchedulerExecutor(Executor):
@@ -18,7 +19,7 @@ class SchedulerExecutor(Executor):
         self.scheduler.schedule_now(self.priority, callback, args, kwargs)
 
 
-@dataclass(slots = True)
+@dataclass(slots=True)
 class SchedulerTask:
     callback: Callable
     args: tuple
@@ -37,17 +38,32 @@ class Scheduler:
         try:
             task.callback(*task.args, **task.kwargs)
         except Exception as e:
-            caller_stack_trace_msg = ''.join(traceback.format_list(task.stacktrace))
+            caller_stack_trace_msg = "".join(traceback.format_list(task.stacktrace))
             self._logger.error(f"Error in scheduled task from:\n{caller_stack_trace_msg}")
-            called_stack_trace_msg = ''.join(traceback.format_exception(e))
+            called_stack_trace_msg = "".join(traceback.format_exception(e))
             self._logger.error(f"The error was:\n{called_stack_trace_msg}")
+
+    def delay_task_after(self, delay: float) -> Task[()]:
+        task = DelayedTask()
+        scheduled = self.schedule_after(delay, 0, task.complete)
+        task.set_cancel_handler(lambda: self.cancel(scheduled))
+        return task
+
+    def delay_task_at(self, timepoint: float) -> Task[()]:
+        task = DelayedTask()
+        scheduled = self.schedule_at(timepoint, 0, task.complete)
+        task.set_cancel_handler(lambda: self.cancel(scheduled))
+        return task
 
     def schedule_now(
         self, priority: int, callback: Callable, args: tuple = (), kwargs: dict[str,] | None = None
     ) -> sched.Event:
-        self._py_scheduler.enter(0, priority, self._run_task, argument=(
-            SchedulerTask(callback, args, kwargs or {}, traceback.extract_stack()[:-1]),
-        ))
+        self._py_scheduler.enter(
+            0,
+            priority,
+            self._run_task,
+            argument=(SchedulerTask(callback, args, kwargs or {}, traceback.extract_stack()[:-1]),),
+        )
         self._new_schedule_event.set()
 
     def schedule_after(
@@ -58,9 +74,12 @@ class Scheduler:
         args: tuple = (),
         kwargs: dict[str,] | None = None,
     ) -> sched.Event:
-        self._py_scheduler.enter(delay, priority, self._run_task, argument=(
-            SchedulerTask(callback, args, kwargs or {}, traceback.extract_stack()[:-1]),
-        ))
+        self._py_scheduler.enter(
+            delay,
+            priority,
+            self._run_task,
+            argument=(SchedulerTask(callback, args, kwargs or {}, traceback.extract_stack()[:-1]),),
+        )
         self._new_schedule_event.set()
 
     def schedule_at(
@@ -71,9 +90,12 @@ class Scheduler:
         args: tuple = (),
         kwargs: dict[str,] | None = None,
     ) -> sched.Event:
-        self._py_scheduler.enterabs(timepoint, priority, self._run_task, argument=(
-            SchedulerTask(callback, args, kwargs or {}, traceback.extract_stack()[:-1]),
-        ))
+        self._py_scheduler.enterabs(
+            timepoint,
+            priority,
+            self._run_task,
+            argument=(SchedulerTask(callback, args, kwargs or {}, traceback.extract_stack()[:-1]),),
+        )
         self._new_schedule_event.set()
 
     def cancel(self, scheduled: sched.Event) -> None:

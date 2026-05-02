@@ -164,6 +164,10 @@ class DelayedTask[*T](Task[*T]):
         self._error_callbacks: list[Callable[[Exception], None]] = []
         self._lock = threading.Lock()
 
+    def set_cancel_handler(self, on_cancel: Callable[[], None]) -> DelayedTask[*T]:
+        self._on_cancel = on_cancel
+        return self
+
     # Consumer API (implement abstract method of parent class)
 
     def wait(self, timeout: float | None = None) -> tuple[*T]:
