@@ -530,7 +530,10 @@ class AX12(SmartServo):
 
     @commands.register(
         args=[],
-        result=[("ccw_limit", ArgTypes.U16(help="CCW (upper) goal-position bound in native units"))],
+        result=[(
+            "ccw_limit",
+            ArgTypes.U16(help="CCW (upper) goal-position bound in native units"),
+        )],
     )
     def get_ccw_angle_limit(self) -> Task[int]:
         """Read the CCW angle limit from EEPROM."""

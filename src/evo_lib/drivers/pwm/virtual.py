@@ -1,7 +1,12 @@
 """PWM drivers: virtual implementations for testing and simulation."""
 
 from evo_lib.argtypes import ArgTypes
-from evo_lib.driver_definition import DriverCommands, DriverDefinition, DriverInitArgs, DriverInitArgsDefinition
+from evo_lib.driver_definition import (
+    DriverCommands,
+    DriverDefinition,
+    DriverInitArgs,
+    DriverInitArgsDefinition,
+)
 from evo_lib.interfaces.pwm import PWM
 from evo_lib.logger import Logger
 from evo_lib.peripheral import InterfaceHolder, Peripheral
@@ -69,7 +74,10 @@ class PWMVirtual(PWM):
 
     @commands.register(
         args=[],
-        result=[("enabled", ArgTypes.Bool(help="True if init() has been called and close() has not"))],
+        result=[(
+            "enabled",
+            ArgTypes.Bool(help="True if init() has been called and close() has not"),
+        )],
     )
     def is_enabled(self) -> Task[bool]:
         """Read whether the simulated channel is enabled."""

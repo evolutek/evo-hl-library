@@ -131,7 +131,9 @@ class Pilot(Placable):
         pass
 
     @abstractmethod
-    def go_to_then_look_at(self, x: float, y: float, look_x: float, look_y: float) -> Task[PilotMoveStatus]:
+    def go_to_then_look_at(
+        self, x: float, y: float, look_x: float, look_y: float
+    ) -> Task[PilotMoveStatus]:
         pass
 
     @abstractmethod
@@ -194,9 +196,13 @@ class HolonomicPilot(Pilot):
         pass
 
     @abstractmethod
-    def go_to_while_look_at(self, x: float, y: float, look_x: float, look_y: float) -> Task[PilotMoveStatus]:
+    def go_to_while_look_at(
+        self, x: float, y: float, look_x: float, look_y: float
+    ) -> Task[PilotMoveStatus]:
         pass
 
     @abstractmethod
-    def follow_holonomic_path(self, waypoints: list[HolonomicPilotWaypoint]) -> Task[PilotMoveStatus]:
+    def follow_holonomic_path(
+        self, waypoints: list[HolonomicPilotWaypoint]
+    ) -> Task[PilotMoveStatus]:
         pass

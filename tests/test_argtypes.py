@@ -3,7 +3,6 @@ from evo_lib.argtypes import (
     ARGTYPE_TO_NAME,
     ID_TO_ARGTYPE,
     NAME_TO_ARGTYPE,
-    ArgTypes,
 )
 
 

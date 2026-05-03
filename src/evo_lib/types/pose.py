@@ -312,7 +312,9 @@ class Pose3D(PoseBase, Vect3D):
         )
 
     @staticmethod
-    def _canonical_sign(qw: float, qx: float, qy: float, qz: float) -> tuple[float, float, float, float]:
+    def _canonical_sign(
+        qw: float, qx: float, qy: float, qz: float
+    ) -> tuple[float, float, float, float]:
         """Ensure canonical sign so q and -q (same rotation) have identical repr."""
         for c in (qw, qx, qy, qz):
             if c > 1e-15:

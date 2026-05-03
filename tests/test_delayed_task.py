@@ -4,7 +4,7 @@ import threading
 
 import pytest
 
-from evo_lib.task import TaskCancelledError, DelayedTask
+from evo_lib.task import DelayedTask, TaskCancelledError
 
 
 class TestDelayedTaskComplete:

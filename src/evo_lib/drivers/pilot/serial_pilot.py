@@ -22,7 +22,7 @@ from evo_lib.drivers.pilot.protocol import (
     Errors,
     build_packet,
 )
-from evo_lib.drivers.pilot.virtual import HolonomicPilotVirtual, DifferentialPilotVirtual
+from evo_lib.drivers.pilot.virtual import DifferentialPilotVirtual, HolonomicPilotVirtual
 from evo_lib.event import Event
 from evo_lib.interfaces.pilot import (
     DifferentialPilot,
@@ -452,7 +452,7 @@ class DifferentialSerialPilot(DifferentialPilot):
         elif cmd == Commands.TELEMETRY_MESSAGE:
             # Format: bbffff (counter, cmdid, x, y, theta, speed)
             x, y, theta, speed = struct.unpack("=ffff", payload)
-            # self._log.debug(f"Telemetry: x={x:.1f}, y={y:.1f}, theta={math.degrees(theta):.1f}°, speed={speed:.1f}mm/s")
+            # debug: telemetry x, y, theta(rad->deg), speed
             self._last_position.x = x
             self._last_position.y = y
             self._last_position.heading = theta

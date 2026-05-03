@@ -29,7 +29,10 @@ class Servo(Placable):
 
     @abstractmethod
     @commands.register(
-        args=[("fraction", ArgTypes.F32(help="Target position as fraction of full range (0.0 to 1.0)"))],
+        args=[(
+            "fraction",
+            ArgTypes.F32(help="Target position as fraction of full range (0.0 to 1.0)"),
+        )],
         result=[],
     )
     def move_to_fraction(self, fraction: float) -> Task[()]:

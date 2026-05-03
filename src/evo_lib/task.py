@@ -148,7 +148,7 @@ class ImmediateErrorTask[*T](Task[*T]):
         return self
 
     def cancel(self) -> ImmediateErrorTask[*T]:
-        """Cause all subsequent calls to on_complete to do nothing and calls to wait raise a canceled exception."""
+        """Make subsequent on_complete calls a no-op and make wait() raise a canceled exception."""
         self._canceled = True
         return self
 
