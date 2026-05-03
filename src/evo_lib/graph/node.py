@@ -180,7 +180,7 @@ class ValueInput(ValueEndpoint):
 
         value_output = self._connections[0]
         if value_output.get_node().is_pure():
-            value_output.pull(self)
+            value_output.on_pull()
         else:
             # If the connected node is not pure, we don't want to wait for it to
             # set this value input, so we notify the node immediately that a value
@@ -212,7 +212,12 @@ class ValueOutput(ValueEndpoint):
         for inp in self._connections:
             inp.set_value(value)
 
-    def pull(self, value_input: ValueInput) -> None:
+    def pull(self) -> None:
+        graph = self.get_node().get_graph()
+        assert graph is not None
+        graph.schedule_pull_value_output(self)
+
+    def on_pull(self) -> None:
         node = self.get_node()
         if node.is_pure():
             node.run()
