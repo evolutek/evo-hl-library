@@ -37,7 +37,9 @@ class TestPWMServo:
         log = Logger("test")
         pwm = PWMVirtual("pwm", log, freq_hz=50.0)
         pwm.init()
-        servo = PWMServo("servo", log, pwm, min_pulse_us=500.0, max_pulse_us=2500.0, angle_range=180.0)
+        servo = PWMServo(
+            "servo", log, pwm, min_pulse_us=500.0, max_pulse_us=2500.0, angle_range=180.0
+        )
         return pwm, servo
 
     def test_move_to_angle_center(self, pwm_and_servo):

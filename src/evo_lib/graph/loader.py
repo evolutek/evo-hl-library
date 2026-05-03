@@ -68,7 +68,9 @@ class GraphLoader:
             input_config = value_inputs_config.get_object(input_name)
             input_type = argtype_from_config(input_config)
             raw_default = input_config.get("default", None)
-            default_value = input_type.value_from_config(raw_default) if raw_default is not None else None
+            default_value = (
+                input_type.value_from_config(raw_default) if raw_default is not None else None
+            )
             graph.add_value_input(input_name, input_type, default_value)
 
         # Create value outputs

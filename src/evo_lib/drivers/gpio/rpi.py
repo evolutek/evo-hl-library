@@ -11,10 +11,10 @@ from evo_lib.driver_definition import (
     DriverInitArgs,
     DriverInitArgsDefinition,
 )
+from evo_lib.drivers.gpio.virtual import GPIOPinVirtual
 from evo_lib.event import Event
 from evo_lib.interfaces.gpio import GPIO, GPIODirection, GPIOEdge
 from evo_lib.logger import Logger
-from evo_lib.drivers.gpio.virtual import GPIOPinVirtual
 from evo_lib.task import ImmediateErrorTask, ImmediateResultTask, Task
 
 # Lazy-loaded in init() so this module can be imported without gpiod installed

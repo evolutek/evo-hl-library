@@ -16,7 +16,6 @@ from evo_lib.drivers.pwm.virtual import PWMVirtual
 from evo_lib.logger import Logger
 from evo_lib.types.color import Color, ColorRaw, NamedColor, Palette
 
-
 _AVALID_READY = b"\x01"
 
 

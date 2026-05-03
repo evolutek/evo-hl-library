@@ -6,13 +6,12 @@ When the task resolves to None, the FSM stops.
 Transitions are validated via allowed predecessors (prevs).
 """
 
-import logging
 from enum import StrEnum
 from threading import RLock
 from typing import Callable
 
-from evo_lib.task import DelayedTask, Task, TaskCancelledError
 from evo_lib.logger import Logger
+from evo_lib.task import DelayedTask, Task, TaskCancelledError
 
 
 class TransitionError(Exception):

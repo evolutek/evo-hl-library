@@ -63,7 +63,7 @@ class LD06LidarDriver(Lidar2D):
 
         ## Packet Header
         # bytes 0-1, little endian, degrees per second
-        #speed = struct.unpack('<H', packet[0:2])[0]  # noqa: ERA001
+        #speed = struct.unpack('<H', packet[0:2])[0]
         # bytes 2-3, little endian, convert to float
         startangle = struct.unpack('<H', packet[2:4])[0] / 100
 
@@ -71,12 +71,12 @@ class LD06LidarDriver(Lidar2D):
         # bytes 40-41, little endian, convert to float
         endangle = struct.unpack('<H', packet[40:42])[0] / 100
         # bytes 42-43
-        #timestamp = struct.unpack('<H', packet[42:44])[0]  # noqa: ERA001
+        #timestamp = struct.unpack('<H', packet[42:44])[0]
         # byte 44
-        #crc = struct.unpack('<B', packet[44:45])[0]  # noqa: ERA001
+        #crc = struct.unpack('<B', packet[44:45])[0]
 
         # Debug:
-        #print("Speed:", speed, "Start Angle:", startangle,  # noqa: ERA001, T201
+        #print("Speed:", speed, "Start Angle:", startangle,  # noqa: T201
         #      "End Angle:", endangle, "TimeStamp:", timestamp, "CRC:", crc)
 
         ## Packet Data
@@ -134,8 +134,8 @@ class LD06LidarDriver(Lidar2D):
                         except Full:
                             pass
             # Hint to log invalid packets, kept silent for now to avoid spam.
-            #else:  # noqa: ERA001
-            #    self._log.warning("Invalid packet LD06 lidar packet")  # noqa: ERA001
+            #else:
+            #    self._log.warning("Invalid packet LD06 lidar packet")
 
 
 class LD06LidarDriverDefinition(DriverDefinition):

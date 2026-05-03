@@ -108,7 +108,10 @@ class PWMServo(Servo):
 
     @commands.register(
         args=[],
-        result=[("enabled", ArgTypes.Bool(help="True if the servo is actively driving a position"))],
+        result=[(
+            "enabled",
+            ArgTypes.Bool(help="True if the servo is actively driving a position"),
+        )],
     )
     def is_enabled(self) -> Task[bool]:
         # A servo is "enabled" when it has a non-zero pulse commanded, i.e. when
