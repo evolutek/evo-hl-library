@@ -2,7 +2,10 @@
 
 F32: Eq, Ne, Lt, Le, Gt, Ge.
 String: EqStr, NeStr.
+Enum:  EqEnum, NeEnum (polymorphic over any enum class).
 """
+
+from typing import Any
 
 from evo_lib.argtypes import ArgTypes
 from evo_lib.graph.node import Node, NodeDefinition
@@ -125,3 +128,53 @@ class NeStrNode(_CompareStrNode):
 class NeStrNodeDefinition(_CompareStrNodeDefinition):
     def __init__(self):
         super().__init__(NeStrNode, "compare/ne_str", "Ne (str)")
+
+
+def _enum_equal(a: Any, b: Any) -> bool:
+    # Enum members compare equal to their int value (IntEnum) but NOT to their
+    # name string. The editor stores the constant as the enum name to keep the
+    # combo UX (display "Blue", not "5"), so we fall back to name comparison.
+    if a == b:
+        return True
+    a_name = a.name if hasattr(a, "name") else (a if isinstance(a, str) else None)
+    b_name = b.name if hasattr(b, "name") else (b if isinstance(b, str) else None)
+    return a_name is not None and a_name == b_name
+
+
+class _CompareEnumNode(Node):
+    def _op(self, a: Any, b: Any) -> bool:
+        raise NotImplementedError
+
+    def on_run(self) -> Task[()]:
+        a = self.get_value_input("a").get_value()
+        b = self.get_value_input("b").get_value()
+        self.get_value_output("result").set_value(self._op(a, b))
+        return ImmediateResultTask()
+
+
+class _CompareEnumNodeDefinition(NodeDefinition):
+    def __init__(self, node_cls: type[Node], name: str, title: str):
+        super().__init__(node_cls, name, title)
+        self.add_value_input("a", ArgTypes.AnyEnum(), 0)
+        self.add_value_input("b", ArgTypes.AnyEnum(), 0)
+        self.add_value_output("result", ArgTypes.Bool())
+
+
+class EqEnumNode(_CompareEnumNode):
+    def _op(self, a: Any, b: Any) -> bool:
+        return _enum_equal(a, b)
+
+
+class EqEnumNodeDefinition(_CompareEnumNodeDefinition):
+    def __init__(self):
+        super().__init__(EqEnumNode, "compare/eq_enum", "Eq (enum)")
+
+
+class NeEnumNode(_CompareEnumNode):
+    def _op(self, a: Any, b: Any) -> bool:
+        return not _enum_equal(a, b)
+
+
+class NeEnumNodeDefinition(_CompareEnumNodeDefinition):
+    def __init__(self):
+        super().__init__(NeEnumNode, "compare/ne_enum", "Ne (enum)")
