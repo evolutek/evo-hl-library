@@ -5,12 +5,14 @@ from evo_lib.config import ConfigObject
 from evo_lib.graph.graph import Graph
 from evo_lib.graph.node import NodeDefinition
 from evo_lib.graph.nodes.compare import (
+    EqEnumNodeDefinition,
     EqNodeDefinition,
     EqStrNodeDefinition,
     GeNodeDefinition,
     GtNodeDefinition,
     LeNodeDefinition,
     LtNodeDefinition,
+    NeEnumNodeDefinition,
     NeNodeDefinition,
     NeStrNodeDefinition,
 )
@@ -74,6 +76,8 @@ class GraphLoader:
         self.register_node_type(GeNodeDefinition())
         self.register_node_type(EqStrNodeDefinition())
         self.register_node_type(NeStrNodeDefinition())
+        self.register_node_type(EqEnumNodeDefinition())
+        self.register_node_type(NeEnumNodeDefinition())
 
     def export_node_types(self) -> ConfigObject:
         """Export all registered node definitions as a config object."""

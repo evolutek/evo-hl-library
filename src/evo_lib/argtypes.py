@@ -691,6 +691,53 @@ class ArgTypes:
         def __str__(self):
             return f"enum({self.enum_type.__name__})"
 
+    class AnyEnum(ArgType):
+        """Untyped enum slot. Carries no specific enum class — the value flows
+        through as-is and equality is delegated to Python's ``==``.
+
+        Used by polymorphic graph nodes that operate on any enum class
+        (``compare/eq_enum``, ``compare/ne_enum``). The editor populates the
+        constant-side widget choices dynamically from the upstream wire.
+        """
+
+        def value_from_config(self, v: ConfigValue) -> Any:
+            # Accept int (raw enum value), str (enum name), or already-resolved
+            # IntEnum/Enum. Equality at runtime works across all combinations
+            # because IntEnum members compare equal to their int value.
+            if isinstance(v, (int, str)) or hasattr(v, "value"):
+                return v
+            raise ConfigValidationError(
+                f"AnyEnum: expected int / str / Enum, got {type(v).__name__}"
+            )
+
+        def value_from_str(self, v: str) -> Any:
+            try:
+                return int(v)
+            except ValueError:
+                return v
+
+        def value_from_stream(self, s: io.RawIOBase) -> int:
+            return struct.unpack("I", s.read(4))[0]
+
+        def value_to_stream(self, v: Any, s: io.RawIOBase) -> None:
+            n = v.value if hasattr(v, "value") else int(v)
+            s.write(struct.pack("I", n))
+
+        def self_to_stream(self, s: io.RawIOBase) -> None:
+            pass
+
+        def self_from_stream(self, s: io.RawIOBase) -> None:
+            pass
+
+        def self_from_config(self, c: ConfigObject) -> None:
+            pass
+
+        def self_to_config(self, c: ConfigObject) -> None:
+            pass
+
+        def __str__(self):
+            return "enum_any"
+
     # Reference to a device
     class Component(ArgType):
         def __init__(self, base_type: type[Peripheral], components: Registry[Peripheral]):
@@ -793,6 +840,7 @@ NAME_TO_ARGTYPE: dict[str, type[ArgType]] = {
     "array": ArgTypes.Array,
     "struct": ArgTypes.Struct,
     "enum": ArgTypes.Enum,
+    "enum_any": ArgTypes.AnyEnum,
     "bool": ArgTypes.Bool,
     "bytes": ArgTypes.Bytes,
 }
