@@ -6,11 +6,13 @@ from evo_lib.graph.graph import Graph
 from evo_lib.graph.node import NodeDefinition
 from evo_lib.graph.nodes.compare import (
     EqNodeDefinition,
+    EqStrNodeDefinition,
     GeNodeDefinition,
     GtNodeDefinition,
     LeNodeDefinition,
     LtNodeDefinition,
     NeNodeDefinition,
+    NeStrNodeDefinition,
 )
 from evo_lib.graph.nodes.flow import EntryNodeDefinition, ExitNodeDefinition, IfElseNodeDefinition
 from evo_lib.graph.nodes.logic import (
@@ -70,6 +72,8 @@ class GraphLoader:
         self.register_node_type(LeNodeDefinition())
         self.register_node_type(GtNodeDefinition())
         self.register_node_type(GeNodeDefinition())
+        self.register_node_type(EqStrNodeDefinition())
+        self.register_node_type(NeStrNodeDefinition())
 
     def export_node_types(self) -> ConfigObject:
         """Export all registered node definitions as a config object."""
