@@ -180,7 +180,7 @@ class ValueInput(ValueEndpoint):
 
         value_output = self._connections[0]
         if value_output.get_node().is_pure():
-            value_output.on_pull()
+            value_output.pull()
         else:
             # If the connected node is not pure, we don't want to wait for it to
             # set this value input, so we notify the node immediately that a value

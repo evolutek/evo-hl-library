@@ -1,6 +1,4 @@
-"""Tests for the pull-evaluation mechanism (cache, cycle detection, parallel)."""
-
-import pytest
+"""Tests for the pull-evaluation mechanism on pure value nodes."""
 
 from evo_lib.argtypes import ArgTypes
 from evo_lib.config import ConfigObject
@@ -11,49 +9,42 @@ from evo_lib.logger import Logger
 from evo_lib.scheduler import Scheduler
 
 
-def _instantiate(definition_cls, name: str) -> Node:
-    node_def = definition_cls()
-    node = node_def.instantiate_node(name, ConfigObject())
-    node_def.create_node_endpoints(node, ConfigObject())
-    node_def.config_node_inputs(node, ConfigObject())
-    return node
+class _PureNode(Node):
+    pass
 
 
-# -- cycle detection --
-
-
-class _RefNode(Node):
-    upstream_input_name = "x"
-
-    def on_compute(self) -> None:
-        x = self.get_value_input(self.upstream_input_name).get_value()
-        self.get_value_output("result").set_value(x)
-
-
-class _RefNodeDefinition(NodeDefinition):
+class _PureNodeDefinition(NodeDefinition):
     def __init__(self):
-        super().__init__(_RefNode, "test/ref", "Ref")
+        super().__init__(_PureNode, "test/pure", "Pure")
         self.add_value_input("x", ArgTypes.F32(), 0.0)
         self.add_value_output("result", ArgTypes.F32())
 
 
-# -- parallel pulls: per-thread independence --
+def _make_node_in_active_graph() -> tuple[Graph, _PureNode]:
+    node_def = _PureNodeDefinition()
+    node = node_def.instantiate_node("n", ConfigObject())
+    node_def.create_node_endpoints(node, ConfigObject())
+    node_def.config_node_inputs(node, ConfigObject())
+
+    graph = Graph("g")
+    graph.add_node(node)
+
+    logger = Logger("test")
+    scheduler = Scheduler(logger)
+    runner = GraphRunner(logger, scheduler)
+    graph.activate(runner)
+    return graph, node
 
 
-class _ThreadStampNode(Node):
-    """Returns a value derived from a per-instance base. Used as an
-    isolation probe under parallel pulls — two threads pull two distinct
-    instances and must each see only their own base value."""
+def test_value_output_pull_routes_through_scheduler():
+    """ValueOutput.pull() must enqueue a callback on the graph rather
+    than calling on_pull synchronously: this is what breaks the call
+    stack on chained pure nodes."""
+    graph, node = _make_node_in_active_graph()
+    output = node.get_value_output("result")
 
-    def __init__(self, definition: NodeDefinition, name: str):
-        super().__init__(definition, name)
-        self.base: float = 0.0
+    before = graph._nb_scheduled_things
+    output.pull()
+    after = graph._nb_scheduled_things
 
-    def on_compute(self) -> None:
-        self.get_value_output("result").set_value(self.base + 1.0)
-
-
-class _ThreadStampNodeDefinition(NodeDefinition):
-    def __init__(self):
-        super().__init__(_ThreadStampNode, "test/threadstamp", "ThreadStamp")
-        self.add_value_output("result", ArgTypes.F32())
+    assert after == before + 1
