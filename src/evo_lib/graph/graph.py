@@ -8,6 +8,7 @@ from threading import Lock
 from typing import TYPE_CHECKING, Any
 
 from evo_lib.argtypes import ArgType
+from evo_lib.event import Event
 from evo_lib.graph.node import (
     FlowInput,
     Node,
@@ -32,7 +33,19 @@ class Graph:
         self._running_graph_task: DelayedTask | None = None
         self._running_nodes_tasks: set[Task] = set()
         self._nb_scheduled_things = 0
+        self._on_run_node_event: Event[Node] = Event()
+        self._on_run_flow_input_event: Event[FlowInput, float] = Event()
+        self._on_ignore_flow_input_event: Event[FlowInput] = Event()
         self._lock = Lock()
+
+    def get_on_run_node_event(self) -> Event[Node]:
+        return self._on_run_node_event
+
+    def get_on_run_flow_input_event(self) -> Event[FlowInput, float]:
+        return self._on_run_flow_input_event
+
+    def get_on_ignore_flow_input_event(self) -> Event[FlowInput]:
+        return self._on_ignore_flow_input_event
 
     def get_name(self) -> str:
         return self._name
@@ -95,6 +108,7 @@ class Graph:
             self._running_nodes_tasks.add(task)
 
     def schedule_run_node(self, node: Node) -> None:
+        self._on_run_node_event.trigger(node)
         task = node.on_run()
         self._add_node_run_task(task)
         task.on_complete(lambda: self._on_node_run_complete(task))
@@ -109,6 +123,7 @@ class Graph:
 
     def schedule_run_flow_input(self, input_flow: FlowInput, delay: float = 0) -> None:
         assert self._runner is not None
+        self._on_run_flow_input_event.trigger(input_flow, delay)
         with self._lock:
             self._nb_scheduled_things += 1
         self._runner.get_scheduler().schedule_after(
@@ -124,6 +139,7 @@ class Graph:
 
     def schedule_ignore_flow_input(self, input_flow: FlowInput) -> None:
         assert self._runner is not None
+        self._on_ignore_flow_input_event.trigger(input_flow)
         with self._lock:
             self._nb_scheduled_things += 1
         self._runner.get_scheduler().schedule_now(
