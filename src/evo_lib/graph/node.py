@@ -256,6 +256,7 @@ class Node(ABC):
         self._nb_runned_input_flow: int = 0
         self._nb_available_input_values: int = 0
         self._run_requested: bool = False
+        self._on_run_scheduled: bool = False
 
     def is_pure(self) -> bool:
         return len(self._flow_inputs) == 0 and len(self._flow_outputs) == 0
@@ -345,13 +346,31 @@ class Node(ABC):
         return ImmediateResultTask()
 
     def _schedule_run_if_needed(self) -> None:
+        # Idempotent: counter can hit the threshold from both run()'s sync pull
+        # and a later on_set_value_input cascade. Without this guard, on_run
+        # fires twice and replays flow-output transitions like ok.run().
+        # When already scheduled, re-broadcast the pure cache so consumers
+        # that linked after the first dispatch still get their input set.
+        if self._on_run_scheduled:
+            if self.is_pure():
+                for vo in self._value_outputs:
+                    if vo.has_been_set():
+                        vo.use_cached_value()
+            return
         if self._nb_available_input_values >= len(self._value_inputs):
+            self._on_run_scheduled = True
             self.get_graph().schedule_run_node(self)
 
     def run(self) -> None:
         if self._run_requested:
-            # Multi-consumer pure outputs schedule one pull per consumer; the
-            # first run already populated and propagated the cache.
+            # Pure node already ran. Re-broadcast its cache: consumers that
+            # were linked AFTER the original run (e.g. set_value-triggered
+            # eager schedule during graph construction) need the value pushed
+            # down, and idempotent returns must not silently drop the chain.
+            if self.is_pure():
+                for vo in self._value_outputs:
+                    if vo.has_been_set():
+                        vo.use_cached_value()
             return
         self._run_requested = True
 
@@ -394,6 +413,7 @@ class Node(ABC):
         self._nb_runned_input_flow = 0
         self._nb_available_input_values = 0
         self._run_requested = False
+        self._on_run_scheduled = False
         for value_input in self._value_inputs:
             value_input.reset()
         for value_output in self._value_outputs:
