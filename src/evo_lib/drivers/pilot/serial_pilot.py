@@ -142,6 +142,10 @@ class DifferentialSerialPilot(DifferentialPilot):
         self._send_command(Commands.UNFREE)
         return ImmediateResultTask()
 
+    def match_begin(self) -> Task[()]:
+        self._send_command(Commands.MATCH_BEGIN)
+        return ImmediateResultTask()
+
     @commands.register(args=[], result=[])
     def reset(self) -> Task[()]:
         """Reboot the carte-asserv (HAL_NVIC_SystemReset on the STM32).
