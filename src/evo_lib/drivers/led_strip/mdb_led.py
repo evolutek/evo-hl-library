@@ -39,11 +39,11 @@ from evo_lib.drivers.led_strip.ws2812b import (
     _DEFAULT_FREQUENCY_HZ,
     _DEFAULT_PIN,
     WS2812B,
-    _clamp_unit,
     _unpack_rgb,
 )
 from evo_lib.logger import Logger
 from evo_lib.task import ImmediateResultTask, Task
+from evo_lib.types.color import PURE_COLORS, NamedColor
 
 
 class MdbLedState(IntEnum):
@@ -94,19 +94,13 @@ class MdbLed(WS2812B):
         brightness: float = 1.0,
         frequency_hz: int = _DEFAULT_FREQUENCY_HZ,
         dma_channel: int = _DEFAULT_DMA_CHANNEL,
-        team_color_r: float = 1.0,
-        team_color_g: float = 0.8,
-        team_color_b: float = 0.0,
+        team_color: NamedColor = NamedColor.Yellow,
         loading_chase_length: int = 5,
         auto_start_animator: bool = True,
     ):
         super().__init__(name, logger, num_pixels, pin, brightness, frequency_hz, dma_channel)
         self._state: MdbLedState = MdbLedState.Off
-        self._team_color: tuple[float, float, float] = (
-            _clamp_unit(team_color_r),
-            _clamp_unit(team_color_g),
-            _clamp_unit(team_color_b),
-        )
+        self._team_color: NamedColor = team_color
         # Width of the comet head in Loading state. Clamped so it never
         # exceeds the strip length (would lit every pixel and look static).
         self._loading_chase_length: int = max(1, min(loading_chase_length, num_pixels))
@@ -153,33 +147,22 @@ class MdbLed(WS2812B):
             return ImmediateResultTask(self._state)
 
     @commands.register(
-        args=[
-            ("r", ArgTypes.F32(help="Red 0.0-1.0")),
-            ("g", ArgTypes.F32(help="Green 0.0-1.0")),
-            ("b", ArgTypes.F32(help="Blue 0.0-1.0")),
-        ],
+        args=[("color", ArgTypes.Enum(NamedColor, help="Team color"))],
         result=[],
     )
-    def set_team_color(self, r: float, g: float, b: float) -> Task[()]:
+    def set_team_color(self, color: NamedColor) -> Task[()]:
         with self._state_lock:
-            self._team_color = (_clamp_unit(r), _clamp_unit(g), _clamp_unit(b))
-        # Wake the animator so the new color shows up immediately on the
-        # next chase frame — otherwise it'd lag by up to one refresh tick.
+            self._team_color = color
         self._wakeup.set()
         return ImmediateResultTask()
 
     @commands.register(
         args=[],
-        result=[
-            ("r", ArgTypes.F32(help="Red 0.0-1.0")),
-            ("g", ArgTypes.F32(help="Green 0.0-1.0")),
-            ("b", ArgTypes.F32(help="Blue 0.0-1.0")),
-        ],
+        result=[("color", ArgTypes.Enum(NamedColor, help="Current team color"))],
     )
-    def get_team_color(self) -> Task[float, float, float]:
+    def get_team_color(self) -> Task[NamedColor]:
         with self._state_lock:
-            r, g, b = self._team_color
-        return ImmediateResultTask(r, g, b)
+            return ImmediateResultTask(self._team_color)
 
     # --- Animator lifecycle ------------------------------------------------
 
@@ -230,7 +213,7 @@ class MdbLed(WS2812B):
     def _render_frame(
         self,
         state: MdbLedState,
-        team_color: tuple[float, float, float],
+        team_color: NamedColor,
         step: int,
     ) -> None:
         if state == MdbLedState.Off:
@@ -258,7 +241,8 @@ class MdbLed(WS2812B):
             # consecutive lit pixels advances by one slot per step, with
             # wrap-around at the strip end.
             self.fill(0.0, 0.0, 0.0).wait()
-            tcr, tcg, tcb = team_color
+            ref = PURE_COLORS.get(team_color)
+            tcr, tcg, tcb = (ref.rgb.r, ref.rgb.g, ref.rgb.b) if ref else (0.0, 0.0, 0.0)
             for offset in range(self._loading_chase_length):
                 idx = (step + offset) % self._num_pixels
                 self.set_pixel(idx, tcr, tcg, tcb).wait()
@@ -291,9 +275,9 @@ class MdbLedDefinition(DriverDefinition):
             ArgTypes.U8(help="DMA channel"),
             _DEFAULT_DMA_CHANNEL,
         )
-        defn.add_optional("team_color_r", ArgTypes.F32(help="Default team red"), 1.0)
-        defn.add_optional("team_color_g", ArgTypes.F32(help="Default team green"), 0.8)
-        defn.add_optional("team_color_b", ArgTypes.F32(help="Default team blue"), 0.0)
+        defn.add_optional(
+            "team_color", ArgTypes.Enum(NamedColor, help="Default team color"), NamedColor.Yellow
+        )
         defn.add_optional(
             "loading_chase_length",
             ArgTypes.U8(help="Comet width in Loading state (number of lit pixels)"),
@@ -311,9 +295,7 @@ class MdbLedDefinition(DriverDefinition):
             brightness=args.get("brightness"),
             frequency_hz=args.get("frequency_hz"),
             dma_channel=args.get("dma_channel"),
-            team_color_r=args.get("team_color_r"),
-            team_color_g=args.get("team_color_g"),
-            team_color_b=args.get("team_color_b"),
+            team_color=args.get("team_color"),
             loading_chase_length=args.get("loading_chase_length"),
         )
 
@@ -338,9 +320,7 @@ class MdbLedVirtual(MdbLed):
         brightness: float = 1.0,
         frequency_hz: int = _DEFAULT_FREQUENCY_HZ,
         dma_channel: int = _DEFAULT_DMA_CHANNEL,
-        team_color_r: float = 1.0,
-        team_color_g: float = 0.8,
-        team_color_b: float = 0.0,
+        team_color: NamedColor = NamedColor.Yellow,
         loading_chase_length: int = 5,
         auto_start_animator: bool = True,
     ):
@@ -352,9 +332,7 @@ class MdbLedVirtual(MdbLed):
             brightness=brightness,
             frequency_hz=frequency_hz,
             dma_channel=dma_channel,
-            team_color_r=team_color_r,
-            team_color_g=team_color_g,
-            team_color_b=team_color_b,
+            team_color=team_color,
             loading_chase_length=loading_chase_length,
             auto_start_animator=auto_start_animator,
         )
@@ -427,9 +405,9 @@ class MdbLedVirtualDefinition(DriverDefinition):
             ArgTypes.U8(help="DMA channel (ignored)"),
             _DEFAULT_DMA_CHANNEL,
         )
-        defn.add_optional("team_color_r", ArgTypes.F32(help="Default team red"), 1.0)
-        defn.add_optional("team_color_g", ArgTypes.F32(help="Default team green"), 0.8)
-        defn.add_optional("team_color_b", ArgTypes.F32(help="Default team blue"), 0.0)
+        defn.add_optional(
+            "team_color", ArgTypes.Enum(NamedColor, help="Default team color"), NamedColor.Yellow
+        )
         defn.add_optional(
             "loading_chase_length",
             ArgTypes.U8(help="Comet width in Loading state (number of lit pixels)"),
@@ -447,8 +425,6 @@ class MdbLedVirtualDefinition(DriverDefinition):
             brightness=args.get("brightness"),
             frequency_hz=args.get("frequency_hz"),
             dma_channel=args.get("dma_channel"),
-            team_color_r=args.get("team_color_r"),
-            team_color_g=args.get("team_color_g"),
-            team_color_b=args.get("team_color_b"),
+            team_color=args.get("team_color"),
             loading_chase_length=args.get("loading_chase_length"),
         )
