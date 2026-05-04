@@ -200,15 +200,21 @@ class ValueOutput(ValueEndpoint):
         super().__init__(node, name, type)
         self._connections: list[ValueInput] = []
         self._cached_value: Any = None
+        self._has_been_set: bool = False
 
     def get_connections(self) -> list[ValueInput]:
         return self._connections
 
+    def has_been_set(self) -> bool:
+        return self._has_been_set
+
     def use_cached_value(self) -> None:
-        self.set_value(self._cached_value)
+        for inp in self._connections:
+            inp.set_value(self._cached_value)
 
     def set_value(self, value: Any) -> None:
         self._cached_value = value
+        self._has_been_set = True
         for inp in self._connections:
             inp.set_value(value)
 
@@ -228,6 +234,7 @@ class ValueOutput(ValueEndpoint):
 
     def reset(self) -> None:
         self._cached_value = None
+        self._has_been_set = False
 
     def clone(self, new_node: Node) -> ValueOutput:
         return self.__class__(new_node, self._name, self._type)
@@ -343,18 +350,22 @@ class Node(ABC):
 
     def run(self) -> None:
         if self._run_requested:
-            raise RuntimeError(
-                "Trying to request node to run twice, check if there are cycles in the graph"
-            )
+            # Multi-consumer pure outputs schedule one pull per consumer; the
+            # first run already populated and propagated the cache.
+            return
         self._run_requested = True
 
         need_to_run = False
         if self.is_pure():
-            # Only run pure node if its value inputs have been updated
-            for value_input in self._value_inputs:
-                if value_input.get_generation() > 0:
-                    value_input.reset_generation()
-                    need_to_run = True
+            # No output set yet => cache is the post-reset None and would poison
+            # downstream (e.g. an `if`'s condition silently falsy). Force compute.
+            if not any(out.has_been_set() for out in self._value_outputs):
+                need_to_run = True
+            else:
+                for value_input in self._value_inputs:
+                    if value_input.get_generation() > 0:
+                        value_input.reset_generation()
+                        need_to_run = True
         else:
             need_to_run = True
 

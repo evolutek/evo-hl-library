@@ -142,6 +142,44 @@ def test_chain_pull_propagates_through_pure_nodes():
     assert _pull(scheduler, mul) == 50.0
 
 
+def _instantiate_with_defaults(definition_cls, name: str, **defaults) -> Node:
+    node = _instantiate(definition_cls, name)
+    for k, v in defaults.items():
+        node.get_value_input(k).set_default(v)
+    return node
+
+
+def test_pure_chain_runs_when_only_defaults_set():
+    # Defaults via set_default() leave generation == 0; pre-fix the chain
+    # would short-circuit on cached None and propagate it as the result.
+    graph, scheduler = _make_graph()
+    add = _instantiate_with_defaults(AddNodeDefinition, "add", a=2.0, b=3.0)
+    mul = _instantiate_with_defaults(MulNodeDefinition, "mul", b=10.0)
+    graph.add_node(add)
+    graph.add_node(mul)
+    add.get_value_output("result").link(mul.get_value_input("a"))
+    assert _pull(scheduler, mul) == 50.0
+
+
+def test_multi_consumer_pure_node_pull_is_idempotent():
+    # Two consumers schedule one transitive pull each on the shared upstream;
+    # the second one used to raise RuntimeError("twice").
+    graph, scheduler = _make_graph()
+    src = _instantiate_with_defaults(AddNodeDefinition, "src", a=2.0, b=3.0)
+    c1 = _instantiate_with_defaults(MulNodeDefinition, "c1", b=2.0)
+    c2 = _instantiate_with_defaults(SubNodeDefinition, "c2", b=1.0)
+    graph.add_node(src)
+    graph.add_node(c1)
+    graph.add_node(c2)
+    src.get_value_output("result").link(c1.get_value_input("a"))
+    src.get_value_output("result").link(c2.get_value_input("a"))
+    c1.get_value_output("result").pull()
+    c2.get_value_output("result").pull()
+    scheduler.handle()
+    assert c1.get_value_output("result")._cached_value == 10.0
+    assert c2.get_value_output("result")._cached_value == 4.0
+
+
 def test_loader_registers_all_pure_nodes():
     """Guard against forgetting to register a node in
     GraphLoader.register_base_node_types."""
