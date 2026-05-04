@@ -16,6 +16,7 @@ from evo_lib.drivers.led_strip.mdb_led import (
     MdbLedVirtual,
 )
 from evo_lib.logger import Logger
+from evo_lib.types.color import NamedColor
 
 
 @pytest.fixture
@@ -98,7 +99,7 @@ class TestRendering:
 
     def test_loading_chases_team_color(self, strip):
         # Doubles as a check that set_team_color is actually applied.
-        strip.set_team_color(0.0, 0.0, 1.0).wait()  # blue
+        strip.set_team_color(NamedColor.Blue).wait()
         strip.set_state(MdbLedState.Loading).wait()
         for step in range(strip.num_pixels * 2):
             strip.tick()
@@ -113,7 +114,7 @@ class TestRendering:
     def test_loading_chase_width(self, wide_strip):
         # 12-pixel strip, 5-pixel chase. Step 0 should light pixels 0..4
         # in team color and leave the other 7 black.
-        wide_strip.set_team_color(0.0, 0.0, 1.0).wait()  # blue
+        wide_strip.set_team_color(NamedColor.Blue).wait()
         wide_strip.set_state(MdbLedState.Loading).wait()
         wide_strip.tick()
         frame = wide_strip.get_shown_frame()
@@ -153,16 +154,13 @@ class TestStateRoundTrip:
 
     def test_state_and_team_color_round_trip(self, strip):
         strip.set_state(MdbLedState.Loading).wait()
-        strip.set_team_color(0.1, 0.2, 0.3).wait()
+        strip.set_team_color(NamedColor.Red).wait()
 
         (state,) = strip.get_state().wait()
         assert state == MdbLedState.Loading
 
-        r, g, b = strip.get_team_color().wait()
-        tol = 1 / 255 + 1e-9
-        assert abs(r - 0.1) < tol
-        assert abs(g - 0.2) < tol
-        assert abs(b - 0.3) < tol
+        (color,) = strip.get_team_color().wait()
+        assert color == NamedColor.Red
 
 
 class TestAnimatorThread:
