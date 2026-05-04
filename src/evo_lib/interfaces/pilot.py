@@ -77,6 +77,11 @@ class Pilot(Placable):
         """Enable asservissement and keep robot in current position."""
         pass
 
+    @commands.register(args = [], result = [])
+    def match_begin(self) -> "Task[()]":
+        """Notify the pilot that the match has started."""
+        return ImmediateResultTask()
+
     @abstractmethod
     def on_pose_or_velocity_update(self) -> Event[Pose2D, Vect2D]:
         pass
