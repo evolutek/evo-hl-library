@@ -97,7 +97,9 @@ class Graph:
     def schedule_run_node(self, node: Node) -> None:
         task = node.on_run()
         self._add_node_run_task(task)
-        task.on_complete(lambda: self._on_node_run_complete(task))
+        # Task.on_complete spreads the result tuple via *self._result, so the
+        # callback must absorb whatever arity the producing node emits.
+        task.on_complete(lambda *_args: self._on_node_run_complete(task))
         task.on_error(lambda error: self._on_node_run_error(task, error))
 
     def _do_run_flow_input(self, input_flow: FlowInput) -> None:
