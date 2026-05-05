@@ -424,16 +424,19 @@ class NodeDefinition:
         self._type = type
         self._name = name
         self._title = title
-        self._flow_inputs: set[str] = set()
-        self._flow_outputs: set[str] = set()
+        # list (not set): preserves insertion order for export → editor pins.
+        self._flow_inputs: list[str] = []
+        self._flow_outputs: list[str] = []
         self._value_inputs: dict[str, ValueInputDefinition] = {}
         self._value_outputs: dict[str, ValueOutputDefinition] = {}
 
     def add_flow_input(self, name: str) -> None:
-        self._flow_inputs.add(name)
+        if name not in self._flow_inputs:
+            self._flow_inputs.append(name)
 
     def add_flow_output(self, name: str) -> None:
-        self._flow_outputs.add(name)
+        if name not in self._flow_outputs:
+            self._flow_outputs.append(name)
 
     def add_value_input(self, name: str, type: ArgType, default: Any = None) -> None:
         self._value_inputs[name] = ValueInputDefinition(type, default)
@@ -456,10 +459,10 @@ class NodeDefinition:
     def get_value_outputs(self) -> dict[str, ValueOutputDefinition]:
         return self._value_outputs
 
-    def get_flow_inputs(self) -> set[str]:
+    def get_flow_inputs(self) -> list[str]:
         return self._flow_inputs
 
-    def get_flow_outputs(self) -> set[str]:
+    def get_flow_outputs(self) -> list[str]:
         return self._flow_outputs
 
     def instantiate_node(self, name: str, config: ConfigObject) -> Node:
