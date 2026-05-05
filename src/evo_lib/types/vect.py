@@ -102,6 +102,16 @@ class VectBase(ABC):
             raise TypeError(f"Cannot dot {type(self).__name__} with {type(other).__name__}")
         return sum(a * b for a, b in zip(self._components, other._components))
 
+    def distance(self, other: VectBase) -> float:
+        """Euclidean distance."""
+        if not isinstance(other, type(self)):
+            raise TypeError(
+                f"Cannot compute distance between {type(self).__name__} and {type(other).__name__}"
+            )
+        return math.sqrt(
+            sum((a - b) * (a - b) for a, b in zip(self._components, other._components))
+        )
+
     # -- Comparison ---------------------------------------------------------
 
     def __eq__(self, other: object) -> bool:
@@ -129,10 +139,13 @@ class Vect2D(VectBase):
 
     class ArgType(ArgTypes.Object["Vect2D"]):
         def __init__(self):
-            super().__init__("Vect2D", [
-                ("x", ArgTypes.F32()),
-                ("y", ArgTypes.F32()),
-            ])
+            super().__init__(
+                "Vect2D",
+                [
+                    ("x", ArgTypes.F32()),
+                    ("y", ArgTypes.F32()),
+                ],
+            )
 
         def convert(self, v: dict[str, Any]) -> Vect2D:
             return Vect2D(v["x"], v["y"])
@@ -197,6 +210,10 @@ class Vect2D(VectBase):
         """Serialize to a dict."""
         return {"x": self.x, "y": self.y}
 
+    def cross(self, other: Vect2D) -> float:
+        """Cross product."""
+        return self.x * other.y - self.y * other.x
+
     # -- Conversion ---------------------------------------------------------
 
     def to_3d(self, z: float = 0.0) -> Vect3D:
@@ -209,11 +226,14 @@ class Vect3D(VectBase):
 
     class ArgType(ArgTypes.Object["Vect3D"]):
         def __init__(self):
-            super().__init__("Vect3D", [
-                ("x", ArgTypes.F32()),
-                ("y", ArgTypes.F32()),
-                ("z", ArgTypes.F32()),
-            ])
+            super().__init__(
+                "Vect3D",
+                [
+                    ("x", ArgTypes.F32()),
+                    ("y", ArgTypes.F32()),
+                    ("z", ArgTypes.F32()),
+                ],
+            )
 
         def convert(self, v: dict[str, Any]) -> Vect3D:
             return Vect3D(v["x"], v["y"], v["z"])
