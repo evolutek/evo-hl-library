@@ -33,15 +33,6 @@ BORDER_SHAPE = BorderPolygoneShape(
 )
 
 
-random.seed(SEED)
-
-
-window = tk.Tk()
-
-window.title("Path Finding")
-window.geometry(f"{WINDOW_WIDTH}x{WINDOW_HEIGHT}")
-
-
 def random_real(min: float, max: float) -> float:
     return random.random() * (max - min) + min
 
@@ -67,23 +58,6 @@ def random_transform() -> Transform2D:
     )
 
 
-map = PathFindingMap()
-map.border_shape = BORDER_SHAPE
-
-polygones: list[PolygoneShape] = []
-
-for _ in range(NB_SHAPES):
-    size = random.random() ** 2 * (MAX_SHAPE_SIZE - MIN_SHAPE_SIZE) + MIN_SHAPE_SIZE
-    shape = random_polygone(-size, size, -size, size)
-    shape.transform(random_transform())
-    map.add_shape(shape)
-    polygones.append(shape)
-
-
-canvas = tk.Canvas(window, bg="#FFFFFF", width=WINDOW_WIDTH, height=WINDOW_HEIGHT)
-canvas.pack(fill=tk.BOTH, expand=True, padx=0, pady=0)
-
-
 def draw_polygone(
     canvas: tk.Canvas, polygone: PolygoneShape, fill: str | None = None, outline: str | None = None
 ) -> list[int]:
@@ -106,60 +80,81 @@ def draw_path(canvas: tk.Canvas, path: Path) -> list[int]:
     return ids
 
 
-origin = Vect2D(0, 0)
-destination = Vect2D(0, 0)
+class Test:
+    __test__ = False  # Do not run pytest on this class
 
+    def __init__(self) -> None:
+        self.origin = Vect2D(0, 0)
+        self.destination = Vect2D(0, 0)
 
-need_update = True
+        self.need_update = True
 
+        self.polygones: list[PolygoneShape] = []
 
-def update_origin(event):
-    global origin, need_update
-    # print(f"Update origin")
-    origin = Vect2D(event.x, event.y)
-    need_update = True
+    def update_origin(self, event) -> None:
+        # print(f"Update origin")
+        self.origin = Vect2D(event.x, event.y)
+        self.need_update = True
 
+    def update_destination(self, event) -> None:
+        # print(f"Update destination")
+        self.destination = Vect2D(event.x, event.y)
+        self.need_update = True
 
-def update_destination(event):
-    global destination, need_update
-    # print(f"Update destination")
-    destination = Vect2D(event.x, event.y)
-    need_update = True
+    def on_motion(self, event) -> None:
+        # print(event.state)
+        if event.state & 0x0100:  # Button1Mask
+            self.update_origin(event)
+        elif event.state & 0x0400:  # Button3Mask
+            self.update_destination(event)
 
+    def loop(self) -> None:
+        self.window.after(1000 // FPS, self.loop)
 
-def on_motion(event):
-    # print(event.state)
-    if event.state & 0x0100:  # Button1Mask
-        update_origin(event)
-    elif event.state & 0x0400:  # Button3Mask
-        update_destination(event)
+        if not self.need_update:
+            return
+        self.need_update = False
+        # print("Updating", flush = True)
+        path = self.map.find(self.origin, self.destination)
 
+        self.canvas.delete("all")
 
-canvas.bind("<Motion>", on_motion)
-canvas.bind("<Button-1>", update_origin)
-canvas.bind("<Button-3>", update_destination)
+        for polygone in self.polygones:
+            draw_polygone(self.canvas, polygone, fill="#888888", outline="#424242")
 
+        draw_polygone(self.canvas, BORDER_SHAPE, fill="", outline="#000000")
 
-def loop():
-    global origin, destination, need_update
-    window.after(1000 // FPS, loop)
-    if not need_update:
-        return
-    need_update = False
-    # print("Updating", flush = True)
-    path = map.find(origin, destination)
+        if path is not None:
+            draw_path(self.canvas, path)
 
-    canvas.delete("all")
+    def main(self):
+        random.seed(SEED)
 
-    for polygone in polygones:
-        draw_polygone(canvas, polygone, fill="#888888", outline="#424242")
+        self.window = tk.Tk()
 
-    draw_polygone(canvas, BORDER_SHAPE, fill="", outline="#000000")
+        self.window.title("Path Finding")
+        self.window.geometry(f"{WINDOW_WIDTH}x{WINDOW_HEIGHT}")
 
-    if path is not None:
-        draw_path(canvas, path)
+        self.map = PathFindingMap()
+        self.map.border_shape = BORDER_SHAPE
+
+        for _ in range(NB_SHAPES):
+            size = random.random() ** 2 * (MAX_SHAPE_SIZE - MIN_SHAPE_SIZE) + MIN_SHAPE_SIZE
+            shape = random_polygone(-size, size, -size, size)
+            shape.transform(random_transform())
+            self.map.add_shape(shape)
+            self.polygones.append(shape)
+
+        self.canvas = tk.Canvas(self.window, bg="#FFFFFF", width=WINDOW_WIDTH, height=WINDOW_HEIGHT)
+        self.canvas.pack(fill=tk.BOTH, expand=True, padx=0, pady=0)
+
+        self.canvas.bind("<Motion>", self.on_motion)
+        self.canvas.bind("<Button-1>", self.update_origin)
+        self.canvas.bind("<Button-3>", self.update_destination)
+
+        self.loop()
+        self.window.mainloop()
 
 
 if __name__ == "__main__":
-    loop()
-    window.mainloop()
+    Test().main()
