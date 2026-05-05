@@ -74,7 +74,7 @@ class PolygoneShape(Shape):
 
     def _update(self) -> None:
         self.polygone = shapely.Polygon([(v.x, v.y) for v in self.points])
-        shapely.orient_polygons(self.polygone, exterior_cw=False)
+        self.polygone = shapely.orient_polygons(self.polygone, exterior_cw=False)
         self.points = [Vect2D(x, y) for x, y in self.polygone.exterior.coords]
 
     def transform(self, transform: Transform2D) -> None:
