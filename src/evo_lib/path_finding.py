@@ -332,7 +332,7 @@ class PathFindingMap:
         nb_points = sum((shape.get_nb_points() for shape in shapes)) + 2
         nb_shapes = len(shapes)
 
-        print(f"Number of points: {nb_points}")
+        # print(f"Number of points: {nb_points}")
 
         heuristics = np.zeros(shape=(nb_points), dtype=np.float32)
 
@@ -464,10 +464,8 @@ class PathFindingMap:
                 ),
             )
 
-        print(
-            f"Line of sight check done: {int(nb_line_of_sign_checks / (nb_points * nb_points) * 100 + 0.5)}% ({nb_line_of_sign_checks})"
-        )
-        print(f"Maximum reached min-heap size: {max_heap_size}")
+        # print(f"Line of sight check done: {int(nb_line_of_sign_checks / (nb_points * nb_points) * 100 + 0.5)}% ({nb_line_of_sign_checks})")
+        # print(f"Maximum reached min-heap size: {max_heap_size}")
 
         # Check if a path has been found
 
