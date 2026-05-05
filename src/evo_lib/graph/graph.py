@@ -78,7 +78,32 @@ class Graph:
         if end:
             assert self._running_graph_task is not None
             self._running_graph_task.complete()
+            self._warn_stale_flow_outputs()
             self._runner.get_logger().debug("Graph finished")
+
+    def _warn_stale_flow_outputs(self) -> None:
+        from evo_lib.graph.node import FlowEndpointState
+
+        runner = self.get_runner()
+        if runner is None:
+            return
+        stale: list[str] = []
+        for node in self._nodes.values():
+            if not node._run_requested:
+                continue
+            for fo in node.get_flow_outputs():
+                if fo._state != FlowEndpointState.WAITING or not fo.get_connections():
+                    continue
+                targets = ", ".join(
+                    f"{c.get_node().get_name()}.{c.get_name()}"
+                    for c in fo.get_connections()
+                )
+                stale.append(f"{node.get_name()}.{fo.get_name()} → ({targets})")
+        if stale:
+            runner.get_logger().warning(
+                f"Graph finished with {len(stale)} stale flow_output(s) "
+                f"left dangling: {'; '.join(stale)}"
+            )
 
     def _remove_node_run_task(self, task: Task) -> None:
         with self._lock:

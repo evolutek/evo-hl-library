@@ -50,11 +50,13 @@ class FlowInput(Endpoint):
         self._state: FlowEndpointState = FlowEndpointState.WAITING
         self._nb_ignored_input_connections: int = 0
         self._nb_runned_input_connections: int = 0
+        self._last_run_source: FlowOutput | None = None
 
     def reset(self) -> None:
         self._state = FlowEndpointState.WAITING
         self._nb_ignored_input_connections = 0
         self._nb_runned_input_connections = 0
+        self._last_run_source = None
 
     def get_connections(self) -> list[FlowOutput]:
         return self._connections
@@ -75,6 +77,7 @@ class FlowInput(Endpoint):
 
     def run(self, source: FlowOutput) -> None:
         self._nb_runned_input_connections += 1
+        self._last_run_source = source
         self._update_state()
 
     def ignore(self, source: FlowOutput) -> None:
@@ -389,10 +392,11 @@ class Node(ABC):
             need_to_run = True
 
         if need_to_run:
-            self.get_runner().get_logger().debug(
-                f"Run node '{self.get_name()}' [{self._fmt_type()}]"
-                f"{self._fmt_flow_in()}"
-            )
+            if not self.is_pure():
+                self.get_runner().get_logger().debug(
+                    f"Run node '{self.get_name()}' [{self._fmt_type()}]"
+                    f"{self._fmt_flow_in()}"
+                )
             # Reset available input values count because all input are pulled
             self._nb_available_input_values = 0
             # Pull all value inputs to ensure they are up-to-date
@@ -444,10 +448,18 @@ class Node(ABC):
     def _fmt_flow_in(self) -> str:
         if not self._flow_inputs:
             return ""
-        runned = [fi.get_name() for fi in self._flow_inputs if fi._state == FlowEndpointState.RUNNED]
-        if not runned:
+        parts = []
+        for fi in self._flow_inputs:
+            if fi._state != FlowEndpointState.RUNNED:
+                continue
+            label = fi.get_name()
+            src = fi._last_run_source
+            if src is not None:
+                label += f"←{src.get_node().get_name()}.{src.get_name()}"
+            parts.append(label)
+        if not parts:
             return ""
-        return f" via flow_in={{{', '.join(runned)}}}"
+        return f" via flow_in={{{', '.join(parts)}}}"
 
     def _fmt_flow_out(self) -> str:
         if not self._flow_outputs:
