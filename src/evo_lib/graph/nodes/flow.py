@@ -81,15 +81,21 @@ class ExitNodeDefinition(NodeDefinition):
 class CallNode(Node):
     def __init__(self, definition: CallNodeDefinition, name: str):
         super().__init__(definition, name)
-        # Clone the called graph because each running graph needs to be a separate instance
-        self._called_graph = definition.get_called_graph().clone()
+        # Lazy: target subgraph isn't fully loaded at instantiation time.
+        self._called_graph: Graph | None = None
+
+    def _get_called_graph(self) -> Graph:
+        if self._called_graph is None:
+            self._called_graph = self.get_definition().get_called_graph().clone()
+        return self._called_graph
 
     def on_run(self) -> Task[()]:
-        entry_node = self._called_graph.get_entry_node()
+        called_graph = self._get_called_graph()
+        entry_node = called_graph.get_entry_node()
         if entry_node is None:
             return ImmediateErrorTask(RuntimeError("No entry node found in called graph"))
 
-        exit_node = self._called_graph.get_exit_node()
+        exit_node = called_graph.get_exit_node()
         if exit_node is not None:
             exit_node.set_caller_node(self)
 
@@ -99,20 +105,17 @@ class CallNode(Node):
             if entry_value_input is not None:
                 entry_value_input.set_value(self_value_input.get_value())
 
-        # Activate the subgraph so it can be run and event nodes can be called
-        self._called_graph.activate(self.get_runner())
-
-        # Run the subgraph
+        called_graph.activate(self.get_runner())
         entry_node.run()
-        running_task = self._called_graph.get_running_task()
+        running_task = called_graph.get_running_task()
         assert running_task is not None
-
         return running_task
 
     @override
     def reset(self) -> None:
         super().reset()
-        self._called_graph.reset()
+        if self._called_graph is not None:
+            self._called_graph.reset()
 
 
 class CallNodeDefinition(NodeDefinition):
