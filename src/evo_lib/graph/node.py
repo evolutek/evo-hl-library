@@ -389,7 +389,10 @@ class Node(ABC):
             need_to_run = True
 
         if need_to_run:
-            self.get_runner().get_logger().debug(f"Run node '{self.get_name()}'")
+            self.get_runner().get_logger().debug(
+                f"Run node '{self.get_name()}' [{self._fmt_type()}]"
+                f"{self._fmt_flow_in()}"
+            )
             # Reset available input values count because all input are pulled
             self._nb_available_input_values = 0
             # Pull all value inputs to ensure they are up-to-date
@@ -398,15 +401,61 @@ class Node(ABC):
             # Once all inputs are pulled, node is scheduled to be run, but
             self._schedule_run_if_needed()
         else:
-            self.get_runner().get_logger().debug(f"Used cached value for node '{self.get_name()}'")
+            self.get_runner().get_logger().debug(
+                f"Cached node '{self.get_name()}' [{self._fmt_type()}]"
+                f"{self._fmt_outputs()}"
+            )
             # Do not run node and use last computed output value
             for value_output in self._value_outputs:
                 value_output.use_cached_value()
 
     def ignore(self) -> None:
-        self.get_runner().get_logger().debug(f"Ignore node '{self.get_name()}'")
+        self.get_runner().get_logger().debug(
+            f"Ignore node '{self.get_name()}' [{self._fmt_type()}]"
+        )
         for flow_output in self._flow_outputs:
             flow_output.ignore()
+
+    # -- Debug log formatters --
+
+    def _fmt_type(self) -> str:
+        return self._definition.get_name()
+
+    def _fmt_inputs(self) -> str:
+        if not self._value_inputs:
+            return ""
+        items = ", ".join(
+            f"{vi.get_name()}={vi.get_value()!r}" for vi in self._value_inputs
+        )
+        return f" inputs={{{items}}}"
+
+    def _fmt_outputs(self) -> str:
+        if not self._value_outputs:
+            return ""
+        items = [
+            f"{vo.get_name()}={vo._cached_value!r}"
+            for vo in self._value_outputs
+            if vo.has_been_set()
+        ]
+        if not items:
+            return ""
+        return f" outputs={{{', '.join(items)}}}"
+
+    def _fmt_flow_in(self) -> str:
+        if not self._flow_inputs:
+            return ""
+        runned = [fi.get_name() for fi in self._flow_inputs if fi._state == FlowEndpointState.RUNNED]
+        if not runned:
+            return ""
+        return f" via flow_in={{{', '.join(runned)}}}"
+
+    def _fmt_flow_out(self) -> str:
+        if not self._flow_outputs:
+            return ""
+        items = ", ".join(
+            f"{fo.get_name()}:{fo._state.name.lower()}" for fo in self._flow_outputs
+        )
+        return f" flow_out={{{items}}}"
 
     def reset(self) -> None:
         self._nb_ignored_input_flow = 0

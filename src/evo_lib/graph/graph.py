@@ -85,7 +85,13 @@ class Graph:
             self._running_nodes_tasks.remove(task)
         self._check_end()
 
-    def _on_node_run_complete(self, task: Task) -> None:
+    def _on_node_run_complete(self, task: Task, node: Node) -> None:
+        runner = self.get_runner()
+        if runner is not None:
+            runner.get_logger().debug(
+                f"Done node '{node.get_name()}' [{node._fmt_type()}]"
+                f"{node._fmt_inputs()}{node._fmt_outputs()}{node._fmt_flow_out()}"
+            )
         self._remove_node_run_task(task)
 
     def _on_node_run_error(self, task: Task, error: Exception) -> None:
@@ -101,7 +107,7 @@ class Graph:
         self._add_node_run_task(task)
         # Task.on_complete spreads the result tuple via *self._result, so the
         # callback must absorb whatever arity the producing node emits.
-        task.on_complete(lambda *_args: self._on_node_run_complete(task))
+        task.on_complete(lambda *_args: self._on_node_run_complete(task, node))
         task.on_error(lambda error: self._on_node_run_error(task, error))
 
     def _do_run_flow_input(self, input_flow: FlowInput) -> None:
