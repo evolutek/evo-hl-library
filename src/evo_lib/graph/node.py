@@ -81,8 +81,8 @@ class FlowInput(Endpoint):
         self._nb_ignored_input_connections += 1
         self._update_state()
 
-    def clone(self) -> FlowInput:
-        return self.__class__(self._node, self._name)
+    def clone(self, new_node: Node) -> FlowInput:
+        return self.__class__(new_node, self._name)
 
 
 class FlowOutput(Endpoint):
@@ -115,8 +115,8 @@ class FlowOutput(Endpoint):
             inp.ignore(source=self)
         self._state = FlowEndpointState.IGNORED
 
-    def clone(self) -> FlowOutput:
-        return self.__class__(self._node, self._name)
+    def clone(self, new_node: Node) -> FlowOutput:
+        return self.__class__(new_node, self._name)
 
 
 @dataclass
@@ -191,8 +191,8 @@ class ValueInput(ValueEndpoint):
     def get_value(self) -> Any:
         return self._value
 
-    def clone(self) -> ValueInput:
-        return self.__class__(self._node, self._name, self._type, self._default)
+    def clone(self, new_node: Node) -> ValueInput:
+        return self.__class__(new_node, self._name, self._type, self._default)
 
 
 class ValueOutput(ValueEndpoint):
@@ -229,8 +229,8 @@ class ValueOutput(ValueEndpoint):
     def reset(self) -> None:
         self._cached_value = None
 
-    def clone(self) -> ValueOutput:
-        return self.__class__(self._node, self._name, self._type)
+    def clone(self, new_node: Node) -> ValueOutput:
+        return self.__class__(new_node, self._name, self._type)
 
 
 # -- Node --
@@ -262,13 +262,13 @@ class Node(ABC):
         cloned._flow_outputs.clear()
 
         for value_input in self._value_inputs:
-            cloned._value_inputs.append(value_input.clone())
+            cloned._value_inputs.append(value_input.clone(cloned))
         for value_output in self._value_outputs:
-            cloned._value_outputs.append(value_output.clone())
+            cloned._value_outputs.append(value_output.clone(cloned))
         for flow_input in self._flow_inputs:
-            cloned._flow_inputs.append(flow_input.clone())
+            cloned._flow_inputs.append(flow_input.clone(cloned))
         for flow_output in self._flow_outputs:
-            cloned._flow_outputs.append(flow_output.clone())
+            cloned._flow_outputs.append(flow_output.clone(cloned))
 
         return cloned
 
