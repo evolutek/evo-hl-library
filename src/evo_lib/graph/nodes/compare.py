@@ -155,8 +155,10 @@ class _CompareEnumNode(Node):
 class _CompareEnumNodeDefinition(NodeDefinition):
     def __init__(self, node_cls: type[Node], name: str, title: str):
         super().__init__(node_cls, name, title)
-        self.add_value_input("a", ArgTypes.AnyEnum(), 0)
-        self.add_value_input("b", ArgTypes.AnyEnum(), 0)
+        # Shared T so a and b are unified to the same enum class at resolve time.
+        T = ArgTypes.AnyEnum()
+        self.add_value_input("a", T, 0)
+        self.add_value_input("b", T, 0)
         self.add_value_output("result", ArgTypes.Bool())
 
 

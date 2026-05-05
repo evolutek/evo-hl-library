@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import TYPE_CHECKING, Any
 
-from evo_lib.argtypes import ArgType
+from evo_lib.argtypes import ArgType, ArgTypes, TypeMismatchError
 from evo_lib.config import ConfigObject, ConfigValidationError
 from evo_lib.task import ImmediateResultTask, Task
 
@@ -622,3 +622,84 @@ class NodeDefinition:
                 )
             default_value = endpoint.get_type().value_from_config(raw_default_value)
             endpoint.set_default(default_value)
+
+
+# -- Type inference --
+
+
+class TypeEnv:
+    """Mapping ``(node_name, slot_name) -> concrete ArgType``, built by ``resolve``."""
+
+    def __init__(self) -> None:
+        self._by_slot: dict[tuple[str, str], ArgType] = {}
+
+    def bind(self, node_name: str, slot_name: str, t: ArgType) -> None:
+        self._by_slot[(node_name, slot_name)] = t
+
+    def get(self, node_name: str, slot_name: str) -> ArgType | None:
+        return self._by_slot.get((node_name, slot_name))
+
+    def items(self) -> list[tuple[tuple[str, str], ArgType]]:
+        return list(self._by_slot.items())
+
+
+def unify(a: ArgType, b: ArgType) -> ArgType:
+    """Pick the most specific type compatible with both ``a`` and ``b``, else raise."""
+    a_var = isinstance(a, ArgTypes.AnyEnum)
+    b_var = isinstance(b, ArgTypes.AnyEnum)
+    if a_var and b_var:
+        return a
+    if a_var:
+        _check_enum(b)
+        return b
+    if b_var:
+        _check_enum(a)
+        return a
+    if type(a) is not type(b):
+        raise TypeMismatchError(f"cannot unify {a} with {b}")
+    return a
+
+
+def _check_enum(t: ArgType) -> None:
+    if not isinstance(t, ArgTypes.Enum):
+        raise TypeMismatchError(f"AnyEnum can only unify with Enum, got {t}")
+
+
+def resolve(graph: "Graph") -> TypeEnv:
+    """Union-find over AnyEnum instances so a concrete enum class propagates across
+    edges AND across slots that share the same AnyEnum() inside one node."""
+    subst: dict[int, ArgType] = {}
+
+    def find(t: ArgType) -> ArgType:
+        while isinstance(t, ArgTypes.AnyEnum) and id(t) in subst:
+            t = subst[id(t)]
+        return t
+
+    def union(a: ArgType, b: ArgType) -> None:
+        ra, rb = find(a), find(b)
+        a_var = isinstance(ra, ArgTypes.AnyEnum)
+        b_var = isinstance(rb, ArgTypes.AnyEnum)
+        if a_var and b_var:
+            if ra is not rb:
+                subst[id(ra)] = rb
+        elif a_var:
+            _check_enum(rb)
+            subst[id(ra)] = rb
+        elif b_var:
+            _check_enum(ra)
+            subst[id(rb)] = ra
+        elif type(ra) is not type(rb):
+            raise TypeMismatchError(f"cannot unify {ra} with {rb}")
+
+    for node in graph.get_nodes().values():
+        for output in node.get_value_outputs():
+            for input_endpoint in output.get_connections():
+                union(output.get_type(), input_endpoint.get_type())
+
+    env = TypeEnv()
+    for node in graph.get_nodes().values():
+        for output in node.get_value_outputs():
+            env.bind(node.get_name(), output.get_name(), find(output.get_type()))
+        for input_endpoint in node.get_value_inputs():
+            env.bind(node.get_name(), input_endpoint.get_name(), find(input_endpoint.get_type()))
+    return env

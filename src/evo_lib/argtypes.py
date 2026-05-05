@@ -13,6 +13,25 @@ if TYPE_CHECKING:
     from evo_lib.registry import Registry
 
 
+class UnresolvedTypeError(TypeError):
+    """Raised when an unresolved AnyEnum reaches a binary-serialization callsite."""
+
+
+class TypeMismatchError(TypeError):
+    """Raised when unification finds two incompatible concrete slot types."""
+
+
+def _int_enum_only(method):
+    """Guard binary serialization methods of ArgTypes.Enum: refuse non-IntEnum classes."""
+    def wrapper(self, *args, **kwargs):
+        if not issubclass(self.enum_type, IntEnum):
+            raise TypeError(
+                f"binary serialization requires IntEnum, got {self.enum_type.__name__}"
+            )
+        return method(self, *args, **kwargs)
+    return wrapper
+
+
 class ArgType(ABC):
     def __init__(self, help: str | None = None):
         self.help = help
@@ -648,15 +667,17 @@ class ArgTypes:
         def value_from_str(self, v: str) -> IntEnum:
             return self.enum_type[v]
 
+        @_int_enum_only
         def value_from_stream(self, s: io.RawIOBase) -> IntEnum:
             index = struct.unpack("I", s.read(4))[0]
             return self.enum_type(index)
 
+        @_int_enum_only
         def value_to_stream(self, v: IntEnum, s: io.RawIOBase) -> None:
             s.write(struct.pack("I", v.value))
 
+        @_int_enum_only
         def self_to_stream(self, s: io.RawIOBase) -> None:
-            # Serialize enum type name and members
             type_name = self.enum_type.__name__.encode("utf-8")
             s.write(struct.pack("I", len(type_name)))
             s.write(type_name)
@@ -692,42 +713,32 @@ class ArgTypes:
             return f"enum({self.enum_type.__name__})"
 
     class AnyEnum(ArgType):
-        """Untyped enum slot. Carries no specific enum class — the value flows
-        through as-is and equality is delegated to Python's ``==``.
+        """Polymorphic enum slot bound at graph build time by ``resolve``.
 
-        Used by polymorphic graph nodes that operate on any enum class
-        (``compare/eq_enum``, ``compare/ne_enum``). The editor populates the
-        constant-side widget choices dynamically from the upstream wire.
+        Carries no concrete type until unified with an ArgTypes.Enum upstream.
+        Binary serialization on an unresolved instance raises UnresolvedTypeError.
         """
 
+        def _unresolved(self) -> UnresolvedTypeError:
+            return UnresolvedTypeError("AnyEnum is unresolved")
+
         def value_from_config(self, v: ConfigValue) -> Any:
-            # Accept int (raw enum value), str (enum name), or already-resolved
-            # IntEnum/Enum. Equality at runtime works across all combinations
-            # because IntEnum members compare equal to their int value.
-            if isinstance(v, (int, str)) or hasattr(v, "value"):
-                return v
-            raise ConfigValidationError(
-                f"AnyEnum: expected int / str / Enum, got {type(v).__name__}"
-            )
+            return v
 
         def value_from_str(self, v: str) -> Any:
-            try:
-                return int(v)
-            except ValueError:
-                return v
+            return v
 
-        def value_from_stream(self, s: io.RawIOBase) -> int:
-            return struct.unpack("I", s.read(4))[0]
+        def value_from_stream(self, s: io.RawIOBase) -> Any:
+            raise self._unresolved()
 
         def value_to_stream(self, v: Any, s: io.RawIOBase) -> None:
-            n = v.value if hasattr(v, "value") else int(v)
-            s.write(struct.pack("I", n))
+            raise self._unresolved()
 
         def self_to_stream(self, s: io.RawIOBase) -> None:
-            pass
+            raise self._unresolved()
 
         def self_from_stream(self, s: io.RawIOBase) -> None:
-            pass
+            raise self._unresolved()
 
         def self_from_config(self, c: ConfigObject) -> None:
             pass
@@ -735,7 +746,7 @@ class ArgTypes:
         def self_to_config(self, c: ConfigObject) -> None:
             pass
 
-        def __str__(self):
+        def __str__(self) -> str:
             return "enum_any"
 
     # Reference to a device
@@ -878,6 +889,10 @@ def argtype_from_stream(s: io.RawIOBase) -> ArgType:
 
 
 def argtype_to_stream(argtype: ArgType, s: io.RawIOBase) -> None:
+    if isinstance(argtype, ArgTypes.AnyEnum):
+        raise UnresolvedTypeError(
+            f"cannot serialize unresolved {argtype}; resolve graph types first"
+        )
     argtype_id = ARGTYPE_TO_ID[type(argtype)]
     s.write(bytes([argtype_id]))
     argtype.self_to_stream(s)
