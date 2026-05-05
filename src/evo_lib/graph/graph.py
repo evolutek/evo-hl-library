@@ -11,10 +11,12 @@ from evo_lib.argtypes import ArgType
 from evo_lib.graph.node import (
     FlowInput,
     Node,
+    TypeEnv,
     ValueInput,
     ValueInputDefinition,
     ValueOutput,
     ValueOutputDefinition,
+    resolve,
 )
 from evo_lib.graph.nodes.flow import CallNodeDefinition, EntryNode, ExitNode
 from evo_lib.task import DelayedTask, Task
@@ -254,3 +256,6 @@ class Graph:
             raise RuntimeError(f"Node '{node.get_name()}' is already part of a graph")
         node.set_graph(self)
         self._nodes[node.get_name()] = node
+
+    def resolve_types(self) -> TypeEnv:
+        return resolve(self)

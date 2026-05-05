@@ -1,7 +1,7 @@
 """Abstract interface for digital GPIO pins."""
 
 from abc import abstractmethod
-from enum import Enum
+from enum import IntEnum
 from typing import TYPE_CHECKING
 
 from evo_lib.argtypes import ArgTypes
@@ -13,19 +13,15 @@ if TYPE_CHECKING:
     from evo_lib.task import Task
 
 
-class GPIODirection(Enum):
-    """Pin direction."""
-
-    INPUT = "input"
-    OUTPUT = "output"
+class GPIODirection(IntEnum):
+    INPUT = 0
+    OUTPUT = 1
 
 
-class GPIOEdge(Enum):
-    """Edge type for interrupt triggers."""
-
-    RISING = "rising"
-    FALLING = "falling"
-    BOTH = "both"
+class GPIOEdge(IntEnum):
+    RISING = 0
+    FALLING = 1
+    BOTH = 2
 
 
 class GPIO(Interface):
