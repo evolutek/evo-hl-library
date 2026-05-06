@@ -403,7 +403,7 @@ class DifferentialSerialPilot(DifferentialPilot):
             self._bus.write(packet)
         if command not in NO_ACK_COMMANDS:
             self._ack_event.wait(timeout=_ACK_TIMEOUT)
-        return ImmediateResultTask() # TODO: Be async
+        return ImmediateResultTask()  # TODO: Be async
 
     def _send_move(self, command: Commands, *args) -> Task[PilotMoveStatus]:
         """Send a movement command, wait for ACK, return a task that completes on MOVE_END."""
@@ -428,7 +428,7 @@ class DifferentialSerialPilot(DifferentialPilot):
         """Background thread: read and dispatch incoming messages from the board."""
         while self._running:
             try:
-                header = self._bus.read_available() # FIXME: Non blocking read cause high CPU usage
+                header = self._bus.read_available()  # FIXME: Non blocking read cause high CPU usage
                 if not header:
                     continue
                 self._process_bytes(header)
@@ -456,7 +456,7 @@ class DifferentialSerialPilot(DifferentialPilot):
 
     def _dispatch(self, cmd: int, payload: bytes) -> None:
         """Handle a parsed incoming message."""
-        #self._log.debug(f"Received message: cmd={cmd}, payload={payload.hex()}")
+        # self._log.debug(f"Received message: cmd={cmd}, payload={payload.hex()}")
         if cmd == Commands.ACKNOWLEDGE:
             self._ack_event.set()
         elif cmd == Commands.MOVE_BEGIN:
@@ -518,9 +518,9 @@ class DifferentialSerialPilotDefinition(DriverDefinition):
 
     def create(self, args: DriverInitArgs) -> DifferentialSerialPilot:
         return DifferentialSerialPilot(
-            name = args.get_name(),
-            logger = self._logger,
-            bus = args.get("serial"),
+            name=args.get_name(),
+            logger=self._logger,
+            bus=args.get("serial"),
         )
 
 
@@ -601,9 +601,9 @@ class HolonomicSerialPilotDefinition(DriverDefinition):
 
     def create(self, args: DriverInitArgs) -> HolonomicSerialPilot:
         return HolonomicSerialPilot(
-            name = args.get_name(),
-            logger = self._logger,
-            bus = args.get("serial"),
+            name=args.get_name(),
+            logger=self._logger,
+            bus=args.get("serial"),
         )
 
 

@@ -153,9 +153,7 @@ class DifferentialPilotVirtual(DifferentialPilot):
 
     def get_pose_and_velocity(self) -> Task[Pose2D, Vect2D]:
         with self._lock:
-            return ImmediateResultTask(
-                Pose2D(self._x, self._y, self._theta), Vect2D(0.0, 0.0)
-            )
+            return ImmediateResultTask(Pose2D(self._x, self._y, self._theta), Vect2D(0.0, 0.0))
 
     def set_pose(self, pose: Pose2D) -> Task[()]:
         with self._lock:
@@ -279,6 +277,7 @@ class HolonomicPilotVirtual(DifferentialPilotVirtual, HolonomicPilot):
         raise NotImplementedError(
             "HolonomicPilotVirtual.follow_holonomic_path is not implemented yet"
         )
+
 
 class HolonomicPilotVirtualDefinition(DriverDefinition):
     """Factory for HolonomicPilotVirtual from config args."""
