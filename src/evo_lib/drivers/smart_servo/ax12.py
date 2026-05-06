@@ -612,7 +612,8 @@ class AX12(SmartServo):
     @commands.register(args=[], result=[])
     def reset(self) -> Task[()]:
         """Move to the mechanical center (150°)."""
-        # TODO: implement reset for AX-12A (power cycle via an optionnal GPIO given at initialization)
+        # TODO: implement reset for AX-12A (power-cycle via an optional GPIO
+        # passed at initialization).
         raise NotImplementedError("reset is currently not supported by AX-12A")
 
     # --- Angle limits (EEPROM, persistent across power cycles) ---
