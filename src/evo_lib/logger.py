@@ -111,53 +111,18 @@ _COMMON_PREFIX = Style.RESET_ALL + "{time}{module}"
 _SEP = Style.DIM + Fore.WHITE + ": " + Style.RESET_ALL
 COLORED_PREFIXES_FMT = {
     LoggerLevel.DEBUG.value: (
-        _COMMON_PREFIX
-        + Fore.BLACK
-        + "Debug"
-        + _SEP
-        + Style.DIM
-        + Fore.WHITE
+        _COMMON_PREFIX + Fore.BLACK + "Debug" + _SEP + Style.DIM + Fore.WHITE
     ),
-    LoggerLevel.INFO.value: (
-        _COMMON_PREFIX
-        + Fore.BLUE
-        + "Info"
-        + _SEP
-        + Fore.WHITE
-    ),
+    LoggerLevel.INFO.value: (_COMMON_PREFIX + Fore.BLUE + "Info" + _SEP + Fore.WHITE),
     LoggerLevel.SUCCESS.value: (
-        _COMMON_PREFIX
-        + Style.BRIGHT
-        + Fore.GREEN
-        + "Success"
-        + _SEP
-        + Fore.GREEN
+        _COMMON_PREFIX + Style.BRIGHT + Fore.GREEN + "Success" + _SEP + Fore.GREEN
     ),
     LoggerLevel.WARNING.value: (
-        _COMMON_PREFIX
-        + Style.BRIGHT
-        + Fore.YELLOW
-        + "Warning"
-        + _SEP
-        + Fore.YELLOW
+        _COMMON_PREFIX + Style.BRIGHT + Fore.YELLOW + "Warning" + _SEP + Fore.YELLOW
     ),
-    LoggerLevel.ERROR.value: (
-        _COMMON_PREFIX
-        + Style.BRIGHT
-        + Fore.RED
-        + "Error"
-        + _SEP
-        + Fore.RED
-    ),
+    LoggerLevel.ERROR.value: (_COMMON_PREFIX + Style.BRIGHT + Fore.RED + "Error" + _SEP + Fore.RED),
     LoggerLevel.CRITICAL.value: (
-        _COMMON_PREFIX
-        + Style.BRIGHT
-        + Style.DIM
-        + Fore.RED
-        + "Fatal"
-        + _SEP
-        + Style.DIM
-        + Fore.RED
+        _COMMON_PREFIX + Style.BRIGHT + Style.DIM + Fore.RED + "Fatal" + _SEP + Style.DIM + Fore.RED
     ),
 }
 
@@ -200,7 +165,7 @@ class LoggerFormatter(logging.Formatter):
         if self._strftime_format:
             strtime = datetime.fromtimestamp(record.created).strftime(self._strftime_format)
             time_fmt = COLORED_TIME_FMT if self._colored else PLAIN_TIME_FMT
-            time_str = time_fmt.format(time = strtime)
+            time_str = time_fmt.format(time=strtime)
         else:
             time_str = ""
 
@@ -208,7 +173,7 @@ class LoggerFormatter(logging.Formatter):
         module_name = record.name
         if module_name:
             module_fmt = COLORED_MODULE_FMT if self._colored else PLAIN_MODULE_FMT
-            module_str = module_fmt.format(module = module_name)
+            module_str = module_fmt.format(module=module_name)
         else:
             module_str = ""
 
@@ -219,7 +184,7 @@ class LoggerFormatter(logging.Formatter):
         prefix_fmt = prefixes_fmt.get(record.levelno, prefixes_fmt[logging.INFO])
 
         # Format prefix
-        prefix = prefix_fmt.format(time = time_str, module = module_str)
+        prefix = prefix_fmt.format(time=time_str, module=module_str)
 
         # Add prefix in front of every non empty line
         lines = record.getMessage().split("\n")
@@ -255,6 +220,10 @@ class LoggerSink(ABC):
     def close(self) -> None:
         pass
 
+    @abstractmethod
+    def flush(self) -> None:
+        pass
+
 
 class _LoggingFileHandler(logging.handlers.TimedRotatingFileHandler):
     def __init__(self, folder: str, latest_filename: str, filename_format: str, interval: int):
@@ -273,6 +242,11 @@ class _LoggingFileHandler(logging.handlers.TimedRotatingFileHandler):
 
         # See: https://docs.python.org/3/library/logging.handlers.html#logging.handlers.BaseRotatingHandler.namer
         self.namer = self._get_next_rotation_filename
+
+    def emit(self, record: logging.LogRecord) -> None:
+        # Override emit to flush after each record
+        super().emit(record)
+        self.flush()
 
     # Override the super shouldRollover to disable rotation if needed
     def shouldRollover(self, record: logging.LogRecord) -> bool:
@@ -342,6 +316,9 @@ class LoggerFileSink(LoggerSink):
     def close(self) -> None:
         self.handler.close()
 
+    def flush(self) -> None:
+        self.handler.flush()
+
 
 class _LoggingConsoleHandler(logging.Handler):
     def __init__(self, stdout: TextIO, stderr: TextIO):
@@ -391,6 +368,9 @@ class LoggerConsoleSink(LoggerSink):
     def set_colored(self, colored: bool) -> None:
         """Enable or disable ANSI color output."""
         self.formatter.set_colored(colored)
+
+    def flush(self) -> None:
+        self.handler.flush()
 
 
 class Logger:
@@ -486,6 +466,11 @@ class Logger:
             self._logger.removeHandler(sink.get_handler())
             sink.close()
         self._sinks.clear()
+
+    def flush(self) -> None:
+        """Flush all sinks."""
+        for sink in self._sinks:
+            sink.flush()
 
     def _merge_args(self, args: list, sep=" ") -> str:
         return sep.join(str(a) for a in args)
