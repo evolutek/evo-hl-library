@@ -394,8 +394,7 @@ class Node(ABC):
         if need_to_run:
             if not self.is_pure():
                 self.get_runner().get_logger().debug(
-                    f"Run node '{self.get_name()}' [{self._fmt_type()}]"
-                    f"{self._fmt_flow_in()}"
+                    f"Run node '{self.get_name()}' [{self._fmt_type()}]{self._fmt_flow_in()}"
                 )
             # Reset available input values count because all input are pulled
             self._nb_available_input_values = 0
@@ -406,8 +405,7 @@ class Node(ABC):
             self._schedule_run_if_needed()
         else:
             self.get_runner().get_logger().debug(
-                f"Cached node '{self.get_name()}' [{self._fmt_type()}]"
-                f"{self._fmt_outputs()}"
+                f"Cached node '{self.get_name()}' [{self._fmt_type()}]{self._fmt_outputs()}"
             )
             # Do not run node and use last computed output value
             for value_output in self._value_outputs:
@@ -428,9 +426,7 @@ class Node(ABC):
     def _fmt_inputs(self) -> str:
         if not self._value_inputs:
             return ""
-        items = ", ".join(
-            f"{vi.get_name()}={vi.get_value()!r}" for vi in self._value_inputs
-        )
+        items = ", ".join(f"{vi.get_name()}={vi.get_value()!r}" for vi in self._value_inputs)
         return f" inputs={{{items}}}"
 
     def _fmt_outputs(self) -> str:
@@ -464,9 +460,7 @@ class Node(ABC):
     def _fmt_flow_out(self) -> str:
         if not self._flow_outputs:
             return ""
-        items = ", ".join(
-            f"{fo.get_name()}:{fo._state.name.lower()}" for fo in self._flow_outputs
-        )
+        items = ", ".join(f"{fo.get_name()}:{fo._state.name.lower()}" for fo in self._flow_outputs)
         return f" flow_out={{{items}}}"
 
     def reset(self) -> None:
