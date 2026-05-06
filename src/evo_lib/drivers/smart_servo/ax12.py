@@ -689,6 +689,7 @@ class AX12BusVirtual(AX12Bus):
         self,
         name: str,
         logger: Logger,
+        scheduler: Scheduler,
         thread_pool: ThreadPoolExecutor,
         bus: Serial,
         baudrate: int = _DEFAULT_BAUDRATE,
@@ -699,6 +700,7 @@ class AX12BusVirtual(AX12Bus):
         super().__init__(
             name,
             logger,
+            scheduler=scheduler,
             thread_pool=thread_pool,
             bus=bus,
             baudrate=baudrate,
@@ -815,6 +817,7 @@ class AX12BusVirtualDefinition(AX12BusDefinition):
         return AX12BusVirtual(
             name=args.get_name(),
             logger=self._logger,
+            scheduler=self._scheduler,
             thread_pool=self._thread_pool,
             bus=args.get("bus"),
             baudrate=args.get("baudrate"),
