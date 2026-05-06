@@ -190,10 +190,7 @@ class TestAnimatorThread:
         s.set_state(MdbLedState.Loading).wait()
         time.sleep(0.05)
         s.close()
-        leaked = [
-            t for t in threading.enumerate()
-            if t.name == "mdb-led-live2" and t.is_alive()
-        ]
+        leaked = [t for t in threading.enumerate() if t.name == "mdb-led-live2" and t.is_alive()]
         assert leaked == [], f"animator thread leaked: {leaked}"
 
 
@@ -207,6 +204,5 @@ class TestSwapInvariant:
         real_params = set(inspect.signature(MdbLed.__init__).parameters)
         virt_params = set(inspect.signature(MdbLedVirtual.__init__).parameters)
         assert real_params == virt_params, (
-            f"only-real={real_params - virt_params}, "
-            f"only-virt={virt_params - real_params}"
+            f"only-real={real_params - virt_params}, only-virt={virt_params - real_params}"
         )

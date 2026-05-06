@@ -29,8 +29,8 @@ from __future__ import annotations
 from enum import IntEnum
 from math import isclose
 
-
 # ── Representation classes ───────────────────────────────────────────────
+
 
 class ColorRGBC:
     """Raw RGBC ADC counts straight off an RGBC sensor (TCS34725 family, etc.).
@@ -152,7 +152,7 @@ class ColorRGB:
         return ColorHSV(h, s, v)
 
     def to_rgbc(self, full_scale: int = 255) -> ColorRGBC:
-        """Quantize to integer ADC counts. Clear derived as ``max(r,g,b)*full_scale`` — approximation."""
+        """Quantize to integer ADC counts. Clear derived as ``max(r,g,b)*full_scale`` — approximation."""  # noqa: E501
         r_i = max(0, min(full_scale, round(self.r * full_scale)))
         g_i = max(0, min(full_scale, round(self.g * full_scale)))
         b_i = max(0, min(full_scale, round(self.b * full_scale)))
@@ -166,7 +166,7 @@ class ColorRGB:
         return ColorHex((r << 16) | (g << 8) | b)
 
     def to_chroma(self, clear: float | None = None) -> "ColorChroma":
-        """Chroma from normalized RGB. If ``clear`` is None, uses ``max(r,g,b)`` as a proxy for C."""
+        """Chroma from normalized RGB. If ``clear`` is None, uses ``max(r,g,b)`` as a proxy for C."""  # noqa: E501
         c = clear if clear is not None else max(self.r, self.g, self.b)
         if c <= 0:
             return ColorChroma(0.0, 0.0, 0.0)
@@ -253,7 +253,7 @@ class ColorChroma:
         )
 
     def to_rgb(self, v: float = 1.0) -> ColorRGB:
-        """Reconstruct RGB, scaling by ``v``. The absolute intensity is lost in chroma; caller supplies it."""
+        """Reconstruct RGB, scaling by ``v``. The absolute intensity is lost in chroma; caller supplies it."""  # noqa: E501
         m = max(self.rc, self.gc, self.bc, 1e-9)
         scale = v / m
         return ColorRGB(
@@ -316,6 +316,7 @@ class ColorHex:
 
 
 # ── Composite Color (multi-repr, lazy) ────────────────────────────────────
+
 
 class Color:
     """A single color carrying every representation, derived lazily.
@@ -436,6 +437,7 @@ class Color:
 
 # ── Named palette keys ────────────────────────────────────────────────────
 
+
 class NamedColor(IntEnum):
     """Hardcoded palette labels used by sensor classification."""
 
@@ -457,16 +459,17 @@ class NamedColor(IntEnum):
 # palette (e.g. TCS34725_DEFAULT_PALETTE) or calibrate in-situ.
 
 PURE_COLORS: dict[NamedColor, Color] = {
-    NamedColor.Black:  Color.from_hex(0x000000, name="Black"),
-    NamedColor.White:  Color.from_hex(0xFFFFFF, name="White"),
-    NamedColor.Red:    Color.from_hex(0xFF0000, name="Red"),
-    NamedColor.Green:  Color.from_hex(0x00FF00, name="Green"),
-    NamedColor.Blue:   Color.from_hex(0x0000FF, name="Blue"),
+    NamedColor.Black: Color.from_hex(0x000000, name="Black"),
+    NamedColor.White: Color.from_hex(0xFFFFFF, name="White"),
+    NamedColor.Red: Color.from_hex(0xFF0000, name="Red"),
+    NamedColor.Green: Color.from_hex(0x00FF00, name="Green"),
+    NamedColor.Blue: Color.from_hex(0x0000FF, name="Blue"),
     NamedColor.Yellow: Color.from_hex(0xFFFF00, name="Yellow"),
 }
 
 
 # ── Palette: classification against named references ─────────────────────
+
 
 def _hue_distance(h1: float, h2: float) -> float:
     """Shortest angular distance between two hues in degrees, always in [0, 180]."""
@@ -532,9 +535,7 @@ class Palette:
             return self._classify_rgbc(measured, max_distance)
         raise ValueError(f"classify method must be 'hsv', 'chroma' or 'rgbc', got {m!r}")
 
-    def _classify_hsv(
-        self, measured: Color, max_distance: float | None
-    ) -> NamedColor:
+    def _classify_hsv(self, measured: Color, max_distance: float | None) -> NamedColor:
         hsv = measured.hsv
         if hsv.s < self.min_saturation:
             return NamedColor.Unknown
@@ -551,9 +552,7 @@ class Palette:
             return NamedColor.Unknown
         return best_name
 
-    def _classify_chroma(
-        self, measured: Color, max_distance: float | None
-    ) -> NamedColor:
+    def _classify_chroma(self, measured: Color, max_distance: float | None) -> NamedColor:
         ch = measured.chroma
         best_name = NamedColor.Unknown
         best_dist_sq = float("inf")
@@ -573,9 +572,7 @@ class Palette:
             return NamedColor.Unknown
         return best_name
 
-    def _classify_rgbc(
-        self, measured: Color, max_distance: float | None
-    ) -> NamedColor:
+    def _classify_rgbc(self, measured: Color, max_distance: float | None) -> NamedColor:
         rgbc = measured.rgbc
         best_name = NamedColor.Unknown
         best_dist = float("inf")
