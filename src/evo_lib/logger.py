@@ -220,9 +220,8 @@ class LoggerSink(ABC):
     def close(self) -> None:
         pass
 
-    @abstractmethod
     def flush(self) -> None:
-        pass
+        self.get_handler().flush()
 
 
 class _LoggingFileHandler(logging.handlers.TimedRotatingFileHandler):
@@ -316,9 +315,6 @@ class LoggerFileSink(LoggerSink):
     def close(self) -> None:
         self.handler.close()
 
-    def flush(self) -> None:
-        self.handler.flush()
-
 
 class _LoggingConsoleHandler(logging.Handler):
     def __init__(self, stdout: TextIO, stderr: TextIO):
@@ -368,9 +364,6 @@ class LoggerConsoleSink(LoggerSink):
     def set_colored(self, colored: bool) -> None:
         """Enable or disable ANSI color output."""
         self.formatter.set_colored(colored)
-
-    def flush(self) -> None:
-        self.handler.flush()
 
 
 class Logger:
