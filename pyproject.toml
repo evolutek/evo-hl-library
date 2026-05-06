@@ -13,6 +13,8 @@ dependencies = [
     "pydantic>=2.0",
     "colorama>=0.4.6",
     "json5>=0.13.0",
+    "numpy>=2.4.4",
+    "shapely>=2.1.2",
 ]
 
 # -- Optional dependency groups --
@@ -72,5 +74,5 @@ line-length = 100
 target-version = "py314"
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "W", "T201"]
-# E = pycodestyle errors, F = pyflakes, I = isort, W = warnings, T201 = no print()
+select = ["E", "F", "I", "W", "T201", "PLW2901"]
+# T201 = no print(); PLW2901 = loop var shadowed inside body

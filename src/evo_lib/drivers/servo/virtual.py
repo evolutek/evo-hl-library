@@ -1,7 +1,12 @@
 """Servo driver: virtual implementation for testing and simulation."""
 
 from evo_lib.argtypes import ArgTypes
-from evo_lib.driver_definition import DriverCommands, DriverDefinition, DriverInitArgs, DriverInitArgsDefinition
+from evo_lib.driver_definition import (
+    DriverCommands,
+    DriverDefinition,
+    DriverInitArgs,
+    DriverInitArgsDefinition,
+)
 from evo_lib.interfaces.servo import Servo
 from evo_lib.logger import Logger
 from evo_lib.task import ImmediateResultTask, Task
@@ -66,7 +71,10 @@ class ServoVirtual(Servo):
 
     @commands.register(
         args=[],
-        result=[("enabled", ArgTypes.Bool(help="True if the servo is powered (init without subsequent free/close)"))],
+        result=[(
+            "enabled",
+            ArgTypes.Bool(help="True if the servo is powered (init without subsequent free/close)"),
+        )],
     )
     def is_enabled(self) -> Task[bool]:
         """Read whether the simulated servo is enabled."""

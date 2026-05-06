@@ -5,11 +5,10 @@ import pytest
 from evo_lib.drivers.serial.virtual import SerialVirtual
 from evo_lib.drivers.smart_servo.ax12 import (
     AX12,
+    AngleLimitError,
     AX12Bus,
     AX12BusVirtual,
-    AngleLimitError,
     DynamixelBusError,
-    DynamixelServoError,
     InputVoltageError,
     InstructionError,
     OverheatingError,

@@ -81,8 +81,8 @@ class FlowInput(Endpoint):
         self._nb_ignored_input_connections += 1
         self._update_state()
 
-    def clone(self) -> FlowInput:
-        return self.__class__(self._node, self._name)
+    def clone(self, new_node: Node) -> FlowInput:
+        return self.__class__(new_node, self._name)
 
 
 class FlowOutput(Endpoint):
@@ -115,8 +115,8 @@ class FlowOutput(Endpoint):
             inp.ignore(source=self)
         self._state = FlowEndpointState.IGNORED
 
-    def clone(self) -> FlowOutput:
-        return self.__class__(self._node, self._name)
+    def clone(self, new_node: Node) -> FlowOutput:
+        return self.__class__(new_node, self._name)
 
 
 @dataclass
@@ -145,6 +145,7 @@ class ValueInput(ValueEndpoint):
         self._default: Any = default
         self._value: Any = default
         self._connections: list[ValueOutput] = []
+        self._generation: int = 0
 
     def reset(self) -> None:
         self._value = self._default
@@ -158,35 +159,78 @@ class ValueInput(ValueEndpoint):
 
     def set_value(self, value: Any) -> None:
         self._value = value
+        # If this is the first generation, notify the node that the value input is available
+        if self._generation == 0:
+            self.get_node().on_set_value_input(self)
+        self._generation += 1
+
+    def get_generation(self) -> int:
+        return self._generation
+
+    def reset_generation(self) -> None:
+        self._generation = 0
+
+    def pull(self) -> None:
+        if len(self._connections) == 0:
+            self.get_node().on_set_value_input(self)
+            return
+
+        if len(self._connections) > 1:
+            raise ValueError("Cannot pull from a value input endpoint with multiple connections")
+
+        value_output = self._connections[0]
+        if value_output.get_node().is_pure():
+            value_output.pull()
+        else:
+            # If the connected node is not pure, we don't want to wait for it to
+            # set this value input, so we notify the node immediately that a value
+            # input is available. If no value is available yet, the default value
+            # will be used.
+            self.get_node().on_set_value_input(self)
 
     def get_value(self) -> Any:
         return self._value
 
-    def clone(self) -> ValueInput:
-        return self.__class__(self._node, self._name, self._type, self._default)
+    def clone(self, new_node: Node) -> ValueInput:
+        return self.__class__(new_node, self._name, self._type, self._default)
 
 
 class ValueOutput(ValueEndpoint):
     def __init__(self, node: Node, name: str, type: ArgType):
         super().__init__(node, name, type)
         self._connections: list[ValueInput] = []
+        self._cached_value: Any = None
 
     def get_connections(self) -> list[ValueInput]:
         return self._connections
 
+    def use_cached_value(self) -> None:
+        self.set_value(self._cached_value)
+
     def set_value(self, value: Any) -> None:
+        self._cached_value = value
         for inp in self._connections:
             inp.set_value(value)
+
+    def pull(self) -> None:
+        graph = self.get_node().get_graph()
+        assert graph is not None
+        graph.schedule_pull_value_output(self)
+
+    def on_pull(self) -> None:
+        node = self.get_node()
+        if node.is_pure():
+            node.run()
 
     def link(self, peer: ValueInput) -> None:
         self._connections.append(peer)
         peer._connections.append(self)
 
     def reset(self) -> None:
-        pass
+        self._cached_value = None
 
-    def clone(self) -> ValueOutput:
-        return self.__class__(self._node, self._name, self._type)
+    def clone(self, new_node: Node) -> ValueOutput:
+        return self.__class__(new_node, self._name, self._type)
 
 
 # -- Node --
@@ -203,6 +247,11 @@ class Node(ABC):
         self._flow_outputs: list[FlowOutput] = []
         self._nb_ignored_input_flow: int = 0
         self._nb_runned_input_flow: int = 0
+        self._nb_available_input_values: int = 0
+        self._run_requested: bool = False
+
+    def is_pure(self) -> bool:
+        return len(self._flow_inputs) == 0 and len(self._flow_outputs) == 0
 
     def clone(self) -> "Node":
         cloned = self.__class__(self._definition, self._name)
@@ -213,13 +262,13 @@ class Node(ABC):
         cloned._flow_outputs.clear()
 
         for value_input in self._value_inputs:
-            cloned._value_inputs.append(value_input.clone())
+            cloned._value_inputs.append(value_input.clone(cloned))
         for value_output in self._value_outputs:
-            cloned._value_outputs.append(value_output.clone())
+            cloned._value_outputs.append(value_output.clone(cloned))
         for flow_input in self._flow_inputs:
-            cloned._flow_inputs.append(flow_input.clone())
+            cloned._flow_inputs.append(flow_input.clone(cloned))
         for flow_output in self._flow_outputs:
-            cloned._flow_outputs.append(flow_output.clone())
+            cloned._flow_outputs.append(flow_output.clone(cloned))
 
         return cloned
 
@@ -288,22 +337,60 @@ class Node(ABC):
             flow_output.run()
         return ImmediateResultTask()
 
+    def _schedule_run_if_needed(self) -> None:
+        if self._nb_available_input_values >= len(self._value_inputs):
+            self.get_graph().schedule_run_node(self)
+
     def run(self) -> None:
-        self.get_runner()._logger.debug(f"Run node '{self.get_name()}'")
-        self.get_graph().schedule_run_node(self)
+        if self._run_requested:
+            raise RuntimeError(
+                "Trying to request node to run twice, check if there are cycles in the graph"
+            )
+        self._run_requested = True
+
+        need_to_run = False
+        if self.is_pure():
+            # Only run pure node if its value inputs have been updated
+            for value_input in self._value_inputs:
+                if value_input.get_generation() > 0:
+                    value_input.reset_generation()
+                    need_to_run = True
+        else:
+            need_to_run = True
+
+        if need_to_run:
+            self.get_runner().get_logger().debug(f"Run node '{self.get_name()}'")
+            # Reset available input values count because all input are pulled
+            self._nb_available_input_values = 0
+            # Pull all value inputs to ensure they are up-to-date
+            for value_input in self._value_inputs:
+                value_input.pull()
+            # Once all inputs are pulled, node is scheduled to be run, but
+            self._schedule_run_if_needed()
+        else:
+            self.get_runner().get_logger().debug(f"Used cached value for node '{self.get_name()}'")
+            # Do not run node and use last computed output value
+            for value_output in self._value_outputs:
+                value_output.use_cached_value()
 
     def ignore(self) -> None:
-        self.get_runner()._logger.debug(f"Ignore node '{self.get_name()}'")
+        self.get_runner().get_logger().debug(f"Ignore node '{self.get_name()}'")
         for flow_output in self._flow_outputs:
             flow_output.ignore()
 
     def reset(self) -> None:
         self._nb_ignored_input_flow = 0
         self._nb_runned_input_flow = 0
+        self._nb_available_input_values = 0
+        self._run_requested = False
         for value_input in self._value_inputs:
             value_input.reset()
+        for value_output in self._value_outputs:
+            value_output.reset()
         for flow_input in self._flow_inputs:
             flow_input.reset()
+        for flow_output in self._flow_outputs:
+            flow_output.reset()
 
     def _check_need_to_run_or_ignore(self) -> None:
         total_completed_connections = self._nb_runned_input_flow + self._nb_ignored_input_flow
@@ -323,6 +410,11 @@ class Node(ABC):
         self._nb_ignored_input_flow += 1
         self._check_need_to_run_or_ignore()
 
+    def on_set_value_input(self, input: ValueInput) -> None:
+        """Called when a value input is set."""
+        self._nb_available_input_values += 1
+        self._schedule_run_if_needed()
+
 
 # -- Node definition --
 
@@ -332,16 +424,19 @@ class NodeDefinition:
         self._type = type
         self._name = name
         self._title = title
-        self._flow_inputs: set[str] = set()
-        self._flow_outputs: set[str] = set()
+        # list (not set): preserves insertion order for export → editor pins.
+        self._flow_inputs: list[str] = []
+        self._flow_outputs: list[str] = []
         self._value_inputs: dict[str, ValueInputDefinition] = {}
         self._value_outputs: dict[str, ValueOutputDefinition] = {}
 
     def add_flow_input(self, name: str) -> None:
-        self._flow_inputs.add(name)
+        if name not in self._flow_inputs:
+            self._flow_inputs.append(name)
 
     def add_flow_output(self, name: str) -> None:
-        self._flow_outputs.add(name)
+        if name not in self._flow_outputs:
+            self._flow_outputs.append(name)
 
     def add_value_input(self, name: str, type: ArgType, default: Any = None) -> None:
         self._value_inputs[name] = ValueInputDefinition(type, default)
@@ -364,10 +459,10 @@ class NodeDefinition:
     def get_value_outputs(self) -> dict[str, ValueOutputDefinition]:
         return self._value_outputs
 
-    def get_flow_inputs(self) -> set[str]:
+    def get_flow_inputs(self) -> list[str]:
         return self._flow_inputs
 
-    def get_flow_outputs(self) -> set[str]:
+    def get_flow_outputs(self) -> list[str]:
         return self._flow_outputs
 
     def instantiate_node(self, name: str, config: ConfigObject) -> Node:

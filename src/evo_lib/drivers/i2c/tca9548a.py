@@ -191,7 +191,9 @@ class TCA9548AVirtual(TCA9548A):
         if self._current_channel == channel:
             return
         self._current_channel = channel
-        self._log.debug(f"TCA9548AVirtual 0x{self.address:02x}: selected channel {channel} (simulated)")
+        self._log.debug(
+            f"TCA9548AVirtual 0x{self.address:02x}: selected channel {channel} (simulated)"
+        )
 
 
 class TCA9548AVirtualDefinition(DriverDefinition):

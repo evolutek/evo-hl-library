@@ -306,7 +306,7 @@ class TCS34725Virtual(ColorSensor):
         result=[],
     )
     def set_color(self, name: NamedColor) -> Task[()]:
-        """Simulate the sensor perceiving ``name`` by copying its palette ref into the live reading."""
+        """Simulate perceiving ``name`` by copying its palette ref to the live reading."""
         ref = self._palette.get(name)
         if ref is None:
             raise ValueError(f"palette has no entry for {name.name}")

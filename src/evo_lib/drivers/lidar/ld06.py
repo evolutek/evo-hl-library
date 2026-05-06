@@ -58,17 +58,26 @@ class LD06LidarDriver(Lidar2D):
 
     @staticmethod
     def _process_packet(packet: bytes) -> list[Lidar2DMeasure]:
-        ## Some things are commented out for efficiency. Uncomment if you need them.
+        # Some fields are intentionally not unpacked for efficiency.
+        # Uncomment them if you need speed / timestamp / crc.
+
         ## Packet Header
-        #speed = struct.unpack('<H', packet[0:2])[0] #Bytes 0 and 1, little endian, degrees per second
-        startangle = struct.unpack('<H', packet[2:4])[0] / 100 #Bytes 2 and 3, little endian, convert to float
+        # bytes 0-1, little endian, degrees per second
+        #speed = struct.unpack('<H', packet[0:2])[0]
+        # bytes 2-3, little endian, convert to float
+        startangle = struct.unpack('<H', packet[2:4])[0] / 100
 
         ## Packet Footer
-        endangle = struct.unpack('<H', packet[40:42])[0] / 100 #Bytes 40 and 41, little endian, convert to float
-        #timestamp = struct.unpack('<H', packet[42:44])[0] #Bytes 42 and 43
-        #crc = struct.unpack('<B', packet[44:45])[0] #Byte 44
+        # bytes 40-41, little endian, convert to float
+        endangle = struct.unpack('<H', packet[40:42])[0] / 100
+        # bytes 42-43
+        #timestamp = struct.unpack('<H', packet[42:44])[0]
+        # byte 44
+        #crc = struct.unpack('<B', packet[44:45])[0]
 
-        #print("Speed:", speed, "Start Angle:", startangle, "End Angle:", endangle, "TimeStamp:", timestamp, "CRC:", crc)
+        # Debug:
+        #print("Speed:", speed, "Start Angle:", startangle,  # noqa: T201
+        #      "End Angle:", endangle, "TimeStamp:", timestamp, "CRC:", crc)
 
         ## Packet Data
         if(endangle - startangle > 0):
@@ -84,10 +93,15 @@ class LD06LidarDriver(Lidar2D):
         sample_ratio = 1 # 1 = process every reading, 2 = process every other packet, etc.
 
         for i in range(0, num_readings * bytes_per_reading, 3 * sample_ratio):
-            angle = round((angleStep * i / 3 + startangle) % 360, 1) # Angle of the reading, Degrees
-            distance = struct.unpack('<H', packet[4+i:6+i])[0] # First 2 bytes of the data structure, little endian, distance in mm
-            quality = struct.unpack('<B', packet[6+i:7+i])[0] # Last byte of the data structure, intensity of returned light, 0-255
-            data.append(Lidar2DMeasure(math.radians(angle), distance, time.monotonic(), quality / 255.0))
+            # Angle of the reading, in degrees
+            angle = round((angleStep * i / 3 + startangle) % 360, 1)
+            # First 2 bytes of the data structure, little endian, distance in mm
+            distance = struct.unpack('<H', packet[4+i:6+i])[0]
+            # Last byte of the data structure, intensity of returned light, 0-255
+            quality = struct.unpack('<B', packet[6+i:7+i])[0]
+            data.append(
+                Lidar2DMeasure(math.radians(angle), distance, time.monotonic(), quality / 255.0)
+            )
 
         return data
 
@@ -119,8 +133,9 @@ class LD06LidarDriver(Lidar2D):
                             self._measures.put_nowait(measure)
                         except Full:
                             pass
-            # else:
-            #     self._log.warning("Invalid packet LD06 lidar packet")
+            # Hint to log invalid packets, kept silent for now to avoid spam.
+            #else:
+            #    self._log.warning("Invalid packet LD06 lidar packet")
 
 
 class LD06LidarDriverDefinition(DriverDefinition):

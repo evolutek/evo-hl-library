@@ -64,7 +64,10 @@ class Tirette(Placable):
 
     @commands.register(
         args=[],
-        result=[("active_state", ArgTypes.Bool(help="True if the tirette is in place (GPIO at active state)"))],
+        result=[(
+            "active_state",
+            ArgTypes.Bool(help="True if the tirette is in place (GPIO at active state)"),
+        )],
     )
     def get_state(self) -> Task[bool]:
         """Return True if the tirette is in its active state (in place)."""
@@ -84,7 +87,8 @@ class TiretteDefinition(DriverDefinition):
         defn = DriverInitArgsDefinition()
         defn.add_required("gpio", ArgTypes.Component(GPIO, self._peripherals))
         defn.add_required(
-            "active_state", ArgTypes.Bool(help="True means the tirette is in place when GPIO is high")
+            "active_state",
+            ArgTypes.Bool(help="True means the tirette is in place when GPIO is high"),
         )
         defn.add_optional(
             "debounce_s", ArgTypes.F32(help="Stability window (s) for mechanical bouncing"), 0.0
@@ -148,7 +152,8 @@ class TiretteVirtualDefinition(DriverDefinition):
         defn = DriverInitArgsDefinition()
         defn.add_required("gpio", ArgTypes.Component(GPIOPinVirtual, self._peripherals))
         defn.add_required(
-            "active_state", ArgTypes.Bool(help="True means the tirette is in place when GPIO is high")
+            "active_state",
+            ArgTypes.Bool(help="True means the tirette is in place when GPIO is high"),
         )
         defn.add_optional(
             "debounce_s", ArgTypes.F32(help="Stability window (s) for mechanical bouncing"), 0.0

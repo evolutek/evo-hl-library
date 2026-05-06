@@ -223,8 +223,8 @@ class LoggerFormatter(logging.Formatter):
 
         # Add prefix in front of every non empty line
         lines = record.getMessage().split("\n")
-        for i, line in enumerate(lines):
-            line = line.rstrip()
+        for i, raw in enumerate(lines):
+            line = raw.rstrip()
             if line:
                 line = prefix + line
             lines[i] = line

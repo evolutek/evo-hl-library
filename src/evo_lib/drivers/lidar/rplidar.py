@@ -4,9 +4,9 @@ The RPLidar A2 is a rotating 2D lidar connected via USB serial.
 Uses the rplidar-roboticia library (already in rpi extras).
 """
 
+import math
 import os
 import time
-import math
 from queue import Empty, Full, Queue
 from threading import Thread
 from typing import TYPE_CHECKING, Iterator
@@ -56,7 +56,9 @@ class RPLidarDriver(Lidar2D):
             import adafruit_rplidar
             _rplidar = adafruit_rplidar
 
-        self._lidar = _rplidar.RPLidar(motor_pin = None, port = self._port, baudrate = self._baudrate)
+        self._lidar = _rplidar.RPLidar(
+            motor_pin = None, port = self._port, baudrate = self._baudrate
+        )
         self._log.info(f"RPLidar '{self.name}' initialized on {self._port}")
 
         return ImmediateResultTask()
@@ -140,7 +142,7 @@ class RPLidarDriver(Lidar2D):
         batch = []
         while self._running:
             try:
-                for new_scan, quality, angle, distance in self._lidar.iter_measurements(
+                for new_scan, quality, raw_angle, distance in self._lidar.iter_measurements(
                     scan_type = _rplidar.SCAN_TYPE_NORMAL,
                     max_buf_meas = 2048
                 ):
@@ -151,15 +153,17 @@ class RPLidarDriver(Lidar2D):
                         self._scan_event.trigger(batch)
                         batch = []
 
-                    angle = -angle # Lidar rotate in non trigonometric order
-                    measure = Lidar2DMeasure(distance, math.radians(angle), time.monotonic(), quality / 255.0)
+                    angle = -raw_angle # Lidar rotate in non trigonometric order
+                    measure = Lidar2DMeasure(
+                        distance, math.radians(angle), time.monotonic(), quality / 255.0
+                    )
                     try:
                         self._measures.put(measure, block = False)
                     except Full:
                         pass
                     batch.append(measure)
 
-            except _rplidar.RPLidarException as e:
+            except _rplidar.RPLidarException:
                 if self._running:
                     # self._log.error(f"RPLidar scan error: {e}")
                     self._log.error("RPLidar scan error")

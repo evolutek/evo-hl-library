@@ -4,7 +4,34 @@ from evo_lib.argtypes import argtype_from_config, argtype_to_config
 from evo_lib.config import ConfigObject
 from evo_lib.graph.graph import Graph
 from evo_lib.graph.node import NodeDefinition
+from evo_lib.graph.nodes.compare import (
+    EqNodeDefinition,
+    EqStrNodeDefinition,
+    GeNodeDefinition,
+    GtNodeDefinition,
+    LeNodeDefinition,
+    LtNodeDefinition,
+    NeNodeDefinition,
+    NeStrNodeDefinition,
+)
 from evo_lib.graph.nodes.flow import EntryNodeDefinition, ExitNodeDefinition, IfElseNodeDefinition
+from evo_lib.graph.nodes.logic import (
+    AndNodeDefinition,
+    NotNodeDefinition,
+    OrNodeDefinition,
+    XorNodeDefinition,
+)
+from evo_lib.graph.nodes.math import (
+    AbsNodeDefinition,
+    AddNodeDefinition,
+    DivNodeDefinition,
+    MaxNodeDefinition,
+    MinNodeDefinition,
+    ModNodeDefinition,
+    MulNodeDefinition,
+    NegNodeDefinition,
+    SubNodeDefinition,
+)
 from evo_lib.graph.nodes.utils import WaitNodeDefinition
 from evo_lib.registry import Registry
 
@@ -23,6 +50,30 @@ class GraphLoader:
         self.register_node_type(IfElseNodeDefinition())
         self.register_node_type(EntryNodeDefinition())
         self.register_node_type(ExitNodeDefinition())
+        # Pure math
+        self.register_node_type(AddNodeDefinition())
+        self.register_node_type(SubNodeDefinition())
+        self.register_node_type(MulNodeDefinition())
+        self.register_node_type(DivNodeDefinition())
+        self.register_node_type(ModNodeDefinition())
+        self.register_node_type(MinNodeDefinition())
+        self.register_node_type(MaxNodeDefinition())
+        self.register_node_type(NegNodeDefinition())
+        self.register_node_type(AbsNodeDefinition())
+        # Pure logic
+        self.register_node_type(AndNodeDefinition())
+        self.register_node_type(OrNodeDefinition())
+        self.register_node_type(XorNodeDefinition())
+        self.register_node_type(NotNodeDefinition())
+        # Pure comparisons
+        self.register_node_type(EqNodeDefinition())
+        self.register_node_type(NeNodeDefinition())
+        self.register_node_type(LtNodeDefinition())
+        self.register_node_type(LeNodeDefinition())
+        self.register_node_type(GtNodeDefinition())
+        self.register_node_type(GeNodeDefinition())
+        self.register_node_type(EqStrNodeDefinition())
+        self.register_node_type(NeStrNodeDefinition())
 
     def export_node_types(self) -> ConfigObject:
         """Export all registered node definitions as a config object."""
@@ -68,7 +119,9 @@ class GraphLoader:
             input_config = value_inputs_config.get_object(input_name)
             input_type = argtype_from_config(input_config)
             raw_default = input_config.get("default", None)
-            default_value = input_type.value_from_config(raw_default) if raw_default is not None else None
+            default_value = (
+                input_type.value_from_config(raw_default) if raw_default is not None else None
+            )
             graph.add_value_input(input_name, input_type, default_value)
 
         # Create value outputs

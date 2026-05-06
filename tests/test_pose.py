@@ -55,7 +55,7 @@ class TestPose2DTransform:
         assert math.isclose(result.y, 1)
 
     def test_full_transform(self):
-        """Sensor at (100, 50), facing right (theta=0), detects object at (30, 0) in sensor frame."""
+        """Sensor at (100,50), heading 0, detects object at (30,0) in sensor frame."""
         sensor = Pose2D(100, 50, 0)
         detection = Vect2D(30, 0)
         result = sensor.transform(detection)

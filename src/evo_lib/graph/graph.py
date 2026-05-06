@@ -11,14 +11,15 @@ from evo_lib.argtypes import ArgType
 from evo_lib.graph.node import (
     FlowInput,
     Node,
+    ValueInput,
     ValueInputDefinition,
+    ValueOutput,
     ValueOutputDefinition,
 )
-from evo_lib.graph.nodes.flow import CallNodeDefinition
+from evo_lib.graph.nodes.flow import CallNodeDefinition, EntryNode, ExitNode
 from evo_lib.task import DelayedTask, Task
 
 if TYPE_CHECKING:
-    from evo_lib.graph.nodes.flow import EntryNode, ExitNode
     from evo_lib.graph.runner import GraphRunner
 
 
@@ -30,7 +31,7 @@ class Graph:
         self._runner: GraphRunner | None = None
         self._running_graph_task: DelayedTask | None = None
         self._running_nodes_tasks: set[Task] = set()
-        self._nb_scheduled_flow_input = 0
+        self._nb_scheduled_things = 0
         self._lock = Lock()
 
     def get_name(self) -> str:
@@ -71,7 +72,7 @@ class Graph:
         # Check if nothing is running or pending on the graph,
         # if that the case, complete _running_graph_task
         with self._lock:
-            end = len(self._running_nodes_tasks) == 0 and self._nb_scheduled_flow_input == 0
+            end = len(self._running_nodes_tasks) == 0 and self._nb_scheduled_things == 0
         if end:
             assert self._running_graph_task is not None
             self._running_graph_task.complete()
@@ -103,13 +104,13 @@ class Graph:
         node = input_flow.get_node()
         node.on_run_flow_input(input_flow)
         with self._lock:
-            self._nb_scheduled_flow_input -= 1
+            self._nb_scheduled_things -= 1
         self._check_end()
 
     def schedule_run_flow_input(self, input_flow: FlowInput, delay: float = 0) -> None:
         assert self._runner is not None
         with self._lock:
-            self._nb_scheduled_flow_input += 1
+            self._nb_scheduled_things += 1
         self._runner.get_scheduler().schedule_after(
             delay=delay, priority=0, callback=self._do_run_flow_input, args=(input_flow,)
         )
@@ -118,15 +119,43 @@ class Graph:
         node = input_flow.get_node()
         node.on_ignore_flow_input(input_flow)
         with self._lock:
-            self._nb_scheduled_flow_input -= 1
+            self._nb_scheduled_things -= 1
         self._check_end()
 
     def schedule_ignore_flow_input(self, input_flow: FlowInput) -> None:
         assert self._runner is not None
         with self._lock:
-            self._nb_scheduled_flow_input += 1
+            self._nb_scheduled_things += 1
         self._runner.get_scheduler().schedule_now(
             priority=0, callback=self._do_ignore_flow_input, args=(input_flow,)
+        )
+
+    def _do_set_value_input(self, input_value: ValueInput) -> None:
+        input_value.get_node().on_set_value_input(input_value)
+        with self._lock:
+            self._nb_scheduled_things -= 1
+        self._check_end()
+
+    def schedule_set_value_input(self, input_value: ValueInput) -> None:
+        assert self._runner is not None
+        with self._lock:
+            self._nb_scheduled_things += 1
+        self._runner.get_scheduler().schedule_now(
+            priority=0, callback=self._do_set_value_input, args=(input_value,)
+        )
+
+    def _do_pull_value_output(self, output_value: ValueOutput) -> None:
+        output_value.on_pull()
+        with self._lock:
+            self._nb_scheduled_things -= 1
+        self._check_end()
+
+    def schedule_pull_value_output(self, output_value: ValueOutput) -> None:
+        assert self._runner is not None
+        with self._lock:
+            self._nb_scheduled_things += 1
+        self._runner.get_scheduler().schedule_now(
+            priority=0, callback=self._do_pull_value_output, args=(output_value,)
         )
 
     def get_runner(self) -> GraphRunner | None:
@@ -137,7 +166,7 @@ class Graph:
             raise RuntimeError("You can only activate a graph that is inactive")
         self._runner = runner
         self._running_graph_task = DelayedTask()
-        self._nb_scheduled_flow_input = 0
+        self._nb_scheduled_things = 0
 
     def deactivate(self) -> None:
         if not self.is_terminate():

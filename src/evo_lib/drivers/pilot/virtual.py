@@ -271,7 +271,9 @@ class HolonomicPilotVirtual(DifferentialPilotVirtual, HolonomicPilot):
     def follow_holonomic_path(
         self, waypoints: list[HolonomicPilotWaypoint]
     ) -> Task[PilotMoveStatus]:
-        raise NotImplementedError("HolonomicPilotVirtual.follow_holonomic_path is not implemented yet")
+        raise NotImplementedError(
+            "HolonomicPilotVirtual.follow_holonomic_path is not implemented yet"
+        )
 
 class HolonomicPilotVirtualDefinition(DriverDefinition):
     """Factory for HolonomicPilotVirtual from config args."""
