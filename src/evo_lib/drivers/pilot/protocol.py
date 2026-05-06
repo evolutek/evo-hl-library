@@ -34,7 +34,7 @@ class Commands(IntEnum):
     RECALAGE = 110
     SET_PWM = 111
     STOP_ASAP = 112
-    RESET = 113  # Triggers HAL_NVIC_SystemReset() on the STM32; no ACK because the board reboots before it could send one.
+    RESET = 113  # Triggers HAL_NVIC_SystemReset() on the STM32; no ACK because the board reboots before it could send one.  # noqa: E501
     MATCH_BEGIN = 114
 
     # Events (received from board)

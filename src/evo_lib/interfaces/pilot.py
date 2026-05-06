@@ -37,6 +37,7 @@ class DifferentialPilotWaypoint:
                     reached/leave this waypoint.
         velocity    Velocity of the robot at this waypoint (positive).
     """
+
     x: float
     y: float
     heading: float
@@ -53,6 +54,7 @@ class HolonomicPilotWaypoint(DifferentialPilotWaypoint):
                     direction of the velocity vector when the robot reache this
                     waypoint)
     """
+
     tangent: float
 
 
@@ -60,24 +62,24 @@ class Pilot(Placable):
     commands = DriverCommands()
 
     @abstractmethod
-    @commands.register(args = [], result = [])
+    @commands.register(args=[], result=[])
     def stop(self) -> Task[()]:
         """Immediately stop the current movement."""
         pass
 
     @abstractmethod
-    @commands.register(args = [], result = [])
+    @commands.register(args=[], result=[])
     def free(self) -> Task[()]:
         """Immediately stop motor and go into freewheel."""
         pass
 
     @abstractmethod
-    @commands.register(args = [], result = [])
+    @commands.register(args=[], result=[])
     def unfree(self) -> Task[()]:
         """Enable asservissement and keep robot in current position."""
         pass
 
-    @commands.register(args = [], result = [])
+    @commands.register(args=[], result=[])
     def match_begin(self) -> "Task[()]":
         """Notify the pilot that the match has started."""
         return ImmediateResultTask()
@@ -87,29 +89,26 @@ class Pilot(Placable):
         pass
 
     @abstractmethod
-    @commands.register(args = [], result = Vect2D.ArgType())
+    @commands.register(args=[], result=Vect2D.ArgType())
     def get_velocity(self) -> Task[Vect2D]:
         pass
 
     @abstractmethod
-    @commands.register(args = [], result = Pose2D.ArgType())
+    @commands.register(args=[], result=Pose2D.ArgType())
     def get_pose(self) -> Task[Pose2D]:
         pass
 
     @abstractmethod
-    @commands.register(args = [], result = [
-        ("pose", Pose2D.ArgType()),
-        ("velocity", Vect2D.ArgType())
-    ])
+    @commands.register(args=[], result=[("pose", Pose2D.ArgType()), ("velocity", Vect2D.ArgType())])
     def get_pose_and_velocity(self) -> Task[Pose2D, Vect2D]:
         pass
 
     @abstractmethod
-    @commands.register(args = [("pose", Pose2D.ArgType())], result = [])
+    @commands.register(args=[("pose", Pose2D.ArgType())], result=[])
     def set_pose(self, pose: Pose2D) -> Task[()]:
         pass
 
-    @commands.register(args = [], result = [])
+    @commands.register(args=[], result=[])
     def calibrate_otos(self) -> "Task[()]":
         """Calibrate an optional optical tracking sensor (OTOS).
 
@@ -119,10 +118,13 @@ class Pilot(Placable):
         return ImmediateResultTask()
 
     @abstractmethod
-    @commands.register(args = [
-        ("x", ArgTypes.F32()),
-        ("y", ArgTypes.F32()),
-    ], result = [])
+    @commands.register(
+        args=[
+            ("x", ArgTypes.F32()),
+            ("y", ArgTypes.F32()),
+        ],
+        result=[],
+    )
     def go_to(self, x: float, y: float) -> Task[PilotMoveStatus]:
         """Move to the given position. The returned Task can be cancelled."""
         pass
@@ -142,24 +144,33 @@ class Pilot(Placable):
         pass
 
     @abstractmethod
-    @commands.register(args = [
-        ("heading", ArgTypes.F32()),
-    ], result = [])
+    @commands.register(
+        args=[
+            ("heading", ArgTypes.F32()),
+        ],
+        result=[],
+    )
     def head_to(self, heading: float) -> Task[PilotMoveStatus]:
         pass
 
     @abstractmethod
-    @commands.register(args = [
-        ("x", ArgTypes.F32()),
-        ("y", ArgTypes.F32()),
-    ], result = [])
+    @commands.register(
+        args=[
+            ("x", ArgTypes.F32()),
+            ("y", ArgTypes.F32()),
+        ],
+        result=[],
+    )
     def look_at(self, x: float, y: float) -> Task[PilotMoveStatus]:
         pass
 
     @abstractmethod
-    @commands.register(args = [
-        ("angle", ArgTypes.F32()),
-    ], result = [])
+    @commands.register(
+        args=[
+            ("angle", ArgTypes.F32()),
+        ],
+        result=[],
+    )
     def rotate(self, angle: float) -> Task[PilotMoveStatus]:
         pass
 
@@ -172,9 +183,12 @@ class DifferentialPilot(Pilot):
     commands = DriverCommands([Pilot.commands])
 
     @abstractmethod
-    @commands.register(args = [
-        ("forward", ArgTypes.F32()),
-    ], result = [])
+    @commands.register(
+        args=[
+            ("forward", ArgTypes.F32()),
+        ],
+        result=[],
+    )
     def forward(self, distance: float) -> Task[PilotMoveStatus]:
         pass
 
