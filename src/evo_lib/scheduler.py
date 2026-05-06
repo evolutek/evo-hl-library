@@ -58,13 +58,14 @@ class Scheduler:
     def schedule_now(
         self, priority: int, callback: Callable, args: tuple = (), kwargs: dict[str,] | None = None
     ) -> sched.Event:
-        self._py_scheduler.enter(
+        event = self._py_scheduler.enter(
             0,
             priority,
             self._run_task,
             argument=(SchedulerTask(callback, args, kwargs or {}, traceback.extract_stack()[:-1]),),
         )
         self._new_schedule_event.set()
+        return event
 
     def schedule_after(
         self,
@@ -74,13 +75,14 @@ class Scheduler:
         args: tuple = (),
         kwargs: dict[str,] | None = None,
     ) -> sched.Event:
-        self._py_scheduler.enter(
+        event = self._py_scheduler.enter(
             delay,
             priority,
             self._run_task,
             argument=(SchedulerTask(callback, args, kwargs or {}, traceback.extract_stack()[:-1]),),
         )
         self._new_schedule_event.set()
+        return event
 
     def schedule_at(
         self,
@@ -90,13 +92,14 @@ class Scheduler:
         args: tuple = (),
         kwargs: dict[str,] | None = None,
     ) -> sched.Event:
-        self._py_scheduler.enterabs(
+        event = self._py_scheduler.enterabs(
             timepoint,
             priority,
             self._run_task,
             argument=(SchedulerTask(callback, args, kwargs or {}, traceback.extract_stack()[:-1]),),
         )
         self._new_schedule_event.set()
+        return event
 
     def cancel(self, scheduled: sched.Event) -> None:
         self._py_scheduler.cancel(scheduled)

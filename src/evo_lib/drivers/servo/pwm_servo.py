@@ -71,15 +71,13 @@ class PWMServo(Servo):
         self._lock = Lock()
 
     def wait_or_cancel_current_task(self) -> Task[()]:
-        """Wait for the current task to complete if it's the freeing task, otherwise cancel it."""
+        """Wait for the current task if it's a free, otherwise cancel and return now."""
         with self._lock:
             if self._current_task is not None:
                 if self._is_free:
                     return self._current_task
-                else:
-                    return self._current_task.cancel()
-            else:
-                return ImmediateResultTask()
+                self._current_task.cancel()
+            return ImmediateResultTask()
 
     def init(self) -> Task[()]:
         self.free()
