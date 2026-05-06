@@ -95,8 +95,7 @@ class Graph:
                 if fo._state != FlowEndpointState.WAITING or not fo.get_connections():
                     continue
                 targets = ", ".join(
-                    f"{c.get_node().get_name()}.{c.get_name()}"
-                    for c in fo.get_connections()
+                    f"{c.get_node().get_name()}.{c.get_name()}" for c in fo.get_connections()
                 )
                 stale.append(f"{node.get_name()}.{fo.get_name()} → ({targets})")
         if stale:
