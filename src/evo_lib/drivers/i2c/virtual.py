@@ -73,7 +73,7 @@ class I2CVirtual(I2C):
         self._check_ready()
         device = self.get_device(address)
         device.written.append(data)
-        return ImmediateResultTask(None)
+        return ImmediateResultTask()
 
     def read_from(self, address: int, count: int) -> Task[bytes]:
         self._check_ready()

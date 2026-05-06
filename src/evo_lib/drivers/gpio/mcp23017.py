@@ -91,7 +91,7 @@ class MCP23017Pin(GPIO):
         if self._direction != GPIODirection.OUTPUT:
             return ImmediateErrorTask(NotImplementedError("write() requires OUTPUT direction"))
         self._chip.set_bit(self._olat_reg, self._bit, state)
-        return ImmediateResultTask(None)
+        return ImmediateResultTask()
 
     def interrupt(self, edge: GPIOEdge = GPIOEdge.BOTH) -> Event[bool]:
         """Not yet supported on MCP23017."""

@@ -41,17 +41,17 @@ class ServoVirtual(Servo):
         angle = max(0.0, min(self._angle_range, angle))
         self.current_angle = angle
         self.current_fraction = angle / self._angle_range
-        return ImmediateResultTask(None)
+        return ImmediateResultTask()
 
     def move_to_fraction(self, fraction: float) -> Task[()]:
         fraction = max(0.0, min(1.0, fraction))
         self.current_fraction = fraction
         self.current_angle = fraction * self._angle_range
-        return ImmediateResultTask(None)
+        return ImmediateResultTask()
 
     def free(self) -> Task[()]:
         self.enabled = False
-        return ImmediateResultTask(None)
+        return ImmediateResultTask()
 
     @commands.register(
         args=[],

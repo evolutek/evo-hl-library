@@ -80,19 +80,19 @@ class RpiPWM(PWM):
         duty = max(0.0, min(1.0, duty))
         duty_ns = round(duty * self._period_ns)
         (self._path / "duty_cycle").write_text(str(duty_ns))
-        return ImmediateResultTask(None)
+        return ImmediateResultTask()
 
     def set_pulse_width_us(self, width_us: float) -> Task[()]:
         self._check_init()
         duty_ns = round(width_us * 1000)
         duty_ns = max(0, min(self._period_ns, duty_ns))
         (self._path / "duty_cycle").write_text(str(duty_ns))
-        return ImmediateResultTask(None)
+        return ImmediateResultTask()
 
     def free(self) -> Task[()]:
         self._check_init()
         (self._path / "duty_cycle").write_text("0")
-        return ImmediateResultTask(None)
+        return ImmediateResultTask()
 
 
 class RpiPWMDefinition(DriverDefinition):

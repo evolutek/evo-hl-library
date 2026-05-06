@@ -43,18 +43,18 @@ class PWMVirtual(PWM):
     def set_duty_cycle(self, duty: float) -> Task[()]:
         self.duty_cycle = max(0.0, min(1.0, duty))
         self.pulse_width_us = self.duty_cycle * 1_000_000.0 / self._freq_hz
-        return ImmediateResultTask(None)
+        return ImmediateResultTask()
 
     def set_pulse_width_us(self, width_us: float) -> Task[()]:
         period_us = 1_000_000.0 / self._freq_hz
         self.duty_cycle = max(0.0, min(1.0, width_us / period_us))
         self.pulse_width_us = self.duty_cycle * period_us
-        return ImmediateResultTask(None)
+        return ImmediateResultTask()
 
     def free(self) -> Task[()]:
         self.duty_cycle = 0.0
         self.pulse_width_us = 0.0
-        return ImmediateResultTask(None)
+        return ImmediateResultTask()
 
     @commands.register(
         args=[],
