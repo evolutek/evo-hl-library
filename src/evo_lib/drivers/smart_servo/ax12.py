@@ -492,7 +492,7 @@ class AX12(SmartServo):
         while True:
             if timeout is not None and time.time() - start_time > timeout:
                 raise TimeoutError("Move timed out")
-            current_position = self.get_position(ServoAngleUnit.NATIVE).wait()[0]
+            (current_position,) = self.get_position(ServoAngleUnit.NATIVE).wait()
             remaining_distance = wait_position - current_position
             if abs(remaining_distance) < self._goal_reached_tolerance:
                 break  # If we're close enough, return
