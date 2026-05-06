@@ -25,7 +25,7 @@ class TestFSMTransitions:
     def test_valid_transition(self):
         fsm = make_fsm()
         fsm.register(St.A, lambda: ImmediateResultTask(St.B), prevs=[])
-        fsm.register(St.B, lambda: ImmediateResultTask(None), prevs=[St.A])
+        fsm.register(St.B, lambda: ImmediateResultTask(), prevs=[St.A])
         task = fsm.start(St.A)
         task.wait()
         assert fsm.state == St.B
@@ -33,8 +33,8 @@ class TestFSMTransitions:
     def test_invalid_transition_raises(self):
         fsm = make_fsm()
         fsm.register(St.A, lambda: ImmediateResultTask(St.C), prevs=[])
-        fsm.register(St.B, lambda: ImmediateResultTask(None), prevs=[St.A])
-        fsm.register(St.C, lambda: ImmediateResultTask(None), prevs=[St.B])
+        fsm.register(St.B, lambda: ImmediateResultTask(), prevs=[St.A])
+        fsm.register(St.C, lambda: ImmediateResultTask(), prevs=[St.B])
         task = fsm.start(St.A)
         with pytest.raises(TransitionError, match="not allowed"):
             task.wait()
@@ -43,7 +43,7 @@ class TestFSMTransitions:
         fsm = make_fsm()
         fsm.register(St.A, lambda: ImmediateResultTask(St.B), prevs=[])
         fsm.register(St.B, lambda: ImmediateResultTask(St.C), prevs=[St.A])
-        fsm.register(St.C, lambda: ImmediateResultTask(None), prevs=[St.B])
+        fsm.register(St.C, lambda: ImmediateResultTask(), prevs=[St.B])
         task = fsm.start(St.A)
         task.wait()
         assert fsm.state == St.C
@@ -52,20 +52,20 @@ class TestFSMTransitions:
 class TestFSMStart:
     def test_unregistered_state_raises(self):
         fsm = make_fsm()
-        fsm.register(St.A, lambda: ImmediateResultTask(None), prevs=[])
+        fsm.register(St.A, lambda: ImmediateResultTask(), prevs=[])
         with pytest.raises(TransitionError, match="not registered"):
             fsm.start(St.B)
 
     def test_non_start_state_raises(self):
         fsm = make_fsm()
         fsm.register(St.A, lambda: ImmediateResultTask(St.B), prevs=[])
-        fsm.register(St.B, lambda: ImmediateResultTask(None), prevs=[St.A])
+        fsm.register(St.B, lambda: ImmediateResultTask(), prevs=[St.A])
         with pytest.raises(TransitionError, match="not a valid start state"):
             fsm.start(St.B)
 
     def test_double_start_raises(self):
         fsm = make_fsm()
-        fsm.register(St.A, lambda: ImmediateResultTask(None), prevs=[])
+        fsm.register(St.A, lambda: ImmediateResultTask(), prevs=[])
         fsm.start(St.A)
         with pytest.raises(RuntimeError, match="already started"):
             fsm.start(St.A)
@@ -102,7 +102,7 @@ class TestFSMErrorState:
 
         def error_callback():
             entered_error.set()
-            return ImmediateResultTask(None)
+            return ImmediateResultTask()
 
         def failing():
             t = DelayedTask()
@@ -155,7 +155,7 @@ class TestFSMHooks:
             on_enter=lambda: log.append("enter_A"),
         )
         fsm.register(
-            St.B, lambda: ImmediateResultTask(None), prevs=[St.A],
+            St.B, lambda: ImmediateResultTask(), prevs=[St.A],
             on_enter=lambda: log.append("enter_B"),
         )
         fsm.start(St.A).wait()
@@ -169,7 +169,7 @@ class TestFSMHooks:
             on_exit=lambda: log.append("exit_A"),
         )
         fsm.register(
-            St.B, lambda: ImmediateResultTask(None), prevs=[St.A],
+            St.B, lambda: ImmediateResultTask(), prevs=[St.A],
             on_exit=lambda: log.append("exit_B"),
         )
         fsm.start(St.A).wait()
@@ -184,7 +184,7 @@ class TestFSMHooks:
             on_exit=lambda: log.append("exit_A"),
         )
         fsm.register(
-            St.B, lambda: ImmediateResultTask(None), prevs=[St.A],
+            St.B, lambda: ImmediateResultTask(), prevs=[St.A],
             on_enter=lambda: log.append("enter_B"),
             on_exit=lambda: log.append("exit_B"),
         )
@@ -215,7 +215,7 @@ class TestFSMCancel:
 
     def test_cancel_when_not_started_is_noop(self):
         fsm = make_fsm()
-        fsm.register(St.A, lambda: ImmediateResultTask(None), prevs=[])
+        fsm.register(St.A, lambda: ImmediateResultTask(), prevs=[])
         fsm.cancel()
 
 
@@ -224,7 +224,7 @@ class TestFSMThreaded:
         pending = DelayedTask()
         fsm = make_fsm()
         fsm.register(St.A, lambda: pending, prevs=[])
-        fsm.register(St.B, lambda: ImmediateResultTask(None), prevs=[St.A])
+        fsm.register(St.B, lambda: ImmediateResultTask(), prevs=[St.A])
         task = fsm.start(St.A)
         assert fsm.state == St.A
 

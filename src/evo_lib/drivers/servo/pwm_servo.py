@@ -108,18 +108,16 @@ class PWMServo(Servo):
         self.wait_or_cancel_current_task().wait()
 
         if unit == ServoAngleUnit.NATIVE:
-            fraction = position
+            angle = position
         elif unit == ServoAngleUnit.DEGREES:
-            fraction = position / self._angle_range
+            angle = position
         elif unit == ServoAngleUnit.FRACTION:
-            fraction = position
+            angle = position / self._angle_range
         elif unit == ServoAngleUnit.RADIANS:
-            fraction = position / math.radians(self._angle_range)
+            angle = math.radians(position)
         else:
             raise ValueError(f"Invalid unit: {unit}")
 
-        fraction = max(0.0, min(1.0, fraction))
-        angle = fraction * self._angle_range
         angle = max(self._min_angle, min(self._max_angle, angle))
         fraction = angle / self._angle_range
         pulse_us = self._min_pulse_us + fraction * (self._max_pulse_us - self._min_pulse_us)
@@ -148,7 +146,7 @@ class PWMServo(Servo):
 
         return move_task
 
-    def _on_free_complete(self) -> None:
+    def _on_free_done(self) -> None:
         with self._lock:
             self._current_task = None
 
@@ -157,7 +155,7 @@ class PWMServo(Servo):
         self._is_free = True
         free_task = self._pwm.free()
         self._current_task = free_task
-        free_task.on_complete(self._on_free_complete)
+        free_task.on_done(self._on_free_done)
         return free_task
 
     @commands.register(

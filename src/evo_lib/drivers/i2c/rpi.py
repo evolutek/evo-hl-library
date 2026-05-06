@@ -53,7 +53,7 @@ class RpiI2C(I2C):
         self._check_ready()
         with self._lock:
             self._i2c.i2c_rdwr(i2c_msg.write(address, data))
-        return ImmediateResultTask(None)
+        return ImmediateResultTask()
 
     def read_from(self, address: int, count: int) -> Task[bytes]:
         from smbus2 import i2c_msg

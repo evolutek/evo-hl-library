@@ -31,22 +31,22 @@ class TCA9548A(InterfaceHolder):
     def __init__(self, name: str, logger: Logger, parent_bus: I2C, address: int = 0x70):
         super().__init__(name)
         self._log = logger
-        self.parent_bus = parent_bus
-        self.address = address
+        self._parent_bus = parent_bus
+        self._address = address
         self._lock = threading.Lock()
         self._current_channel: int | None = None
-        self._channels: dict[int, "TCA9548AChannel"] = {
+        self._channels: dict[int, TCA9548AChannel] = {
             i: TCA9548AChannel(self, i) for i in range(NUM_CHANNELS)
         }
 
     def init(self) -> Task[()]:
         # Deselect all channels (write 0x00) to start from a known state,
         # even if a previous run left a channel active.
-        self.parent_bus.write_to(self.address, bytes([0x00])).wait()
+        self._parent_bus.write_to(self._address, bytes([0x00])).wait()
         self._current_channel = None
         for ch in self._channels.values():
             ch.init().wait()
-        self._log.info(f"TCA9548A '{self.name}' initialized at 0x{self.address:02x}")
+        self._log.info(f"TCA9548A '{self.name}' initialized at 0x{self._address:02x}")
         return ImmediateResultTask()
 
     def close(self) -> None:
@@ -54,7 +54,7 @@ class TCA9548A(InterfaceHolder):
         try:
             # Write 0x00 to the control register: deselects every channel,
             # leaving the mux in a known state for the next consumer.
-            self.parent_bus.write_to(self.address, bytes([0x00])).wait()
+            self._parent_bus.write_to(self._address, bytes([0x00])).wait()
         except OSError:
             self._log.warning(f"TCA9548A '{self.name}': I2C error during close")
         for ch in self._channels.values():
@@ -70,9 +70,9 @@ class TCA9548A(InterfaceHolder):
         """Write the channel bitmask to the TCA control register."""
         if self._current_channel == channel:
             return
-        self.parent_bus.write_to(self.address, bytes([1 << channel])).wait()
+        self._parent_bus.write_to(self._address, bytes([1 << channel])).wait()
         self._current_channel = channel
-        self._log.debug(f"TCA9548A 0x{self.address:02x}: selected channel {channel}")
+        # self._log.debug(f"TCA9548A 0x{self._address:02x}: selected channel {channel}")
 
     def get_channel(self, channel: int) -> "TCA9548AChannel":
         if not 0 <= channel < NUM_CHANNELS:
@@ -109,29 +109,29 @@ class TCA9548AChannel(I2C):
         self._check_ready()
         with self._mux._lock:
             self._mux.select_channel(self._channel)
-            self._mux.parent_bus.write_to(address, data).wait()
-        return ImmediateResultTask(None)
+            self._mux._parent_bus.write_to(address, data).wait()
+        return ImmediateResultTask()
 
     def read_from(self, address: int, count: int) -> Task[bytes]:
         self._check_ready()
         with self._mux._lock:
             self._mux.select_channel(self._channel)
-            (data,) = self._mux.parent_bus.read_from(address, count).wait()
+            (data,) = self._mux._parent_bus.read_from(address, count).wait()
         return ImmediateResultTask(data)
 
     def write_then_read(self, address: int, out_data: bytes, in_count: int) -> Task[bytes]:
         self._check_ready()
         with self._mux._lock:
             self._mux.select_channel(self._channel)
-            (data,) = self._mux.parent_bus.write_then_read(address, out_data, in_count).wait()
+            (data,) = self._mux._parent_bus.write_then_read(address, out_data, in_count).wait()
         return ImmediateResultTask(data)
 
     def scan(self) -> Task[list[int]]:
         self._check_ready()
         with self._mux._lock:
             self._mux.select_channel(self._channel)
-            (addresses,) = self._mux.parent_bus.scan().wait()
-        return ImmediateResultTask([addr for addr in addresses if addr != self._mux.address])
+            (addresses,) = self._mux._parent_bus.scan().wait()
+        return ImmediateResultTask([addr for addr in addresses if addr != self._mux._address])
 
 
 class TCA9548ADefinition(DriverDefinition):
@@ -177,7 +177,7 @@ class TCA9548AVirtual(TCA9548A):
         self._current_channel = None
         for ch in self._channels.values():
             ch.init().wait()
-        self._log.info(f"TCA9548AVirtual '{self.name}' initialized at 0x{self.address:02x}")
+        self._log.info(f"TCA9548AVirtual '{self.name}' initialized at 0x{self._address:02x}")
         return ImmediateResultTask()
 
     def close(self) -> None:
@@ -192,7 +192,7 @@ class TCA9548AVirtual(TCA9548A):
             return
         self._current_channel = channel
         self._log.debug(
-            f"TCA9548AVirtual 0x{self.address:02x}: selected channel {channel} (simulated)"
+            f"TCA9548AVirtual 0x{self._address:02x}: selected channel {channel} (simulated)"
         )
 
 

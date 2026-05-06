@@ -68,8 +68,7 @@ class PCA9685Channel(PWM):
         # Force the channel to full-off at init. PCA9685's RESTART bit
         # preserves previous duty cycles across a sleep/wake cycle, so
         # without this a servo could snap back to its pre-reset angle.
-        self.free().wait()
-        return ImmediateResultTask()
+        return self.free()
 
     def close(self) -> None:
         self.free().wait()
@@ -90,7 +89,7 @@ class PCA9685Channel(PWM):
             )
         self._last_duty_cycle = duty
         self._last_pulse_width_us = duty * 1_000_000.0 / self._chip.freq_hz
-        return ImmediateResultTask(None)
+        return ImmediateResultTask()
 
     def set_pulse_width_us(self, width_us: float) -> Task[()]:
         """Convert pulse width to duty cycle and apply."""
@@ -145,8 +144,7 @@ class PCA9685Chip(InterfaceHolder):
         self._log = logger
         self._lock = threading.Lock()
         self._channels: dict[int, PCA9685Channel] = {
-            i: PCA9685Channel(f"{name}.ch{i}", logger, self, i)
-            for i in range(NUM_CHANNELS)
+            i: PCA9685Channel(f"{name}.ch{i}", logger, self, i) for i in range(NUM_CHANNELS)
         }
 
     @property
