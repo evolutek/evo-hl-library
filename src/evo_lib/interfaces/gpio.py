@@ -30,16 +30,12 @@ class GPIO(Interface):
     commands = DriverCommands()
 
     @abstractmethod
-    @commands.register(args = [], result = [
-        ("state", ArgTypes.Bool(help = "The current state"))
-    ])
+    @commands.register(args=[], result=[("state", ArgTypes.Bool(help="The current state"))])
     def read(self) -> Task[bool]:
         """Read current pin state (True = high, False = low)."""
 
     @abstractmethod
-    @commands.register(args = [
-        ("state", ArgTypes.Bool(help = "The state to set"))
-    ], result = [])
+    @commands.register(args=[("state", ArgTypes.Bool(help="The state to set"))], result=[])
     def write(self, state: bool) -> Task[()]:
         """Set the output state (True = high, False = low)."""
 

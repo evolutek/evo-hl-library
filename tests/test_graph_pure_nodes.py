@@ -190,10 +190,24 @@ def test_loader_registers_all_pure_nodes():
     exported = loader.export_node_types()
     names = set(exported["nodes"].keys())
     expected = {
-        "math/add", "math/sub", "math/mul", "math/div", "math/mod",
-        "math/min", "math/max", "math/neg", "math/abs",
-        "logic/and", "logic/or", "logic/xor", "logic/not",
-        "compare/eq", "compare/ne", "compare/lt", "compare/le",
-        "compare/gt", "compare/ge",
+        "math/add",
+        "math/sub",
+        "math/mul",
+        "math/div",
+        "math/mod",
+        "math/min",
+        "math/max",
+        "math/neg",
+        "math/abs",
+        "logic/and",
+        "logic/or",
+        "logic/xor",
+        "logic/not",
+        "compare/eq",
+        "compare/ne",
+        "compare/lt",
+        "compare/le",
+        "compare/gt",
+        "compare/ge",
     }
     assert expected.issubset(names)
