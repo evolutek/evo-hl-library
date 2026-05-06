@@ -74,6 +74,12 @@ class Task[*T](ABC):
         self.on_error(task.error)
         return task
 
+    def chain(self, task: DelayedTask[*T]) -> Task[*T]:
+        """Chain this task to another task, so that the other task is executed after this one."""
+        self.on_complete(task.complete)
+        self.on_error(task.error)
+        return self
+
 
 class ImmediateResultTask[*T](Task[*T]):
     def __init__(self, *result: *T):

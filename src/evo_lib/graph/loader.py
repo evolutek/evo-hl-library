@@ -133,7 +133,7 @@ class GraphLoader:
         for output_name in value_outputs_config.keys():
             output_config = value_outputs_config.get_object(output_name)
             output_type = argtype_from_config(output_config)
-            graph.add_value_output(name, output_type)
+            graph.add_value_output(output_name, output_type)
 
         # Create flow outputs
         flow_outputs_config = config.get_array_or("flow_outputs", [])
