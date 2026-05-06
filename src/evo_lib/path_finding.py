@@ -416,7 +416,7 @@ class PathFindingMap:
                 previous[current_point_index] = previous_point_index
 
             visiteds[current_point_index] = True
-            # distances[current_point_index] = current_distance + current_point.distance(destination)
+            # distances[current_point_index] = current_distance + current_point.distance(destination)  # noqa: E501
 
             if current_point_index == destination_index:
                 break
@@ -429,14 +429,14 @@ class PathFindingMap:
                 shape_start_index = shapes_start_index[shape_index]
 
                 for outermost_point_index in outermost_points_index:
-                    outermost_point_index += shape_start_index
-                    if not visiteds[outermost_point_index]:
-                        d = current_distance + current_point.distance(points[outermost_point_index])
+                    abs_index = outermost_point_index + shape_start_index
+                    if not visiteds[abs_index]:
+                        d = current_distance + current_point.distance(points[abs_index])
                         heapq.heappush(
                             queue,
                             (
-                                d + heuristics[outermost_point_index],
-                                outermost_point_index,
+                                d + heuristics[abs_index],
+                                abs_index,
                                 current_point_index,
                             ),
                         )
@@ -448,11 +448,11 @@ class PathFindingMap:
                 shape_start_index = shapes_start_index[current_shape_index]
 
                 for next_index in nexts:
-                    next_index += shape_start_index
-                    if not visiteds[next_index]:
-                        d = current_distance + current_point.distance(points[next_index])
+                    abs_index = next_index + shape_start_index
+                    if not visiteds[abs_index]:
+                        d = current_distance + current_point.distance(points[abs_index])
                         heapq.heappush(
-                            queue, (d + heuristics[next_index], next_index, current_point_index)
+                            queue, (d + heuristics[abs_index], abs_index, current_point_index)
                         )
 
             heapq.heappush(
@@ -464,7 +464,7 @@ class PathFindingMap:
                 ),
             )
 
-        # print(f"Line of sight check done: {int(nb_line_of_sign_checks / (nb_points * nb_points) * 100 + 0.5)}% ({nb_line_of_sign_checks})")
+        # print(f"Line of sight check done: {int(nb_line_of_sign_checks / (nb_points * nb_points) * 100 + 0.5)}% ({nb_line_of_sign_checks})")  # noqa: E501
         # print(f"Maximum reached min-heap size: {max_heap_size}")
 
         # Check if a path has been found
