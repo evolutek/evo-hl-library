@@ -507,17 +507,18 @@ class AX12(SmartServo):
         timeout: float | None = None,
     ) -> Task[()]:
         if unit == ServoAngleUnit.DEGREES:
-            raw_position = max(0.0, min(_ANGLE_MAX, position))
+            raw_position = max(0.0, min(_ANGLE_MAX, position)) * _POSITION_MAX / _ANGLE_MAX
         elif unit == ServoAngleUnit.FRACTION:
-            raw_position = max(0.0, min(1.0, position))
+            raw_position = max(0.0, min(1.0, position)) * _POSITION_MAX
         elif unit == ServoAngleUnit.RADIANS:
-            raw_position = max(0.0, min(_ANGLE_MAX, position * 180.0 / math.pi))
+            deg = max(0.0, min(_ANGLE_MAX, math.degrees(position)))
+            raw_position = deg * _POSITION_MAX / _ANGLE_MAX
         elif unit == ServoAngleUnit.NATIVE:
             raw_position = position
         else:
             raise ValueError(f"Invalid unit: {unit}")
 
-        raw_position = max(0, min(_POSITION_MAX, int(raw_position)))
+        raw_position = max(0, min(_POSITION_MAX, round(raw_position)))
         self._write_word(_GOAL_POSITION_L, raw_position)
 
         if wait_multiplier == 0:

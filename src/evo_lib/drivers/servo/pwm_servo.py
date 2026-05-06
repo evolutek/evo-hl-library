@@ -110,9 +110,9 @@ class PWMServo(Servo):
         elif unit == ServoAngleUnit.DEGREES:
             angle = position
         elif unit == ServoAngleUnit.FRACTION:
-            angle = position / self._angle_range
+            angle = position * self._angle_range
         elif unit == ServoAngleUnit.RADIANS:
-            angle = math.radians(position)
+            angle = math.degrees(position)
         else:
             raise ValueError(f"Invalid unit: {unit}")
 
