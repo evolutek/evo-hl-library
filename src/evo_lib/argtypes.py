@@ -23,12 +23,12 @@ class TypeMismatchError(TypeError):
 
 def _int_enum_only(method):
     """Guard binary serialization methods of ArgTypes.Enum: refuse non-IntEnum classes."""
+
     def wrapper(self, *args, **kwargs):
         if not issubclass(self.enum_type, IntEnum):
-            raise TypeError(
-                f"binary serialization requires IntEnum, got {self.enum_type.__name__}"
-            )
+            raise TypeError(f"binary serialization requires IntEnum, got {self.enum_type.__name__}")
         return method(self, *args, **kwargs)
+
     return wrapper
 
 
