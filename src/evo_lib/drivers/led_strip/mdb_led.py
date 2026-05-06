@@ -62,11 +62,11 @@ class MdbLedState(IntEnum):
 # Per-state refresh delay in seconds. ``None`` = static (animator parks
 # until the next state/team-color change).
 _REFRESH_S: dict[MdbLedState, float | None] = {
-    MdbLedState.Off:      None,
-    MdbLedState.Running:  None,
+    MdbLedState.Off: None,
+    MdbLedState.Running: None,
     MdbLedState.Disabled: 0.25,
-    MdbLedState.Error:    0.50,
-    MdbLedState.Loading:  0.05,
+    MdbLedState.Error: 0.50,
+    MdbLedState.Loading: 0.05,
 }
 
 

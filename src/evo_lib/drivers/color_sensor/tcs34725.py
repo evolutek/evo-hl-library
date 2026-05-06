@@ -78,12 +78,12 @@ def _atime_to_ms(atime: int) -> float:
 # Indicative refs for AGAIN=4×, ATIME≈100 ms, lit by the on-board white LED.
 # Refine per-instance via calibrate() if responsivity drifts too much.
 TCS34725_DEFAULT_PALETTE: dict[NamedColor, Color] = {
-    NamedColor.Black:  Color.from_rgbc(   200,   200,   200,    600, name="Black"),
-    NamedColor.White:  Color.from_rgbc( 15000, 15000, 15000,  45000, name="White"),
-    NamedColor.Red:    Color.from_rgbc(  8500,  1200,   800,  10500, name="Red"),
-    NamedColor.Green:  Color.from_rgbc(  1100,  6200,  1400,   8700, name="Green"),
-    NamedColor.Blue:   Color.from_rgbc(   800,  1400,  5500,   7700, name="Blue"),
-    NamedColor.Yellow: Color.from_rgbc(  7000,  6500,  1500,  15000, name="Yellow"),
+    NamedColor.Black: Color.from_rgbc(200, 200, 200, 600, name="Black"),
+    NamedColor.White: Color.from_rgbc(15000, 15000, 15000, 45000, name="White"),
+    NamedColor.Red: Color.from_rgbc(8500, 1200, 800, 10500, name="Red"),
+    NamedColor.Green: Color.from_rgbc(1100, 6200, 1400, 8700, name="Green"),
+    NamedColor.Blue: Color.from_rgbc(800, 1400, 5500, 7700, name="Blue"),
+    NamedColor.Yellow: Color.from_rgbc(7000, 6500, 1500, 15000, name="Yellow"),
 }
 
 
@@ -128,7 +128,7 @@ class TCS34725(ColorSensor):
                 flash = "ON" if self._use_flash_differential else "OFF"
                 self._log.info(
                     f"TCS34725 '{self.name}' initialized at 0x{self._address:02x} "
-                    f"(integration={_atime_to_ms(self._atime):.1f}ms, gain={self._gain}x, flash={flash})"
+                    f"(integration={_atime_to_ms(self._atime):.1f}ms, gain={self._gain}x, flash={flash})"  # noqa: E501
                 )
                 task.complete()
             except Exception as exc:
@@ -186,7 +186,10 @@ class TCS34725(ColorSensor):
 
     @commands.register(
         args=[
-            ("name", ArgTypes.Enum(NamedColor, help="Color to calibrate against the presented pad")),
+            (
+                "name",
+                ArgTypes.Enum(NamedColor, help="Color to calibrate against the presented pad"),
+            ),
         ],
         result=[],
     )
@@ -328,7 +331,7 @@ class TCS34725(ColorSensor):
         result=[("chip_id", ArgTypes.U8(help="0x44 for TCS34725, 0x4D for TCS34727"))],
     )
     def get_chip_id(self) -> Task[int]:
-        """Read the chip ID register (0x12). Useful to confirm the I2C path on the right mux channel."""
+        """Read the chip ID register (0x12). Useful to confirm the I2C path on the right mux channel."""  # noqa: E501
         return ImmediateResultTask(self._read_register(_ID))
 
     @commands.register(
@@ -366,16 +369,12 @@ class TCS34725(ColorSensor):
             if self._read_register(_STATUS) & _STATUS_AVALID:
                 return
             if time.monotonic() >= deadline:
-                raise TimeoutError(
-                    f"TCS34725 '{self.name}' AVALID not set within {timeout_s}s"
-                )
+                raise TimeoutError(f"TCS34725 '{self.name}' AVALID not set within {timeout_s}s")
             time.sleep(0.002)
 
     def _write_register(self, register: int, value: int) -> None:
         with self._lock:
-            self._bus.write_to(
-                self._address, bytes([_COMMAND_BIT | register, value])
-            ).wait()
+            self._bus.write_to(self._address, bytes([_COMMAND_BIT | register, value])).wait()
 
     def _read_register(self, register: int) -> int:
         with self._lock:

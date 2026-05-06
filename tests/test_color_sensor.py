@@ -37,6 +37,7 @@ def logger():
 
 # ── Representation types ─────────────────────────────────────────────────
 
+
 class TestColorRGBC:
     def test_to_rgb_normalizes_by_full_scale(self):
         rgbc = ColorRGBC(32768, 16384, 8192, 100000, full_scale=65535)
@@ -106,6 +107,7 @@ class TestColorHex:
 
 # ── Composite Color (lazy multi-repr) ────────────────────────────────────
 
+
 class TestColor:
     def test_needs_at_least_one_source(self):
         with pytest.raises(ValueError):
@@ -148,6 +150,7 @@ class TestPureColors:
 
 # ── Palette classification ───────────────────────────────────────────────
 
+
 class TestPaletteHSV:
     def _palette(self):
         return Palette(refs=dict(TCS34725_DEFAULT_PALETTE))
@@ -180,11 +183,13 @@ class TestPaletteHSV:
 class TestPaletteChroma:
     def test_invariant_to_intensity(self):
         # Same ratios at two very different intensities → same classification.
-        p = Palette(refs={
-            NamedColor.Red: Color.from_rgbc(8500, 1200, 800, 10500),
-            NamedColor.Blue: Color.from_rgbc(800, 1400, 5500, 7700),
-        })
-        dim = Color.from_rgbc(425, 60, 40, 525)   # 20× dimmer Red
+        p = Palette(
+            refs={
+                NamedColor.Red: Color.from_rgbc(8500, 1200, 800, 10500),
+                NamedColor.Blue: Color.from_rgbc(800, 1400, 5500, 7700),
+            }
+        )
+        dim = Color.from_rgbc(425, 60, 40, 525)  # 20× dimmer Red
         bright = Color.from_rgbc(17000, 2400, 1600, 21000)  # 2× brighter Red
         assert p.classify(dim, method="chroma") is NamedColor.Red
         assert p.classify(bright, method="chroma") is NamedColor.Red
@@ -192,19 +197,23 @@ class TestPaletteChroma:
 
 class TestPaletteRGBC:
     def test_closest_raw_wins(self):
-        p = Palette(refs={
-            NamedColor.Red: Color.from_rgbc(8000, 1000, 1000, 10000),
-            NamedColor.Green: Color.from_rgbc(1000, 8000, 1000, 10000),
-        })
+        p = Palette(
+            refs={
+                NamedColor.Red: Color.from_rgbc(8000, 1000, 1000, 10000),
+                NamedColor.Green: Color.from_rgbc(1000, 8000, 1000, 10000),
+            }
+        )
         measured = Color.from_rgbc(7500, 1100, 900, 9500)
         assert p.classify(measured, method="rgbc") is NamedColor.Red
 
     def test_unknown_ref_is_never_returned(self):
         # Even with a spot-on match on Unknown, classify must fall back to a real entry.
-        p = Palette(refs={
-            NamedColor.Unknown: Color.from_rgbc(0, 0, 0, 0),
-            NamedColor.Red: Color.from_rgbc(8000, 1000, 1000, 10000),
-        })
+        p = Palette(
+            refs={
+                NamedColor.Unknown: Color.from_rgbc(0, 0, 0, 0),
+                NamedColor.Red: Color.from_rgbc(8000, 1000, 1000, 10000),
+            }
+        )
         assert p.classify(Color.from_rgbc(0, 0, 0, 0), method="rgbc") is NamedColor.Red
 
 
@@ -223,6 +232,7 @@ class TestPaletteMisc:
 
 # ── TCS34725 (real, register-level over virtual I2C) ─────────────────────
 
+
 class TestTCS34725:
     def _bus_with_device(self):
         bus = I2CVirtual()
@@ -234,10 +244,10 @@ class TestTCS34725:
         sensor = TCS34725(name="cs0", logger=logger, bus=bus, gain=4)
         sensor.init().wait()
 
-        assert dev.written[0] == bytes([0x80, 0x01])              # ENABLE = PON
-        assert dev.written[1] == bytes([0x80, 0x03])              # ENABLE = PON|AEN
-        assert dev.written[2][0] == 0x81                          # ATIME register
-        assert dev.written[3] == bytes([0x80 | 0x0F, 0x01])       # CONTROL = 4× (0x01)
+        assert dev.written[0] == bytes([0x80, 0x01])  # ENABLE = PON
+        assert dev.written[1] == bytes([0x80, 0x03])  # ENABLE = PON|AEN
+        assert dev.written[2][0] == 0x81  # ATIME register
+        assert dev.written[3] == bytes([0x80 | 0x0F, 0x01])  # CONTROL = 4× (0x01)
 
     def test_read_color_parses_rgbc_without_flash(self, logger):
         # No light wired → flash differential auto-disabled; single read path.
@@ -283,8 +293,12 @@ class TestTCS34725:
         pwm.init().wait()
         led = PWMLed(name="led", logger=logger, pwm=pwm)
         sensor = TCS34725(
-            name="cs0", logger=logger, bus=bus, light=led,
-            integration_time_ms=3.0, use_flash_differential=False,
+            name="cs0",
+            logger=logger,
+            bus=bus,
+            light=led,
+            integration_time_ms=3.0,
+            use_flash_differential=False,
         )
         sensor.init().wait()
         dev.inject_read(_AVALID_READY)
@@ -372,6 +386,7 @@ class TestTCS34725:
 
 # ── TCS34725Virtual ──────────────────────────────────────────────────────
 
+
 class TestTCS34725Virtual:
     def test_inject_then_read_roundtrips(self, logger):
         sensor = TCS34725Virtual(name="cs0", logger=logger)
@@ -408,7 +423,10 @@ class TestTCS34725Virtual:
         (raw,) = sensor.read_color().wait()
         ref = sensor._palette.get(NamedColor.Red)
         assert (raw.r, raw.g, raw.b, raw.c) == (
-            ref.rgbc.r, ref.rgbc.g, ref.rgbc.b, ref.rgbc.c,
+            ref.rgbc.r,
+            ref.rgbc.g,
+            ref.rgbc.b,
+            ref.rgbc.c,
         )
 
     def test_set_color_raises_on_missing_palette_entry(self, logger):
@@ -457,6 +475,7 @@ class TestTCS34725Virtual:
 
 
 # ── ATIME helpers ────────────────────────────────────────────────────────
+
 
 def test_atime_conversions_roundtrip():
     for ms in (2.4, 24.0, 100.8, 614.4):
