@@ -54,7 +54,7 @@ class Graph:
     def get_value_inputs(self) -> dict[str, ValueInputDefinition]:
         return self._call_node_definition.get_value_inputs()
 
-    def get_flow_outputs(self) -> set[str]:
+    def get_flow_outputs(self) -> list[str]:
         return self._call_node_definition.get_flow_outputs()
 
     def get_call_node_definition(self) -> CallNodeDefinition:
