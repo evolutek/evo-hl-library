@@ -18,6 +18,7 @@ from evo_lib.interfaces.gpio import GPIO, GPIODirection, GPIOEdge
 from evo_lib.interfaces.i2c import I2C
 from evo_lib.logger import Logger
 from evo_lib.peripheral import InterfaceHolder, Peripheral
+from evo_lib.registry import Registry
 from evo_lib.task import ImmediateErrorTask, ImmediateResultTask, Task
 
 NUM_PINS = 16
@@ -46,7 +47,7 @@ class MCP23017Pin(GPIO):
     def __init__(
         self,
         name: str,
-        chip: "MCP23017Chip",
+        chip: MCP23017Chip,
         pin: int,
         direction: GPIODirection = GPIODirection.INPUT,
         pull_up: bool = False,
@@ -107,9 +108,9 @@ class MCP23017Chip(InterfaceHolder):
     def __init__(
         self,
         name: str,
+        logger: Logger,
         bus: I2C,
         address: int = 0x20,
-        logger: logging.Logger | None = None,
     ):
         super().__init__(name)
         self._bus = bus
@@ -137,22 +138,6 @@ class MCP23017Chip(InterfaceHolder):
         """Return all pins that have been created via get_pin."""
         return list(self._pins.values())
 
-    def get_pin(
-        self,
-        pin: int,
-        name: str,
-        direction: GPIODirection = GPIODirection.INPUT,
-        pull_up: bool = False,
-    ) -> MCP23017Pin:
-        """Create or retrieve a MCP23017Pin for the given pin number."""
-        if not 0 <= pin < NUM_PINS:
-            raise ValueError(f"Pin {pin} out of range (0-{NUM_PINS - 1})")
-        if pin in self._pins:
-            return self._pins[pin]
-        gpio_pin = MCP23017Pin(name, self, pin, direction, pull_up)
-        self._pins[pin] = gpio_pin
-        return gpio_pin
-
     def read_register(self, register: int) -> int:
         """Read a single byte from a MCP23017 register."""
         with self._lock:
@@ -176,6 +161,36 @@ class MCP23017Chip(InterfaceHolder):
             self._bus.write_to(self._address, bytes([register, current])).wait()
 
 
+class MCP23017PinDefinition(DriverDefinition):
+    """Factory for MCP23017Pin from config args.
+
+    The I2C bus and logger are construction-time dependencies (not config args),
+    because buses and logging are infrastructure managed by the ComponentsManager.
+    """
+
+    def __init__(self, logger: Logger, peripherals: Registry[Peripheral]):
+        super().__init__()
+        self._logger = logger
+        self._peripherals = peripherals
+
+    def get_init_args_definition(self) -> DriverInitArgsDefinition:
+        defn = DriverInitArgsDefinition()
+        defn.add_required("chip", ArgTypes.Component(MCP23017Chip, self._peripherals))
+        defn.add_required("pin", ArgTypes.U8())
+        defn.add_required("direction", ArgTypes.Enum(GPIODirection))
+        defn.add_optional("pull_up", ArgTypes.Bool(), False)
+        return defn
+
+    def create(self, args: DriverInitArgs) -> MCP23017Pin:
+        return MCP23017Pin(
+            name=args.get_name(),
+            chip=args.get("chip"),
+            pin=args.get("pin"),
+            direction=args.get("direction"),
+            pull_up=args.get("pull_up"),
+        )
+
+
 class MCP23017ChipDefinition(DriverDefinition):
     """Factory for MCP23017Chip from config args.
 
@@ -183,21 +198,21 @@ class MCP23017ChipDefinition(DriverDefinition):
     because buses and logging are infrastructure managed by the ComponentsManager.
     """
 
-    def __init__(self, bus: I2C, logger: Logger):
+    def __init__(self, logger: Logger, peripherals: Registry[Peripheral]):
         super().__init__()
-        self._bus = bus
         self._logger = logger
+        self._peripherals = peripherals
 
     def get_init_args_definition(self) -> DriverInitArgsDefinition:
         defn = DriverInitArgsDefinition()
+        defn.add_required("bus", ArgTypes.Component(I2C, self._peripherals))
         defn.add_optional("address", ArgTypes.U8(), 0x20)
         return defn
 
     def create(self, args: DriverInitArgs) -> MCP23017Chip:
-        name = args.get_name()
         return MCP23017Chip(
-            name=name,
-            bus=self._bus,
+            name=args.get_name(),
+            logger=self._logger,
+            bus=args.get("bus"),
             address=args.get("address"),
-            logger=self._logger.get_sublogger(name).get_stdlib_logger(),
         )
