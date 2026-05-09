@@ -3,6 +3,8 @@
 from abc import abstractmethod
 from dataclasses import dataclass
 
+from evo_lib.argtypes import ArgTypes
+from evo_lib.driver_definition import DriverCommands
 from evo_lib.event import Event
 from evo_lib.peripheral import Interface
 from evo_lib.task import Task
@@ -21,6 +23,15 @@ class CANFilter:
 
 
 class CAN(Interface):
+    commands = DriverCommands()
+
+    @abstractmethod
+    @commands.register(
+        result=[("extended", ArgTypes.Bool(help="If the CAN bus is using extended IDs"))]
+    )
+    def is_extended(self) -> bool:
+        """Return whether the CAN bus is using extended IDs."""
+
     @abstractmethod
     def write_sync(self, message: CANMessage) -> None:
         """Send a CAN message synchronously.
