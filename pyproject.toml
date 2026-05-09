@@ -35,6 +35,8 @@ rpi = [
     # WS2812B / NeoPixel addressable LED strip — DMA-driven, requires root
     # for PWM/PCM modes (or SPI mode on GPIO 10 only, no root).
     "rpi-ws281x>=5.0",
+    # CAN bus driver (support socket CAN).
+    "python-can>=4.6.1",
 ]
 
 # -- Development dependencies --

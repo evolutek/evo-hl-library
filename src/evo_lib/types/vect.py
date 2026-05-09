@@ -57,6 +57,10 @@ class VectBase(ABC):
     def __mul__(self, scalar: float) -> Self:
         return type(self)(*(c * scalar for c in self._components))
 
+    def __div__(self, scalar: float) -> Self:
+        # Division by a scalar is well defined on vectors
+        return type(self)(*(c / scalar for c in self._components))
+
     def __rmul__(self, scalar: float) -> Self:
         return self.__mul__(scalar)
 
@@ -79,6 +83,10 @@ class VectBase(ABC):
 
     def __imul__(self, scalar: float) -> Self:
         self._components = tuple(c * scalar for c in self._components)
+        return self
+
+    def __idiv__(self, scalar: float) -> Self:
+        self._components = tuple(c / scalar for c in self._components)
         return self
 
     # -- Geometry -----------------------------------------------------------
