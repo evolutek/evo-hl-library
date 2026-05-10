@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any
 
 from evo_lib.argtypes import ArgTypes
 from evo_lib.driver_definition import (
+    DriverCommands,
     DriverDefinition,
     DriverInitArgs,
     DriverInitArgsDefinition,
@@ -85,8 +86,8 @@ class _ArucoState:
         self.K = None
         self.dist = None
         self.image_size: tuple[int, int] | None = None
-        self.R_world_camera = None
-        self.t_world_camera = None
+        self.R_robot_camera = None
+        self.t_robot_camera = None
         self._obj_pts_cache: dict[float, "np.ndarray"] = {
             marker_size_mm: _marker_object_points(marker_size_mm)
         }
@@ -140,11 +141,20 @@ class _ArucoState:
                 if ok:
                     marker.rvec_camera = rvec.reshape(3)
                     marker.tvec_camera = tvec.reshape(3)
-                    if self.R_world_camera is not None and self.t_world_camera is not None:
-                        pos_world = self.R_world_camera @ marker.tvec_camera.reshape(
+                    if self.R_robot_camera is not None and self.t_robot_camera is not None:
+                        pos_robot = self.R_robot_camera @ marker.tvec_camera.reshape(
                             3, 1
-                        ) + self.t_world_camera.reshape(3, 1)
-                        marker.position_world_mm = pos_world.reshape(3)
+                        ) + self.t_robot_camera.reshape(3, 1)
+                        marker.position_robot_mm = pos_robot.reshape(3)
+                        # Marker yaw in robot frame: take the marker's local +X
+                        # axis (1st column of R_robot_marker) and read its
+                        # heading in the robot's XY plane. atan2 picks up the
+                        # full -pi..pi range without sign ambiguity.
+                        R_camera_marker, _ = cv2.Rodrigues(rvec)
+                        x_marker_in_robot = self.R_robot_camera @ R_camera_marker[:, 0]
+                        marker.yaw_robot_rad = float(
+                            np.arctan2(x_marker_in_robot[1], x_marker_in_robot[0])
+                        )
             results.append(marker)
         return results
 
@@ -165,16 +175,16 @@ class _ArucoState:
         return self.K is not None and self.dist is not None
 
     def is_extrinsics_loaded(self) -> bool:
-        return self.R_world_camera is not None and self.t_world_camera is not None
+        return self.R_robot_camera is not None and self.t_robot_camera is not None
 
     def calibrate_extrinsics(
         self,
         markers: list[ArucoMarker],
         reference_marker_id: int,
-        R_world_marker: "np.ndarray",
-        t_world_marker_mm: "np.ndarray",
+        R_robot_marker: "np.ndarray",
+        t_robot_marker_mm: "np.ndarray",
     ) -> dict[str, Any]:
-        # T_world_camera = T_world_marker @ inv(T_camera_marker).
+        # T_robot_camera = T_robot_marker @ inv(T_camera_marker).
         # Rotation matrices are orthonormal so R^{-1} = R^T (no expensive inverse).
         import cv2
         import numpy as np
@@ -194,17 +204,17 @@ class _ArucoState:
         R_marker_camera = R_camera_marker.T
         t_marker_camera = -R_marker_camera @ t_camera_marker
 
-        R_world_camera = np.asarray(R_world_marker) @ R_marker_camera
-        t_world_camera = np.asarray(R_world_marker) @ t_marker_camera + np.asarray(
-            t_world_marker_mm
+        R_robot_camera = np.asarray(R_robot_marker) @ R_marker_camera
+        t_robot_camera = np.asarray(R_robot_marker) @ t_marker_camera + np.asarray(
+            t_robot_marker_mm
         ).reshape(3, 1)
 
-        self.R_world_camera = R_world_camera
-        self.t_world_camera = t_world_camera
+        self.R_robot_camera = R_robot_camera
+        self.t_robot_camera = t_robot_camera
 
         return {
-            "R_world_camera": R_world_camera.flatten().tolist(),
-            "t_world_camera_mm": t_world_camera.flatten().tolist(),
+            "R_robot_camera": R_robot_camera.flatten().tolist(),
+            "t_robot_camera_mm": t_robot_camera.flatten().tolist(),
             "reference_marker_id": int(reference_marker_id),
             "captured_at": _now_iso(),
         }
@@ -228,8 +238,13 @@ class _ArucoState:
 
         extr = data.get("extrinsics")
         if extr is not None:
-            self.R_world_camera = np.asarray(extr["R_world_camera"], dtype=np.float64).reshape(3, 3)
-            self.t_world_camera = np.asarray(extr["t_world_camera_mm"], dtype=np.float64).reshape(3)
+            # Legacy json5 used R_world_camera / t_world_camera_mm — accept both
+            # so robots calibrated before the rename keep working without
+            # forcing a recalibration.
+            R_key = "R_robot_camera" if "R_robot_camera" in extr else "R_world_camera"
+            t_key = "t_robot_camera_mm" if "t_robot_camera_mm" in extr else "t_world_camera_mm"
+            self.R_robot_camera = np.asarray(extr[R_key], dtype=np.float64).reshape(3, 3)
+            self.t_robot_camera = np.asarray(extr[t_key], dtype=np.float64).reshape(3)
         return intr is not None or extr is not None
 
     def save(self, path: str | None = None) -> str:
@@ -248,10 +263,10 @@ class _ArucoState:
                 "image_size": list(self.image_size or (0, 0)),
                 "captured_at": _now_iso(),
             }
-        if self.R_world_camera is not None and self.t_world_camera is not None:
+        if self.R_robot_camera is not None and self.t_robot_camera is not None:
             payload["extrinsics"] = {
-                "R_world_camera": self.R_world_camera.flatten().tolist(),
-                "t_world_camera_mm": self.t_world_camera.flatten().tolist(),
+                "R_robot_camera": self.R_robot_camera.flatten().tolist(),
+                "t_robot_camera_mm": self.t_robot_camera.flatten().tolist(),
                 "captured_at": _now_iso(),
             }
         with open(target, "w") as f:
@@ -260,6 +275,8 @@ class _ArucoState:
 
 
 class UvcCamera(Camera):
+    commands = DriverCommands(parents=[Camera.commands])
+
     def __init__(
         self,
         name: str,
@@ -396,11 +413,11 @@ class UvcCamera(Camera):
     def calibrate_extrinsics(
         self,
         reference_marker_id: int,
-        R_world_marker: "np.ndarray",
-        t_world_marker_mm: "np.ndarray",
+        R_robot_marker: "np.ndarray",
+        t_robot_marker_mm: "np.ndarray",
     ) -> dict[str, Any]:
         return self._aruco.calibrate_extrinsics(
-            self.detect(), reference_marker_id, R_world_marker, t_world_marker_mm
+            self.detect(), reference_marker_id, R_robot_marker, t_robot_marker_mm
         )
 
     def calibrate_extrinsics_from_pose(
@@ -408,8 +425,8 @@ class UvcCamera(Camera):
         reference_marker_id: int,
         rvec_camera_marker: "np.ndarray",
         tvec_camera_marker: "np.ndarray",
-        R_world_marker: "np.ndarray",
-        t_world_marker_mm: "np.ndarray",
+        R_robot_marker: "np.ndarray",
+        t_robot_marker_mm: "np.ndarray",
     ) -> dict[str, Any]:
         # Apply extrinsics from a pre-computed marker pose (e.g. averaged
         # across N frames via bundle PnP) instead of running detect() again.
@@ -422,7 +439,7 @@ class UvcCamera(Camera):
         marker.rvec_camera = np.asarray(rvec_camera_marker).reshape(3)
         marker.tvec_camera = np.asarray(tvec_camera_marker).reshape(3)
         return self._aruco.calibrate_extrinsics(
-            [marker], reference_marker_id, R_world_marker, t_world_marker_mm
+            [marker], reference_marker_id, R_robot_marker, t_robot_marker_mm
         )
 
     @property
@@ -460,7 +477,7 @@ class UvcCamera(Camera):
 
 class UvcCameraDefinition(DriverDefinition):
     def __init__(self, logger: Logger):
-        super().__init__()
+        super().__init__(UvcCamera.commands)
         self._logger = logger
 
     def get_init_args_definition(self) -> DriverInitArgsDefinition:
@@ -507,6 +524,8 @@ class UvcCameraDefinition(DriverDefinition):
 class UvcCameraVirtual(Camera):
     """Drop-in replacement for UvcCamera. ``device`` read as a folder of
     JPEG/PNG to replay, or ignored to yield blank frames. Same ArUco surface."""
+
+    commands = DriverCommands(parents=[Camera.commands])
 
     def __init__(
         self,
@@ -620,11 +639,11 @@ class UvcCameraVirtual(Camera):
     def calibrate_extrinsics(
         self,
         reference_marker_id: int,
-        R_world_marker: "np.ndarray",
-        t_world_marker_mm: "np.ndarray",
+        R_robot_marker: "np.ndarray",
+        t_robot_marker_mm: "np.ndarray",
     ) -> dict[str, Any]:
         return self._aruco.calibrate_extrinsics(
-            self.detect(), reference_marker_id, R_world_marker, t_world_marker_mm
+            self.detect(), reference_marker_id, R_robot_marker, t_robot_marker_mm
         )
 
     def calibrate_extrinsics_from_pose(
@@ -632,8 +651,8 @@ class UvcCameraVirtual(Camera):
         reference_marker_id: int,
         rvec_camera_marker: "np.ndarray",
         tvec_camera_marker: "np.ndarray",
-        R_world_marker: "np.ndarray",
-        t_world_marker_mm: "np.ndarray",
+        R_robot_marker: "np.ndarray",
+        t_robot_marker_mm: "np.ndarray",
     ) -> dict[str, Any]:
         # Apply extrinsics from a pre-computed marker pose (e.g. averaged
         # across N frames via bundle PnP) instead of running detect() again.
@@ -646,7 +665,7 @@ class UvcCameraVirtual(Camera):
         marker.rvec_camera = np.asarray(rvec_camera_marker).reshape(3)
         marker.tvec_camera = np.asarray(tvec_camera_marker).reshape(3)
         return self._aruco.calibrate_extrinsics(
-            [marker], reference_marker_id, R_world_marker, t_world_marker_mm
+            [marker], reference_marker_id, R_robot_marker, t_robot_marker_mm
         )
 
     @property
@@ -702,7 +721,7 @@ class UvcCameraVirtual(Camera):
 
 class UvcCameraVirtualDefinition(DriverDefinition):
     def __init__(self, logger: Logger):
-        super().__init__()
+        super().__init__(UvcCameraVirtual.commands)
         self._logger = logger
 
     def get_init_args_definition(self) -> DriverInitArgsDefinition:
