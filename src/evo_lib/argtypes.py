@@ -21,6 +21,15 @@ class TypeMismatchError(TypeError):
     """Raised when unification finds two incompatible concrete slot types."""
 
 
+class ArgValidationError(ConfigValidationError):
+    """Raised by ``ArgType.validate`` when a value violates the ArgType constraints.
+
+    Inherits from ``ConfigValidationError`` so callers catching the latter keep
+    working after constraint checks were moved out of ``value_from_config`` into
+    ``validate``.
+    """
+
+
 def _int_enum_only(method):
     """Guard binary serialization methods of ArgTypes.Enum: refuse non-IntEnum classes."""
 
@@ -46,6 +55,15 @@ class ArgType(ABC):
     def value_from_config(self, v: ConfigValue) -> Any:
         """Check if a configuration value follow type's constraints and return
         the value in the correct type (usefull for config validation)."""
+        pass
+
+    @abstractmethod
+    def validate(self, v: Any) -> None:
+        """Verify ``v`` against the constraints declared by this ArgType.
+
+        Operates on already-typed values (post ``value_from_config``/``value_from_stream``).
+        Raises :class:`ArgValidationError` on the first violation.
+        """
         pass
 
     @abstractmethod
@@ -101,6 +119,19 @@ class ArgTypes:
             else:
                 raise ConfigValidationError("Struct value must be a dict, a list or a tuple")
             return r
+
+        def validate(self, v: Any) -> None:
+            if not isinstance(v, dict):
+                raise ArgValidationError(
+                    f"Struct value must be a dict, got {type(v).__name__}"
+                )
+            for fname, ftype in self.fields:
+                if fname not in v:
+                    raise ArgValidationError(f"Struct field '{fname}' is missing")
+                try:
+                    ftype.validate(v[fname])
+                except ArgValidationError as e:
+                    raise ArgValidationError(f"field '{fname}': {e}") from e
 
         def value_from_stream(self, s: io.RawIOBase) -> dict[str, Any]:
             r = {}
@@ -173,7 +204,27 @@ class ArgTypes:
         def value_from_config(self, v: ConfigValue) -> list:
             if not isinstance(v, list):
                 raise ConfigValidationError("Array value must be a list")
-            return [self.element_type.value_from_config(item) for item in v]
+            result = [self.element_type.value_from_config(item) for item in v]
+            if self.max_size > 0 and len(result) > self.max_size:
+                raise ConfigValidationError(
+                    f"Array length {len(result)} exceeds max_size {self.max_size}"
+                )
+            return result
+
+        def validate(self, v: Any) -> None:
+            if not isinstance(v, list):
+                raise ArgValidationError(
+                    f"Array value must be a list, got {type(v).__name__}"
+                )
+            if self.max_size > 0 and len(v) > self.max_size:
+                raise ArgValidationError(
+                    f"Array length {len(v)} exceeds max_size {self.max_size}"
+                )
+            for i, item in enumerate(v):
+                try:
+                    self.element_type.validate(item)
+                except ArgValidationError as e:
+                    raise ArgValidationError(f"index {i}: {e}") from e
 
         def value_from_stream(self, s: io.RawIOBase) -> list:
             length = struct.unpack("I", s.read(4))[0]
@@ -215,11 +266,23 @@ class ArgTypes:
 
         def value_from_config(self, v: ConfigValue) -> bytes:
             if isinstance(v, str):
-                return v.encode("utf-8")
+                result = v.encode("utf-8")
             elif isinstance(v, bytes):
-                return v
+                result = v
             else:
                 raise ConfigValidationError("Bytes value must be a string or bytes")
+            self.validate(result)
+            return result
+
+        def validate(self, v: Any) -> None:
+            if not isinstance(v, (bytes, bytearray)):
+                raise ArgValidationError(
+                    f"Bytes value must be bytes, got {type(v).__name__}"
+                )
+            if self.max_size > 0 and len(v) > self.max_size:
+                raise ArgValidationError(
+                    f"Bytes length {len(v)} exceeds max_size {self.max_size}"
+                )
 
         def value_from_stream(self, s: io.RawIOBase) -> bytes:
             size = struct.unpack("I", s.read(4))[0]
@@ -265,11 +328,22 @@ class ArgTypes:
         def value_from_config(self, v: ConfigValue) -> str:
             if not isinstance(v, str):
                 raise ConfigValidationError("String value must be a string")
-            if self.choices and v not in self.choices:
-                raise ConfigValidationError(f"String value must be one of: {self.choices}")
-            if self.regex is not None and self.regex.fullmatch(v) is None:
-                raise ConfigValidationError(f"String must follow regex: {self.regex}")
+            self.validate(v)
             return v
+
+        def validate(self, v: Any) -> None:
+            if not isinstance(v, str):
+                raise ArgValidationError(
+                    f"String value must be a string, got {type(v).__name__}"
+                )
+            if self.max_size > 0 and len(v) > self.max_size:
+                raise ArgValidationError(
+                    f"String length {len(v)} exceeds max_size {self.max_size}"
+                )
+            if self.choices and v not in self.choices:
+                raise ArgValidationError(f"String value must be one of: {self.choices}")
+            if self.regex is not None and self.regex.fullmatch(v) is None:
+                raise ArgValidationError(f"String must follow regex: {self.regex.pattern}")
 
         def value_from_str(self, v: str) -> str:
             return str(v)
@@ -350,6 +424,12 @@ class ArgTypes:
                 return v
             raise ConfigValidationError("Not a boolean")
 
+        def validate(self, v: Any) -> None:
+            if not isinstance(v, bool):
+                raise ArgValidationError(
+                    f"Bool value must be a bool, got {type(v).__name__}"
+                )
+
         def value_from_str(self, v: str) -> int:
             v = v.lower().strip()
             if v in ["true", "1", "y", "yes", "high"]:
@@ -400,14 +480,21 @@ class ArgTypes:
 
     class Float(Numeric, ABC):
         def value_from_config(self, v: ConfigValue) -> float:
-            # self.min and self.max are guaranteed to be non-None after __init__
             if not isinstance(v, (int, float)):
                 raise ConfigValidationError(f"{type(self).__name__} value must be a number")
-            if v < self.min or v > self.max:
-                raise ConfigValidationError(
-                    f"{type(self).__name__} value must be between {self.min} and {self.max}"
+            result = float(v)
+            self.validate(result)
+            return result
+
+        def validate(self, v: Any) -> None:
+            if not isinstance(v, (int, float)):
+                raise ArgValidationError(
+                    f"{type(self).__name__} value must be a number, got {type(v).__name__}"
                 )
-            return float(v)
+            if v < self.min or v > self.max:
+                raise ArgValidationError(
+                    f"{type(self).__name__} value must be between {self.min} and {self.max}, got {v}"
+                )
 
         def __init__(self, help=None, min: float | None = None, max: float | None = None):
             super().__init__(help, min, max)
@@ -444,13 +531,19 @@ class ArgTypes:
 
         def value_from_config(self, v: ConfigValue) -> int:
             if not isinstance(v, int):
-                # self.min and self.max are guaranteed to be non-None after __init__
                 raise ConfigValidationError(f"{type(self).__name__} value must be an integer")
-            if v < self.min or v > self.max:
-                raise ConfigValidationError(
-                    f"{type(self).__name__} value must be between {self.min} and {self.max}"
-                )
+            self.validate(v)
             return v
+
+        def validate(self, v: Any) -> None:
+            if not isinstance(v, int):
+                raise ArgValidationError(
+                    f"{type(self).__name__} value must be an integer, got {type(v).__name__}"
+                )
+            if v < self.min or v > self.max:
+                raise ArgValidationError(
+                    f"{type(self).__name__} value must be between {self.min} and {self.max}, got {v}"
+                )
 
         def self_from_config(self, c: ConfigObject) -> None:
             self.min = c.get_int_or("min", self._default_min)
@@ -664,6 +757,13 @@ class ArgTypes:
             else:
                 raise ConfigValidationError("Enum value must be a string or integer")
 
+        def validate(self, v: Any) -> None:
+            if not isinstance(v, self.enum_type):
+                raise ArgValidationError(
+                    f"Enum value must be a {self.enum_type.__name__} member, "
+                    f"got {type(v).__name__}"
+                )
+
         def value_from_str(self, v: str) -> IntEnum:
             return self.enum_type[v]
 
@@ -725,6 +825,10 @@ class ArgTypes:
         def value_from_config(self, v: ConfigValue) -> Any:
             return v
 
+        def validate(self, v: Any) -> None:
+            # Polymorphic slot, no concrete constraints until resolved.
+            pass
+
         def value_from_str(self, v: str) -> Any:
             return v
 
@@ -759,16 +863,22 @@ class ArgTypes:
             if not isinstance(v, str):
                 raise ConfigValidationError("Component reference must be a string")
             component = self.components.get(v)
-            if not isinstance(component, self.base_type):
-                raise ConfigValidationError(
-                    f"Component '{v}' is not of type {self.base_type.__name__}"
-                )
+            try:
+                self.validate(component)
+            except ArgValidationError as e:
+                raise ConfigValidationError(f"Component '{v}': {e}") from e
             return component
+
+        def validate(self, v: Any) -> None:
+            if not isinstance(v, self.base_type):
+                raise ArgValidationError(
+                    f"Component is not of type {self.base_type.__name__}, "
+                    f"got {type(v).__name__}"
+                )
 
         def value_from_str(self, v: str) -> int:
             component = self.components.get(v)
-            if not isinstance(component, self.base_type):
-                raise ConfigValidationError("Bad driver type")
+            self.validate(component)
             return component
 
         def value_from_stream(self, s: io.RawIOBase) -> Any:
@@ -804,6 +914,11 @@ class ArgTypes:
             if v is None or v == "":
                 return None
             return super().value_from_config(v)
+
+        def validate(self, v: Any) -> None:
+            if v is None:
+                return
+            super().validate(v)
 
         def value_from_str(self, v: str) -> Any:
             if v == "" or v.lower() == "none":
