@@ -2,13 +2,13 @@ import struct
 
 from evo_lib.drivers.board.base import BoardDriver
 from evo_lib.interfaces.can import CAN, CANMessage
-from evo_lib.interfaces.obstacles_provider import Event, Obstacle, ObstaclesProvider
+from evo_lib.interfaces.obstacles_provider import Event, Obstacle, ObstacleProvider
 from evo_lib.logger import Logger
 from evo_lib.task import Task
 from evo_lib.types.vect import Vect2D
 
 
-class LocalisationBoard(BoardDriver, ObstaclesProvider):
+class LocalisationBoard(BoardDriver, ObstacleProvider):
     def __init__(self, name: str, logger: Logger, can: CAN) -> None:
         super().__init__(name, logger, [])
         self._can = can
