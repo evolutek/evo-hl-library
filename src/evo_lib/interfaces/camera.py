@@ -28,6 +28,8 @@ class ArucoMarker:
     rvec_camera: "np.ndarray | None" = None
     tvec_camera: "np.ndarray | None" = None
     position_robot_mm: "np.ndarray | None" = None
+    # (qw, qx, qy, qz) — full rotation; needed for tilted markers where yaw alone loses info.
+    quat_robot: "tuple[float, float, float, float] | None" = None
     yaw_robot_rad: "float | None" = None
 
 
@@ -37,6 +39,10 @@ _MARKER_STRUCT = ArgTypes.Struct(
         ("x_mm", ArgTypes.F32()),
         ("y_mm", ArgTypes.F32()),
         ("z_mm", ArgTypes.F32()),
+        ("qw", ArgTypes.F32()),
+        ("qx", ArgTypes.F32()),
+        ("qy", ArgTypes.F32()),
+        ("qz", ArgTypes.F32()),
         ("yaw_deg", ArgTypes.F32()),
     ]
 )
@@ -44,11 +50,16 @@ _MARKER_STRUCT = ArgTypes.Struct(
 
 def _marker_to_robot_dict(m: ArucoMarker) -> dict[str, Any]:
     pos = m.position_robot_mm
+    qw, qx, qy, qz = m.quat_robot if m.quat_robot is not None else (1.0, 0.0, 0.0, 0.0)
     return {
         "id": int(m.id),
         "x_mm": float(pos[0]),
         "y_mm": float(pos[1]),
         "z_mm": float(pos[2]),
+        "qw": qw,
+        "qx": qx,
+        "qy": qy,
+        "qz": qz,
         "yaw_deg": math.degrees(m.yaw_robot_rad) if m.yaw_robot_rad is not None else 0.0,
     }
 
@@ -128,27 +139,32 @@ class Camera(Placable):
         TODO: when Trajman exposes the live robot pose, drop the args here and
         fall back to that provider so the AI can call it without arguments.
         """
-        # Precompute cos/sin once (embedded perf rule: avoid trig in inner loops).
-        yaw_rad = math.radians(yaw_deg)
-        c, s = math.cos(yaw_rad), math.sin(yaw_rad)
+        from evo_lib.types.pose import Pose3D
+
+        T_table_robot = Pose3D(x_mm, y_mm, 0.0, 0.0, 0.0, math.radians(yaw_deg))
         out: list[dict[str, Any]] = []
         for m in self.detect():
-            if m.position_robot_mm is None or m.yaw_robot_rad is None:
+            if m.position_robot_mm is None or m.quat_robot is None:
                 continue
             xr, yr, zr = (
                 float(m.position_robot_mm[0]),
                 float(m.position_robot_mm[1]),
                 float(m.position_robot_mm[2]),
             )
-            xt = x_mm + xr * c - yr * s
-            yt = y_mm + xr * s + yr * c
+            qw, qx, qy, qz = m.quat_robot
+            T_robot_marker = Pose3D.from_quaternion(xr, yr, zr, qw, qx, qy, qz)
+            T_table_marker = T_table_robot.compose(T_robot_marker)
             out.append(
                 {
                     "id": int(m.id),
-                    "x_mm": xt,
-                    "y_mm": yt,
-                    "z_mm": zr,
-                    "yaw_deg": math.degrees(yaw_rad + m.yaw_robot_rad),
+                    "x_mm": T_table_marker.x,
+                    "y_mm": T_table_marker.y,
+                    "z_mm": T_table_marker.z,
+                    "qw": T_table_marker.qw,
+                    "qx": T_table_marker.qx,
+                    "qy": T_table_marker.qy,
+                    "qz": T_table_marker.qz,
+                    "yaw_deg": math.degrees(T_table_marker.yaw),
                 }
             )
         return ImmediateResultTask(out)

@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import subprocess
 import threading
+import time
 from typing import TYPE_CHECKING, Any
 
 from evo_lib.argtypes import ArgTypes
@@ -59,6 +60,44 @@ def _v4l2_has_ctrl(device: str, ctrl: str) -> bool:
         text=True,
     )
     return result.returncode == 0 and ctrl in result.stdout
+
+
+def _rot_to_quat(R: "np.ndarray") -> tuple[float, float, float, float]:
+    """3x3 rotation matrix to (qw, qx, qy, qz) unit quaternion (Shepperd's method)."""
+    import numpy as np
+
+    trace = R[0, 0] + R[1, 1] + R[2, 2]
+    if trace > 0.0:
+        s = 2.0 * np.sqrt(1.0 + trace)
+        return (
+            float(0.25 * s),
+            float((R[2, 1] - R[1, 2]) / s),
+            float((R[0, 2] - R[2, 0]) / s),
+            float((R[1, 0] - R[0, 1]) / s),
+        )
+    if R[0, 0] > R[1, 1] and R[0, 0] > R[2, 2]:
+        s = 2.0 * np.sqrt(1.0 + R[0, 0] - R[1, 1] - R[2, 2])
+        return (
+            float((R[2, 1] - R[1, 2]) / s),
+            float(0.25 * s),
+            float((R[0, 1] + R[1, 0]) / s),
+            float((R[0, 2] + R[2, 0]) / s),
+        )
+    if R[1, 1] > R[2, 2]:
+        s = 2.0 * np.sqrt(1.0 + R[1, 1] - R[0, 0] - R[2, 2])
+        return (
+            float((R[0, 2] - R[2, 0]) / s),
+            float((R[0, 1] + R[1, 0]) / s),
+            float(0.25 * s),
+            float((R[1, 2] + R[2, 1]) / s),
+        )
+    s = 2.0 * np.sqrt(1.0 + R[2, 2] - R[0, 0] - R[1, 1])
+    return (
+        float((R[1, 0] - R[0, 1]) / s),
+        float((R[0, 2] + R[2, 0]) / s),
+        float((R[1, 2] + R[2, 1]) / s),
+        float(0.25 * s),
+    )
 
 
 class _ArucoState:
@@ -146,15 +185,13 @@ class _ArucoState:
                             3, 1
                         ) + self.t_robot_camera.reshape(3, 1)
                         marker.position_robot_mm = pos_robot.reshape(3)
-                        # Marker yaw in robot frame: take the marker's local +X
-                        # axis (1st column of R_robot_marker) and read its
-                        # heading in the robot's XY plane. atan2 picks up the
-                        # full -pi..pi range without sign ambiguity.
                         R_camera_marker, _ = cv2.Rodrigues(rvec)
-                        x_marker_in_robot = self.R_robot_camera @ R_camera_marker[:, 0]
-                        marker.yaw_robot_rad = float(
-                            np.arctan2(x_marker_in_robot[1], x_marker_in_robot[0])
-                        )
+                        R_robot_marker = self.R_robot_camera @ R_camera_marker
+                        qw, qx, qy, qz = _rot_to_quat(R_robot_marker)
+                        marker.quat_robot = (qw, qx, qy, qz)
+                        siny = 2.0 * (qw * qz + qx * qy)
+                        cosy = 1.0 - 2.0 * (qy * qy + qz * qz)
+                        marker.yaw_robot_rad = float(np.arctan2(siny, cosy))
             results.append(marker)
         return results
 
@@ -307,6 +344,12 @@ class UvcCamera(Camera):
         self._settings = dict(settings) if settings else {}
         self._cap = None
         self._lock = threading.Lock()
+        # Background reader: see frame_capture.md. Grab+retrieve in a loop
+        # (= cv2.VideoCapture.read), keep only the latest frame for callers.
+        self._read_thread: threading.Thread | None = None
+        self._read_stop = threading.Event()
+        self._latest_frame: "np.ndarray | None" = None
+        self._latest_frame_lock = threading.Lock()
         self._aruco = _ArucoState(
             marker_size_mm=marker_size_mm,
             dictionary=dictionary,
@@ -367,23 +410,58 @@ class UvcCamera(Camera):
             f"(focus={'AUTO' if self._autofocus else self._focus}, "
             f"calibration={'loaded' if loaded else 'absent'})"
         )
+        self._read_stop.clear()
+        self._read_thread = threading.Thread(
+            target=self._read_loop,
+            name=f"uvc-read-{self.name}",
+            daemon=True,
+        )
+        self._read_thread.start()
         return ImmediateResultTask()
 
+    def _read_loop(self) -> None:
+        """Read frames continuously and keep only the latest. See frame_capture.md."""
+        while not self._read_stop.is_set():
+            with self._lock:
+                cap = self._cap
+            if cap is None:
+                break
+            try:
+                ok, frame = cap.read()
+            except Exception:
+                break
+            if ok and frame is not None:
+                with self._latest_frame_lock:
+                    self._latest_frame = frame
+            else:
+                time.sleep(0.005)
+
     def close(self) -> None:
+        self._read_stop.set()
+        if self._read_thread is not None:
+            self._read_thread.join(timeout=1.0)
+            self._read_thread = None
         with self._lock:
             if self._cap is not None:
                 self._cap.release()
                 self._cap = None
+        with self._latest_frame_lock:
+            self._latest_frame = None
         self._log.info(f"UvcCamera '{self.name}' closed")
 
     def capture(self) -> "np.ndarray":
         if self._cap is None:
             raise RuntimeError(f"UvcCamera '{self.name}' not opened")
-        with self._lock:
-            ok, frame = self._cap.read()
-        if not ok:
-            raise RuntimeError(f"UvcCamera '{self.name}': frame grab failed")
-        return frame
+        # Wait briefly for the background thread to publish its first frame.
+        deadline = time.monotonic() + 1.0
+        while True:
+            with self._latest_frame_lock:
+                frame = self._latest_frame
+            if frame is not None:
+                return frame
+            if time.monotonic() > deadline:
+                raise RuntimeError(f"UvcCamera '{self.name}': no frame available")
+            time.sleep(0.005)
 
     def detect(self) -> list[ArucoMarker]:
         return self._aruco.detect_in_frame(self.capture())
