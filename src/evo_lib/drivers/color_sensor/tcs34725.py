@@ -33,7 +33,7 @@ from evo_lib.logger import Logger
 from evo_lib.peripheral import Peripheral
 from evo_lib.registry import Registry
 from evo_lib.task import DelayedTask, ImmediateResultTask, Task
-from evo_lib.types.color import Color, ColorRGBC, NamedColor, Palette
+from evo_lib.types.color import Color, ColorRGBC, NamedColor, Palette, PURE_COLORS
 
 _COMMAND_BIT = 0x80
 
@@ -77,14 +77,7 @@ def _atime_to_ms(atime: int) -> float:
 
 # Indicative refs for AGAIN=4×, ATIME≈100 ms, lit by the on-board white LED.
 # Refine per-instance via calibrate() if responsivity drifts too much.
-TCS34725_DEFAULT_PALETTE: dict[NamedColor, Color] = {
-    NamedColor.Black: Color.from_rgbc(200, 200, 200, 600, name="Black"),
-    NamedColor.White: Color.from_rgbc(15000, 15000, 15000, 45000, name="White"),
-    NamedColor.Red: Color.from_rgbc(8500, 1200, 800, 10500, name="Red"),
-    NamedColor.Green: Color.from_rgbc(1100, 6200, 1400, 8700, name="Green"),
-    NamedColor.Blue: Color.from_rgbc(800, 1400, 5500, 7700, name="Blue"),
-    NamedColor.Yellow: Color.from_rgbc(7000, 6500, 1500, 15000, name="Yellow"),
-}
+TCS34725_DEFAULT_PALETTE: dict[NamedColor, Color] = PURE_COLORS
 
 
 class TCS34725(ColorSensor):
