@@ -283,7 +283,7 @@ class ColorChroma:
 class ColorHex:
     """A single packed 0xRRGGBB integer. Useful for logs, config, human-facing output."""
 
-    __slots__ = ("value",)
+    __slots__ = ("value", "r", "g", "b",)
 
     def __init__(self, value: int) -> None:
         if not (0 <= value <= 0xFFFFFF):
