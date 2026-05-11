@@ -80,6 +80,17 @@ class Task[*T](ABC):
         self.on_error(task.error)
         return self
 
+    @staticmethod
+    def wait_all(*tasks: Task[Any]) -> None:
+        errors: list[Exception] = []
+        for task in tasks:
+            try:
+                task.wait()
+            except Exception as e:
+                errors.append(e)
+        if errors:
+            raise ExceptionGroup("wait_all", errors)
+
 
 class ImmediateResultTask[*T](Task[*T]):
     def __init__(self, *result: *T):
