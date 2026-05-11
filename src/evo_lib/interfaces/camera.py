@@ -31,6 +31,7 @@ class ArucoMarker:
     # (qw, qx, qy, qz) — full rotation; needed for tilted markers where yaw alone loses info.
     quat_robot: "tuple[float, float, float, float] | None" = None
     yaw_robot_rad: "float | None" = None
+    source_camera: "str | None" = None
 
 
 _MARKER_STRUCT = ArgTypes.Struct(
