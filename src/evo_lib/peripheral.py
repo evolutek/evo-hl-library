@@ -47,20 +47,10 @@ class Peripheral(ABC):
         return self._name
 
     def get_init_args(self) -> DriverInitArgs | None:
-        # if self._init_args is None:
-        #     raise RuntimeError(
-        #         f"Peripheral '{self._name}' has no init arguments "
-        #         "(not instantiated through the ComponentsManager?)"
-        #     )
         return self._init_args
 
-    def get_definition(self) -> DriverDefinition:
+    def get_definition(self) -> DriverDefinition | None:
         """Return the DriverDefinition this peripheral was instantiated from."""
-        if self._definition is None:
-            raise RuntimeError(
-                f"Peripheral '{self._name}' has no linked DriverDefinition "
-                "(not instantiated through the ComponentsManager?)"
-            )
         return self._definition
 
     @abstractmethod
