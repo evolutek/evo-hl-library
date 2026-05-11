@@ -34,9 +34,9 @@ _BRICK_STRUCT = ArgTypes.Struct(
 )
 
 
-def _squared_distance_robot(m: ArucoMarker) -> float:
-    # Squared, not sqrt — comparison only.
-    p = m.position_robot_mm
+def _squared_distance_camera(m: ArucoMarker) -> float:
+    # Cam→marker distance: best PnP precision wins. Squared, no sqrt.
+    p = m.tvec_camera
     return float(p[0] * p[0] + p[1] * p[1] + p[2] * p[2])
 
 
@@ -85,7 +85,7 @@ class MultiCamera(Peripheral):
                     continue
                 m.source_camera = cam.name
                 prev = best.get(m.id)
-                if prev is None or _squared_distance_robot(m) < _squared_distance_robot(prev):
+                if prev is None or _squared_distance_camera(m) < _squared_distance_camera(prev):
                     best[m.id] = m
         return list(best.values())
 
