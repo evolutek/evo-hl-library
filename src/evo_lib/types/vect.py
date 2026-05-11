@@ -85,7 +85,7 @@ class VectBase(ABC):
         self._components = tuple(c * scalar for c in self._components)
         return self
 
-    def __idiv__(self, scalar: float) -> Self:
+    def __itruediv__(self, scalar: float) -> Self:
         self._components = tuple(c / scalar for c in self._components)
         return self
 
