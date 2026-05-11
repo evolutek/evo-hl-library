@@ -106,7 +106,7 @@ class SocketCAN(CAN):
         self._update_filters()
 
 
-class SocketCANDefininition(DriverDefinition):
+class SocketCANDefinition(DriverDefinition):
     def __init__(self, logger: Logger) -> None:
         super().__init__(CAN.commands)
         self._logger = logger
