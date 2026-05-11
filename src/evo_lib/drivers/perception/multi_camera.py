@@ -34,12 +34,6 @@ _BRICK_STRUCT = ArgTypes.Struct(
 )
 
 
-def _squared_distance_camera(m: ArucoMarker) -> float:
-    # Cam→marker distance: best PnP precision wins. Squared, no sqrt.
-    p = m.tvec_camera
-    return float(p[0] * p[0] + p[1] * p[1] + p[2] * p[2])
-
-
 def _safe_detect(cam: Camera) -> list[ArucoMarker]:
     try:
         return cam.detect()
@@ -48,7 +42,7 @@ def _safe_detect(cam: Camera) -> list[ArucoMarker]:
 
 
 class MultiCamera(Peripheral):
-    """Aggregates several Cameras into a deduplicated ArUco brick view."""
+    """Aggregates several Cameras: one row per (camera, marker) observation."""
 
     commands = DriverCommands()
 
@@ -73,30 +67,27 @@ class MultiCamera(Peripheral):
             self._pool.shutdown(wait=True)
             self._pool = None
 
-    def _detect_fused_robot(self) -> list[ArucoMarker]:
-        """Dedup by id across cameras; closest detection wins."""
+    def _detect_all_robot(self) -> list[ArucoMarker]:
         if self._pool is None:
             raise RuntimeError(f"MultiCamera '{self.name}' not initialized")
         futures = [(cam, self._pool.submit(_safe_detect, cam)) for cam in self._cameras]
-        best: dict[int, ArucoMarker] = {}
+        out: list[ArucoMarker] = []
         for cam, fut in futures:
             for m in fut.result():
                 if m.position_robot_mm is None or m.quat_robot is None:
                     continue
                 m.source_camera = cam.name
-                prev = best.get(m.id)
-                if prev is None or _squared_distance_camera(m) < _squared_distance_camera(prev):
-                    best[m.id] = m
-        return list(best.values())
+                out.append(m)
+        return out
 
     @commands.register(
         args=[],
         result=[("bricks", ArgTypes.Array(_BRICK_STRUCT))],
     )
     def get_bricks_robot(self) -> "Task[list[dict[str, Any]]]":
-        """Fused ArUco list in the robot frame, deduplicated across cameras."""
+        """All ArUco observations in the robot frame, one row per (camera, marker)."""
         out: list[dict[str, Any]] = []
-        for m in self._detect_fused_robot():
+        for m in self._detect_all_robot():
             assert m.position_robot_mm is not None and m.quat_robot is not None
             qw, qx, qy, qz = m.quat_robot
             px, py, pz = m.position_robot_mm
@@ -127,10 +118,10 @@ class MultiCamera(Peripheral):
     def get_bricks_table(
         self, x_mm: float, y_mm: float, yaw_deg: float
     ) -> "Task[list[dict[str, Any]]]":
-        """Fused ArUco list in the table frame, given the robot pose in the table."""
+        """All ArUco observations in the table frame, given the robot pose in the table."""
         T_table_robot = Pose3D(x_mm, y_mm, 0.0, 0.0, 0.0, math.radians(yaw_deg))
         out: list[dict[str, Any]] = []
-        for m in self._detect_fused_robot():
+        for m in self._detect_all_robot():
             assert m.position_robot_mm is not None and m.quat_robot is not None
             xr, yr, zr = (
                 float(m.position_robot_mm[0]),
