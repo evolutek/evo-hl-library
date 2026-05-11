@@ -57,7 +57,7 @@ class VectBase(ABC):
     def __mul__(self, scalar: float) -> Self:
         return type(self)(*(c * scalar for c in self._components))
 
-    def __div__(self, scalar: float) -> Self:
+    def __truediv__(self, scalar: float) -> Self:
         # Division by a scalar is well defined on vectors
         return type(self)(*(c / scalar for c in self._components))
 
