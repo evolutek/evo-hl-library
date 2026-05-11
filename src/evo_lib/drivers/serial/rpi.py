@@ -1,6 +1,7 @@
 """Serial driver: real implementation via pyserial."""
 
 import threading
+import time
 
 from evo_lib.argtypes import ArgTypes
 from evo_lib.driver_definition import (
@@ -35,7 +36,8 @@ class RpiSerial(Serial):
         self._timeout = timeout
         self._log = logger
         self._serial = None
-        self._lock = threading.Lock()
+        self._read_lock = threading.Lock()
+        self._write_lock = threading.Lock()
 
     def init(self) -> Task[()]:
         # pyserial imported lazily so this module stays importable without it.
@@ -62,40 +64,72 @@ class RpiSerial(Serial):
         if self._serial is None:
             raise RuntimeError("Serial port not opened, call init() first")
 
-    def write(self, data: bytes) -> None:
+    def write_sync(self, data: bytes) -> None:
         self._check_ready()
-        with self._lock:
+        assert self._serial is not None
+        with self._write_lock:
             self._serial.write(data)
 
-    def read(self, count: int) -> bytes:
+    def read_exactly_sync(self, size: int, timeout: float | None = None) -> bytes:
         self._check_ready()
-        with self._lock:
-            data = self._serial.read(count)
-            if len(data) < count:
-                raise TimeoutError(f"Serial read timeout: expected {count} bytes, got {len(data)}")
+        assert self._serial is not None
+        with self._read_lock:
+            self._serial.timeout = timeout
+            data = self._serial.read(size)
+            if len(data) < size:
+                raise TimeoutError(f"Serial read timeout: expected {size} bytes, got {len(data)}")
             return data
 
-    def read_available(self) -> bytes:
+    def read_sync(self, max_size: int | None = None, timeout: float | None = None) -> bytes:
         self._check_ready()
-        with self._lock:
-            n = self._serial.in_waiting
-            if n == 0:
-                return b""
-            return self._serial.read(n)
+        assert self._serial is not None
+
+        if max_size is not None and max_size == 0:
+            return b""
+
+        start_time = time.time()
+        with self._read_lock:
+            # Wait at least one byte
+            if self._serial.in_waiting == 0:
+                if timeout is not None and timeout == 0:
+                    return b""
+                self._serial.timeout = timeout
+                data = self._serial.read(1)
+                if len(data) == 0:
+                    return b""
+            else:
+                data = b""
+
+            # Set read timeout with remaining time
+            remaining_time = time.time() - start_time
+            if timeout is not None:
+                if timeout - remaining_time <= 0:
+                    return b""
+                self._serial.timeout = timeout - remaining_time
+            else:
+                self._serial.timeout = None
+
+            # Read remaining bytes
+            to_read = self._serial.in_waiting
+            if max_size is not None:
+                to_read = min(to_read, max_size - len(data))
+            data += self._serial.read(to_read)
+
+            return data
 
     def flush(self) -> None:
         self._check_ready()
-        with self._lock:
+        with self._read_lock:
             self._serial.flush()
 
     def reset_input_buffer(self) -> None:
         self._check_ready()
-        with self._lock:
+        with self._read_lock:
             self._serial.reset_input_buffer()
 
     def set_baudrate(self, baudrate: int) -> None:
         self._check_ready()
-        with self._lock:
+        with self._read_lock:
             # pyserial reconfigures termios in-place on assignment.
             self._serial.baudrate = baudrate
             self._baudrate = baudrate
@@ -104,7 +138,7 @@ class RpiSerial(Serial):
     @property
     def in_waiting(self) -> int:
         self._check_ready()
-        with self._lock:
+        with self._read_lock:
             return self._serial.in_waiting
 
 
@@ -164,14 +198,14 @@ class RpiSerialVirtual(Serial):
     def close(self) -> None:
         self._inner.close()
 
-    def write(self, data: bytes) -> None:
-        self._inner.write(data)
+    def write_sync(self, data: bytes) -> None:
+        self._inner.write_sync(data)
 
-    def read(self, count: int) -> bytes:
-        return self._inner.read(count)
+    def read_exactly_sync(self, size: int, timeout: float | None = None) -> bytes:
+        return self._inner.read_exactly_sync(size, timeout)
 
-    def read_available(self) -> bytes:
-        return self._inner.read_available()
+    def read_sync(self, max_size: int | None = None, timeout: float | None = None) -> bytes:
+        return self._inner.read_sync(max_size, timeout)
 
     def flush(self) -> None:
         self._inner.flush()

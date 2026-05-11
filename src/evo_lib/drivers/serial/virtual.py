@@ -50,29 +50,29 @@ class SerialVirtual(Serial):
         if not self._opened:
             raise RuntimeError("Virtual serial not opened, call init() first")
 
-    def write(self, data: bytes) -> None:
+    def write_sync(self, data: bytes) -> None:
         self._check_ready()
         with self._lock:
             self.written.append(bytes(data))
 
-    def read(self, count: int) -> bytes:
+    def read_exactly_sync(self, size: int, timeout: float | None = None) -> bytes:
         self._check_ready()
         # Wait until enough bytes are available
         while True:
             with self._lock:
-                if len(self._read_buffer) >= count:
-                    result = bytes(self._read_buffer[:count])
-                    del self._read_buffer[:count]
+                if len(self._read_buffer) >= size:
+                    result = bytes(self._read_buffer[:size])
+                    del self._read_buffer[:size]
                     return result
                 self._read_event.clear()
             if not self._read_event.wait(timeout=self._timeout):
                 with self._lock:
                     available = len(self._read_buffer)
                 raise TimeoutError(
-                    f"Virtual serial read timeout: expected {count} bytes, got {available}"
+                    f"Virtual serial read timeout: expected {size} bytes, got {available}"
                 )
 
-    def read_available(self) -> bytes:
+    def read_sync(self, max_size: int | None = None, timeout: float | None = None) -> bytes:
         self._check_ready()
         with self._lock:
             data = bytes(self._read_buffer)

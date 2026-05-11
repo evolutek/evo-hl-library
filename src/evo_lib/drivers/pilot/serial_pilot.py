@@ -428,7 +428,7 @@ class DifferentialSerialPilot(DifferentialPilot):
         """Background thread: read and dispatch incoming messages from the board."""
         while self._running:
             try:
-                header = self._bus.read_available()  # FIXME: Non blocking read cause high CPU usage
+                header = self._bus.read_sync()  # FIXME: Non blocking read cause high CPU usage
                 if not header:
                     continue
                 self._process_bytes(header)

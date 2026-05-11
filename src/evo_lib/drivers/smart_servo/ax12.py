@@ -387,19 +387,19 @@ class AX12Bus(InterfaceHolder):
         doing in production for years. USB2Dynamixel-style dongles that
         mirror TX onto RX require echo=True in the constructor.
         """
-        self._bus.write(packet)
+        self._bus.write_sync(packet)
         if self._echo:
-            _ = self._bus.read(len(packet))
+            _ = self._bus.read_exactly_sync(len(packet))
 
     def _read_status(self, expected_id: int) -> bytes:
         """Read and validate a Dynamixel 1.0 status packet.
 
         Returns the parameter bytes (excluding error and checksum).
         """
-        header = self._bus.read(2)
+        header = self._bus.read_exactly_sync(2)
         if header[0] != _HEADER_B0 or header[1] != _HEADER_B1:
             raise DynamixelBusError(f"invalid header {bytes(header)!r}")
-        id_len = self._bus.read(2)
+        id_len = self._bus.read_exactly_sync(2)
         resp_id, resp_length = id_len[0], id_len[1]
         # Detect a crossed reply (servo X answers a request addressed to Y —
         # happens after a prior timeout leaves a stale status in the buffer).
@@ -411,7 +411,7 @@ class AX12Bus(InterfaceHolder):
         # a faulty servo making us block on the serial timeout.
         if resp_length < 2 or resp_length > 8:
             raise DynamixelBusError(f"implausible status length {resp_length}")
-        payload = self._bus.read(resp_length)
+        payload = self._bus.read_exactly_sync(resp_length)
         cs = resp_id + resp_length
         for b in payload[:-1]:
             cs += b
