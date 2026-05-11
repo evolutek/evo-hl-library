@@ -23,9 +23,12 @@ class SocketCAN(CAN):
         self._recv_messages = Queue[CANMessage]()
         self._recv_event = Event[CANMessage]()
         self._extended = extended
+        self._exit = threading.Event()
 
     def init(self) -> Task[()]:
         self._bus = can.Bus(interface="socketcan", channel=self._interface)
+
+        self._exit.clear()
 
         self._recv_thread = threading.Thread(target=self._receiver_thread_func)
         self._recv_thread.start()
@@ -33,15 +36,21 @@ class SocketCAN(CAN):
         return ImmediateResultTask()
 
     def close(self) -> None:
+        self._exit.set()
+
         if self._bus is not None:
             self._bus.shutdown()
             self._bus = None
+
+        if self._recv_thread is not None:
+            self._recv_thread.join()
+            self._recv_thread = None
 
     def is_extended(self) -> bool:
         return self._extended
 
     def _receiver_thread_func(self) -> None:
-        while self._bus is not None:
+        while self._bus is not None and not self._exit.is_set():
             try:
                 raw_message = self._bus.recv()
                 if raw_message is not None:
