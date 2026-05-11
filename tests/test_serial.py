@@ -27,28 +27,28 @@ def short_timeout_bus():
 
 class TestSerialVirtual:
     def test_write_records_data(self, bus):
-        bus.write(b"\x01\x02")
-        bus.write(b"\x03")
+        bus.write_sync(b"\x01\x02")
+        bus.write_sync(b"\x03")
         assert bus.written == [b"\x01\x02", b"\x03"]
 
     def test_read_consumes_injected_data(self, bus):
         bus.inject_read(b"\xaa\xbb\xcc")
-        result = bus.read(2)
+        result = bus.read_exactly_sync(2)
         assert result == b"\xaa\xbb"
         assert bus.in_waiting == 1
 
     def test_read_available_returns_all(self, bus):
         bus.inject_read(b"\x01\x02\x03")
-        result = bus.read_available()
+        result = bus.read_sync()
         assert result == b"\x01\x02\x03"
         assert bus.in_waiting == 0
 
     def test_read_available_empty(self, bus):
-        assert bus.read_available() == b""
+        assert bus.read_sync() == b""
 
     def test_read_timeout_raises(self, short_timeout_bus):
         with pytest.raises(TimeoutError):
-            short_timeout_bus.read(1)
+            short_timeout_bus.read_exactly_sync(1)
 
     def test_read_blocks_until_data_injected(self):
         bus = SerialVirtual(name="test", logger=Logger("test"), timeout=2.0)
@@ -57,7 +57,7 @@ class TestSerialVirtual:
         result = []
 
         def reader():
-            result.append(bus.read(3))
+            result.append(bus.read_exactly_sync(3))
 
         t = threading.Thread(target=reader)
         t.start()
@@ -70,7 +70,7 @@ class TestSerialVirtual:
     def test_not_opened_raises(self):
         drv = SerialVirtual(name="test", logger=Logger("test"))
         with pytest.raises(RuntimeError):
-            drv.write(b"\x00")
+            drv.write_sync(b"\x00")
 
     def test_in_waiting(self, bus):
         assert bus.in_waiting == 0
@@ -82,7 +82,7 @@ class TestSerialVirtual:
         assert bus.in_waiting == 4
         bus.reset_input_buffer()
         assert bus.in_waiting == 0
-        assert bus.read_available() == b""
+        assert bus.read_sync() == b""
 
     def test_reset_input_buffer_forces_reader_to_rewait(self):
         # A concurrent reader must not be woken up by a stale event
@@ -96,7 +96,7 @@ class TestSerialVirtual:
 
         def reader():
             try:
-                bus.read(1)
+                bus.read_exactly_sync(1)
             except BaseException as e:
                 error.append(e)
 
@@ -122,9 +122,9 @@ class TestRpiSerialVirtual:
             name="test", logger=Logger("test"), port="/dev/null", baudrate=115200
         )
         drv.init()
-        drv.write(b"\xa0")
+        drv.write_sync(b"\xa0")
         drv.inject_read(b"\x55")
-        assert drv.read(1) == b"\x55"
+        assert drv.read_exactly_sync(1) == b"\x55"
         assert drv.written == [b"\xa0"]
         drv.close()
 

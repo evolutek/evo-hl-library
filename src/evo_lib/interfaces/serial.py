@@ -20,20 +20,21 @@ class Serial(Interface):
     """
 
     @abstractmethod
-    def write(self, data: bytes) -> None:
+    def write_sync(self, data: bytes) -> None:
         """Write raw bytes to the serial port."""
 
     @abstractmethod
-    def read(self, count: int) -> bytes:
-        """Read exactly count bytes (blocking until all received or timeout).
+    def read_exactly_sync(self, size: int, timeout: float | None = None) -> bytes:
+        """Read exactly 'size' bytes (blocking until all received or timeout).
 
         Raises TimeoutError if the configured timeout expires before
         all bytes are received.
         """
 
     @abstractmethod
-    def read_available(self) -> bytes:
-        """Read all bytes currently available without blocking.
+    def read_sync(self, max_size: int | None = None, timeout: float | None = None) -> bytes:
+        """Read all bytes currently available without blocking if timeout = 0,
+        otherwise block until all bytes are received or timeout expires.
 
         Returns an empty bytes object if nothing is available.
         """
@@ -61,9 +62,7 @@ class Serial(Interface):
         AX-12 Dynamixel servos rely on this to switch between their
         EEPROM-configured baudrates (1 Mbps, 500 kbps, ...) at runtime.
         """
-        raise NotImplementedError(
-            f"{type(self).__name__} does not support runtime baudrate change"
-        )
+        raise NotImplementedError(f"{type(self).__name__} does not support runtime baudrate change")
 
     @property
     @abstractmethod
