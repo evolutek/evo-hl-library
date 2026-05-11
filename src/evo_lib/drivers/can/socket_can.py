@@ -1,7 +1,6 @@
 import threading
 from queue import Empty, Queue
-
-import can
+from typing import TYPE_CHECKING
 
 from evo_lib.argtypes import ArgTypes
 from evo_lib.driver_definition import DriverDefinition, DriverInitArgs, DriverInitArgsDefinition
@@ -9,6 +8,13 @@ from evo_lib.event import Event
 from evo_lib.interfaces.can import CAN, CANFilter, CANMessage
 from evo_lib.logger import Logger
 from evo_lib.task import ImmediateResultTask, Task
+
+can = None
+
+if TYPE_CHECKING:
+    import can as can_type
+
+    can = can_type
 
 
 class SocketCAN(CAN):
@@ -26,6 +32,12 @@ class SocketCAN(CAN):
         self._exit = threading.Event()
 
     def init(self) -> Task[()]:
+        global can
+        if can is None:
+            import can as can_lib
+
+            can = can_lib
+
         self._bus = can.Bus(interface="socketcan", channel=self._interface)
 
         self._exit.clear()
