@@ -8,7 +8,7 @@ from evo_lib.registry import Registry
 
 import struct
 
-from evo_lib.task import ImmediateResultTask, Task
+from evo_lib.task import ImmediateResultTask, Task, ImmediateErrorTask
 
 
 class ElevatorBoard(BoardDriver):
@@ -26,8 +26,8 @@ class ElevatorBoard(BoardDriver):
         self._i2c = i2c
         self._address = address
 
-    def send_command(self, cmd_id: int, stepper_id: int, data: bytes):
-        self._i2c.write_to(self._address, bytes([cmd_id, stepper_id]) + data)
+    def send_command(self, cmd_id: int, stepper_id: int, data: bytes) -> Task[()]:
+        return self._i2c.write_to(self._address, bytes([cmd_id, stepper_id]) + data)
 
 
 class ElevatorBoardStepper(Placable):
@@ -49,28 +49,25 @@ class ElevatorBoardStepper(Placable):
         ("steps", ArgTypes.I32()),
         ("speed", ArgTypes.I32())
     ])
-    def goto(self, steps: int, speed: int) -> bool:
+    def go_to(self, steps: int, speed: int) -> Task[()]:
         if speed < 0:
-            return False
+            return ImmediateErrorTask(ValueError("speed must be positive"))
         if steps < -0x7FFFFFFF or steps > 0x7FFFFFFF:
-            return False
-        self._board.send_command(0x02, self._stepper_id, struct.pack(">iI", steps, speed))
-        return True
+            return ImmediateErrorTask(ValueError("steps must be in range [-2^31, 2^31)"))
+        return self._board.send_command(0x02, self._stepper_id, struct.pack(">iI", steps, speed))
 
     @commands.register(args = [
         ("steps", ArgTypes.I32()),
         ("speed", ArgTypes.I32())
     ])
-    def move(self, steps: int, speed: int) -> bool:
-        self._board.send_command(0x03, self._stepper_id, struct.pack(">iI", steps, speed))
-        return True
+    def move(self, steps: int, speed: int) -> Task[()]:
+        return self._board.send_command(0x03, self._stepper_id, struct.pack(">iI", steps, speed))
 
     @commands.register(args = [
         ("speed", ArgTypes.I32())
     ])
-    def home(self, speed: int) -> bool:
-        self._board.send_command(0x01, self._stepper_id, struct.pack(">i", speed))
-        return True
+    def home(self, speed: int) -> Task[()]:
+        return self._board.send_command(0x01, self._stepper_id, struct.pack(">i", speed))
 
 
 class ElevatorBoardDefinition(DriverDefinition):
