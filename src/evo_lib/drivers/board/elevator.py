@@ -8,6 +8,8 @@ from evo_lib.registry import Registry
 
 import struct
 
+from evo_lib.task import ImmediateResultTask, Task
+
 
 class ElevatorBoard(BoardDriver):
     """Board made to control a elevator with a stepper.
@@ -37,9 +39,15 @@ class ElevatorBoardStepper(Placable):
         self._board = board
         self._stepper_id = stepper_id
 
+    def init(self) -> Task[()]:
+        return ImmediateResultTask()
+
+    def close(self) -> None:
+        pass
+
     @commands.register(args = [
-        ArgTypes.I32("steps"),
-        ArgTypes.I32("speed")
+        ("steps", ArgTypes.I32()),
+        ("speed", ArgTypes.I32())
     ])
     def goto(self, steps: int, speed: int) -> bool:
         if speed < 0:
@@ -50,15 +58,15 @@ class ElevatorBoardStepper(Placable):
         return True
 
     @commands.register(args = [
-        ArgTypes.I32("steps"),
-        ArgTypes.I32("speed")
+        ("steps", ArgTypes.I32()),
+        ("speed", ArgTypes.I32())
     ])
     def move(self, steps: int, speed: int) -> bool:
         self._board.send_command(0x03, self._stepper_id, struct.pack(">iI", steps, speed))
         return True
 
     @commands.register(args = [
-        ArgTypes.I32("speed")
+        ("speed", ArgTypes.I32())
     ])
     def home(self, speed: int) -> bool:
         self._board.send_command(0x01, self._stepper_id, struct.pack(">i", speed))
@@ -107,7 +115,7 @@ class ElevatorBoardStepperDefinition(DriverDefinition):
         name = args.get_name()
         return ElevatorBoardStepper(
             name = name,
-            logger = self._logger.get_sublogger(name),
+            logger = self._logger,
             board = args.get("board"),
             stepper_id = args.get("stepper_id")
         )
