@@ -54,7 +54,7 @@ class PCA9685Channel(PWM):
     commands = DriverCommands(parents=[PWM.commands])
 
     def __init__(self, name: str, logger: Logger, chip: PCA9685Chip, channel: int):
-        super().__init__(name)
+        super().__init__(name, commands = PCA9685Channel.commands)
         if not 0 <= channel < NUM_CHANNELS:
             raise ValueError(f"Channel {channel} out of range (0-{NUM_CHANNELS - 1})")
         self._log = logger

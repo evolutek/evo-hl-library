@@ -2,7 +2,7 @@
 
 from abc import ABC, abstractmethod
 
-from evo_lib.driver_definition import DriverDefinition, DriverInitArgs
+from evo_lib.driver_definition import DriverCommands, DriverDefinition, DriverInitArgs
 from evo_lib.task import Task
 
 
@@ -14,8 +14,9 @@ class Peripheral(ABC):
     ``init`` (acquire resources) and ``close`` (release them).
     """
 
-    def __init__(self, name: str):
+    def __init__(self, name: str, commands: DriverCommands | None = None):
         self._name = name
+        self._commands = commands
         # Set by the ComponentsManager right after DriverDefinition.create()
         # returns. Sub-components not instantiated through the ComponentsManager
         # (e.g. MCP23017Pin built via get_pin) may leave this as None; calling
@@ -25,6 +26,11 @@ class Peripheral(ABC):
         self._dependencies: set[Peripheral] = set()
         self._dependents: set[Peripheral] = set()
         self._required: bool = True  # TODO: Use a value from config
+
+    def get_commands(self) -> DriverCommands | None:
+        if self._commands is None and self._definition is not None:
+            return self._definition.get_commands()
+        return self._commands
 
     def add_dependency(self, peripheral: Peripheral) -> None:
         self._dependencies.add(peripheral)
