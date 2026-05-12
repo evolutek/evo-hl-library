@@ -903,6 +903,7 @@ class ArgTypes:
         def __str__(self):
             return "component(" + self.base_type.__name__ + ")"
 
+    # TODO: Remove this argtype because it's equivalent to Optional(Component())
     class OptionalComponent(Component):
         """Like Component, but accepts a missing/null config value (returns None).
 
@@ -924,6 +925,52 @@ class ArgTypes:
             if v == "" or v.lower() == "none":
                 return None
             return super().value_from_str(v)
+
+    class Optional(ArgType):
+        def __init__(self, arg_type: ArgType):
+            self.arg_type = arg_type
+
+        def value_from_str(self, v: str) -> Any:
+            if v == "" or v.lower() in ["none", "null"]:
+                return None
+            return self.arg_type.value_from_str(v)
+
+        def value_from_config(self, v: ConfigValue) -> Any:
+            if v is None or v == "":
+                return None
+            return self.arg_type.value_from_config(v)
+
+        def validate(self, v: Any) -> None:
+            if v is None:
+                return
+            self.arg_type.validate(v)
+
+        def value_to_stream(self, v: Any, s: io.RawIOBase) -> None:
+            if v is None:
+                s.write(bytes([0]))
+            else:
+                s.write(bytes([1]))
+                self.arg_type.value_to_stream(v, s)
+
+        def value_from_stream(self, s: io.RawIOBase) -> Any:
+            if s.read(1) == b'\x00':
+                return None
+            return self.arg_type.value_from_stream(s)
+
+        def self_to_stream(self, s: io.RawIOBase) -> None:
+            self.arg_type.self_to_stream(s)
+
+        def self_from_stream(self, s: io.RawIOBase) -> None:
+            self.arg_type.self_from_stream(s)
+
+        def self_from_config(self, c: ConfigObject) -> None:
+            self.arg_type.self_from_config(c)
+
+        def self_to_config(self, c: ConfigObject) -> None:
+            self.arg_type.self_to_config(c)
+
+        def __str__(self):
+            return "optional(" + str(self.arg_type) + ")"
 
 
 ID_TO_ARGTYPE: list[type[ArgType]] = [
