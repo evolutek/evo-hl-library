@@ -79,7 +79,7 @@ class SerialVirtual(Serial):
             self._read_buffer.clear()
             return data
 
-    def flush(self) -> None:
+    def flush_sync(self) -> None:
         self._check_ready()
 
     def reset_input_buffer(self) -> None:
