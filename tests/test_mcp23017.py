@@ -2,7 +2,7 @@
 
 import pytest
 
-from evo_lib.drivers.gpio.mcp23017 import MCP23017Chip
+from evo_lib.drivers.gpio.mcp23017 import MCP23017Chip, MCP23017Pin
 from evo_lib.drivers.gpio.virtual import GPIOChipVirtual, GPIOPinVirtual
 from evo_lib.drivers.i2c.virtual import I2CVirtual
 from evo_lib.interfaces.gpio import GPIODirection
@@ -41,7 +41,7 @@ class TestMCP23017Chip:
         dev = bus.add_device(0x20)
         # init() does two write_then_read (IODIR reads) + two write_to (IODIR writes)
         # Actually init() calls write_register which just does write_to
-        chip = MCP23017Chip("test", bus, address=0x20)
+        chip = MCP23017Chip("test", Logger("test"), bus, address=0x20)
         chip.init()
         dev.written.clear()
         return bus, dev, chip
@@ -50,7 +50,7 @@ class TestMCP23017Chip:
         bus = I2CVirtual()
         bus.init()
         dev = bus.add_device(0x20)
-        chip = MCP23017Chip("test", bus, address=0x20)
+        chip = MCP23017Chip("test", Logger("test"), bus, address=0x20)
         chip.init()
         # init writes 0xFF to IODIR_A (0x00) and IODIR_B (0x01)
         assert dev.written == [bytes([0x00, 0xFF]), bytes([0x01, 0xFF])]
@@ -59,7 +59,7 @@ class TestMCP23017Chip:
         bus, dev, chip = bus_and_chip
         # set_bit reads OLAT then writes it, so inject current register value
         dev.inject_read(b"\x00")  # current OLAT_A = 0
-        pin = chip.get_pin(2, "out", direction=GPIODirection.OUTPUT)
+        pin = MCP23017Pin("ch2", chip, 2, direction=GPIODirection.OUTPUT)
         # init: set_bit(IODIR, 2, False) needs a read, set_bit(OLAT, 2, False) needs a read
         dev.inject_read(b"\xff")  # IODIR_A read
         dev.inject_read(b"\x00")  # OLAT_A read
@@ -76,7 +76,7 @@ class TestMCP23017Chip:
         # set_bit for init needs reads
         dev.inject_read(b"\xff")  # IODIR_A read (already input, no change)
         dev.inject_read(b"\x00")  # GPPU_A read
-        pin = chip.get_pin(3, "in", direction=GPIODirection.INPUT)
+        pin = MCP23017Pin("ch3", chip, 3, direction=GPIODirection.INPUT)
         pin.init()
         dev.written.clear()
         # Inject GPIO_A value with bit 3 set
@@ -88,7 +88,7 @@ class TestMCP23017Chip:
         _, dev, chip = bus_and_chip
         dev.inject_read(b"\xff")  # IODIR_A read
         dev.inject_read(b"\x00")  # GPPU_A read
-        pin = chip.get_pin(5, "sensor", direction=GPIODirection.INPUT, pull_up=True)
+        pin = MCP23017Pin("ch5", chip, 5, direction=GPIODirection.INPUT, pull_up=True)
         pin.init()
         # Last write should be GPPU_A with bit 5 set
         gppu_writes = [w for w in dev.written if w[0] == 0x0C]
