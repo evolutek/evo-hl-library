@@ -40,7 +40,7 @@ class Serial(Interface):
         """
 
     @abstractmethod
-    def flush(self) -> None:
+    def flush_sync(self) -> None:
         """Flush the output buffer (wait until all bytes are sent)."""
 
     @abstractmethod
