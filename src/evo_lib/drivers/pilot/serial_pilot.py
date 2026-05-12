@@ -35,7 +35,7 @@ from evo_lib.interfaces.serial import Serial
 from evo_lib.logger import Logger
 from evo_lib.peripheral import Peripheral
 from evo_lib.registry import Registry
-from evo_lib.task import DelayedTask, ImmediateResultTask, Task
+from evo_lib.task import DelayedTask, ImmediateResultTask, ImmediateErrorTask, Task
 from evo_lib.types.pose import Pose2D
 from evo_lib.types.vect import Vect2D
 
@@ -69,7 +69,7 @@ class DifferentialSerialPilot(DifferentialPilot):
         self._rx_buffer = bytearray()
         self._response_event = threading.Event()
         self._response_data: tuple = ()
-        self._pose_or_velocity_update_event: Event[Pose2D, Vect2D] = Event()
+        self._pose_or_velocity_update_event = Event[Pose2D, Vect2D]()
 
     def init(self) -> Task[()]:
         self._running = True
@@ -77,7 +77,7 @@ class DifferentialSerialPilot(DifferentialPilot):
         self._reader_thread.start()
         # Send init packet
         # with self._lock:
-        #     self._bus.write(INIT_PACKET)
+        #     self._bus.write_sync(INIT_PACKET)
         self._log.info(f"DifferentialSerialPilot '{self.name}' initialized")
         return ImmediateResultTask()
 
@@ -400,9 +400,11 @@ class DifferentialSerialPilot(DifferentialPilot):
         if command not in NO_ACK_COMMANDS:
             self._ack_event.clear()
         with self._lock:
-            self._bus.write(packet)
+            self._bus.write_sync(packet)
+            self._bus.flush_sync()
         if command not in NO_ACK_COMMANDS:
-            self._ack_event.wait(timeout=_ACK_TIMEOUT)
+            if not self._ack_event.wait(timeout=_ACK_TIMEOUT):
+                return ImmediateErrorTask(TimeoutError("ACK not received within timeout"))
         return ImmediateResultTask()  # TODO: Be async
 
     def _send_move(self, command: Commands, *args) -> Task[PilotMoveStatus]:
@@ -418,7 +420,7 @@ class DifferentialSerialPilot(DifferentialPilot):
         self._response_data = ()
         packet = build_packet(command)
         with self._lock:
-            self._bus.write(packet)
+            self._bus.write_sync(packet)
         if not self._response_event.wait(timeout=_RESPONSE_TIMEOUT):
             self._log.warning(f"Query {command.name} timed out")
             return ImmediateResultTask(())
@@ -428,9 +430,11 @@ class DifferentialSerialPilot(DifferentialPilot):
         """Background thread: read and dispatch incoming messages from the board."""
         while self._running:
             try:
-                header = self._bus.read_sync()  # FIXME: Non blocking read cause high CPU usage
+                #self._log.debug("Pilot read sync")
+                header = self._bus.read_sync(timeout=0.1) # TODO: Do not use timeout
                 if not header:
                     continue
+                #self._log.debug(f"Pilot read header: {header}")
                 self._process_bytes(header)
             except TimeoutError:
                 continue
@@ -469,7 +473,7 @@ class DifferentialSerialPilot(DifferentialPilot):
         elif cmd == Commands.TELEMETRY_MESSAGE:
             # Format: bbffff (counter, cmdid, x, y, theta, speed)
             x, y, theta, speed = struct.unpack("=ffff", payload)
-            # debug: telemetry x, y, theta(rad->deg), speed
+            #self._log.debug(f"Telemetry: x={x}, y={y}, theta={math.degrees(theta)}°, speed={speed}")
             self._last_position.x = x
             self._last_position.y = y
             self._last_position.heading = theta

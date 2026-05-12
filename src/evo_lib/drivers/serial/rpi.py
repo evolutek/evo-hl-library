@@ -117,9 +117,9 @@ class RpiSerial(Serial):
 
             return data
 
-    def flush(self) -> None:
+    def flush_sync(self) -> None:
         self._check_ready()
-        with self._read_lock:
+        with self._write_lock:
             self._serial.flush()
 
     def reset_input_buffer(self) -> None:
@@ -207,7 +207,7 @@ class RpiSerialVirtual(Serial):
     def read_sync(self, max_size: int | None = None, timeout: float | None = None) -> bytes:
         return self._inner.read_sync(max_size, timeout)
 
-    def flush(self) -> None:
+    def flush_sync(self) -> None:
         self._inner.flush()
 
     def reset_input_buffer(self) -> None:

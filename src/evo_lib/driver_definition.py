@@ -38,7 +38,7 @@ class DriverInitArgsDefinition:
     def add_required(self, key: str, arg_type: ArgType) -> None:
         self.args[key] = DriverInitArgDefinition(arg_type, True)
 
-    def add_optional(self, key: str, arg_type: ArgType, default) -> None:
+    def add_optional(self, key: str, arg_type: ArgType, default: Any) -> None:
         self.args[key] = DriverInitArgDefinition(arg_type, False, default)
 
 
