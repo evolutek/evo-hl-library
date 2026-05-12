@@ -4,6 +4,7 @@ Implements the legacy trajectory manager protocol: binary packets over UART,
 with asynchronous ACKNOWLEDGE/MOVE_BEGIN/MOVE_END events from the board.
 """
 
+from dataclasses import dataclass
 import math
 import struct
 import threading
@@ -43,6 +44,13 @@ _ACK_TIMEOUT = 1.0
 _RESPONSE_TIMEOUT = 1.0
 
 
+@dataclass
+class DifferentialSerialPilotConfig:
+    diam_left: float | None = None
+    diam_right: float | None = None
+    spacing: float | None = None
+
+
 class DifferentialSerialPilot(DifferentialPilot):
     """Trajectory manager communicating with carte-asserv via serial binary protocol."""
 
@@ -53,6 +61,7 @@ class DifferentialSerialPilot(DifferentialPilot):
         name: str,
         logger: Logger,
         bus: Serial,
+        config: DifferentialSerialPilotConfig
     ):
         super().__init__(name)
         self._bus = bus
@@ -69,16 +78,34 @@ class DifferentialSerialPilot(DifferentialPilot):
         self._rx_buffer = bytearray()
         self._response_event = threading.Event()
         self._response_data: tuple = ()
+<<<<<<< HEAD
         self._pose_or_velocity_update_event = Event[Pose2D, Vect2D]()
+=======
+        self._pose_or_velocity_update_event: Event[Pose2D, Vect2D] = Event()
+        self._config = config
+>>>>>>> 6bd9da4 (feat: Add config parameters for differential pilot and add optional argtype)
 
     def init(self) -> Task[()]:
         self._running = True
         self._reader_thread = threading.Thread(target=self._reader_loop)
         self._reader_thread.start()
+
         # Send init packet
         # with self._lock:
+<<<<<<< HEAD
         #     self._bus.write_sync(INIT_PACKET)
+=======
+        #     self._bus.write(INIT_PACKET)
+
+        # Set initial config
+        if self._config.diam_left is not None or self._config.diam_right is not None or self._config.spacing is not None:
+            if self._config.diam_left is None or self._config.diam_right is None or self._config.spacing is None:
+                return ImmediateErrorTask(ValueError("diam_left, diam_right, and spacing must all be specified or all be None"))
+            self.set_wheels(self._config.diam_left, self._config.diam_right, self._config.spacing).wait()
+
+>>>>>>> 6bd9da4 (feat: Add config parameters for differential pilot and add optional argtype)
         self._log.info(f"DifferentialSerialPilot '{self.name}' initialized")
+
         return ImmediateResultTask()
 
     def close(self) -> None:
@@ -163,7 +190,7 @@ class DifferentialSerialPilot(DifferentialPilot):
         return self._pose_or_velocity_update_event
 
     def get_velocity(self) -> Task[Vect2D]:
-        pass
+        raise NotImplementedError("DifferentialSerialPilot.get_velocity not implemented")
 
     def get_pose(self) -> Task[Pose2D]:
         """Return the last known position from telemetry (x, y, theta)."""
@@ -518,13 +545,22 @@ class DifferentialSerialPilotDefinition(DriverDefinition):
     def get_init_args_definition(self) -> DriverInitArgsDefinition:
         defn = DriverInitArgsDefinition()
         defn.add_required("serial", ArgTypes.Component(Serial, self._peripherals))
+        defn.add_optional("diam_left", ArgTypes.Optional(ArgTypes.F32()), None)
+        defn.add_optional("diam_right", ArgTypes.Optional(ArgTypes.F32()), None)
+        defn.add_optional("spacing", ArgTypes.Optional(ArgTypes.F32()), None)
         return defn
 
     def create(self, args: DriverInitArgs) -> DifferentialSerialPilot:
+        config = DifferentialSerialPilotConfig(
+            diam_left=args.get("diam_left"),
+            diam_right=args.get("diam_right"),
+            spacing=args.get("spacing"),
+        )
         return DifferentialSerialPilot(
             name=args.get_name(),
             logger=self._logger,
             bus=args.get("serial"),
+            config=config
         )
 
 
