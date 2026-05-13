@@ -87,8 +87,22 @@ class _ArucoState:
         self.image_size: tuple[int, int] | None = None
         self.R_world_camera = None
         self.t_world_camera = None
-        self.marker_obj_pts = _marker_object_points(marker_size_mm)
+        self._obj_pts_cache: dict[float, "np.ndarray"] = {
+            marker_size_mm: _marker_object_points(marker_size_mm)
+        }
         self._detector_handle = None
+
+    def _obj_pts_for(self, size_mm: float) -> "np.ndarray":
+        cached = self._obj_pts_cache.get(size_mm)
+        if cached is None:
+            cached = _marker_object_points(size_mm)
+            self._obj_pts_cache[size_mm] = cached
+        return cached
+
+    def _size_for_id(self, marker_id: int) -> float:
+        from evo_lib.types import EUROBOT_TAG_SIZES_MM
+
+        return EUROBOT_TAG_SIZES_MM.get(marker_id, self.marker_size_mm)
 
     def detector(self) -> Any:
         import cv2
@@ -112,10 +126,12 @@ class _ArucoState:
         results: list[ArucoMarker] = []
         for i, marker_id in enumerate(marker_ids.flatten()):
             corners_ij = marker_corners[i].reshape(4, 2).astype(np.float32)
-            marker = ArucoMarker(id=int(marker_id), corners=corners_ij)
+            mid = int(marker_id)
+            marker = ArucoMarker(id=mid, corners=corners_ij)
             if self.K is not None and self.dist is not None:
+                obj_pts = self._obj_pts_for(self._size_for_id(mid))
                 ok, rvec, tvec = cv2.solvePnP(
-                    self.marker_obj_pts,
+                    obj_pts,
                     corners_ij,
                     self.K,
                     self.dist,
@@ -387,6 +403,39 @@ class UvcCamera(Camera):
             self.detect(), reference_marker_id, R_world_marker, t_world_marker_mm
         )
 
+    def calibrate_extrinsics_from_pose(
+        self,
+        reference_marker_id: int,
+        rvec_camera_marker: "np.ndarray",
+        tvec_camera_marker: "np.ndarray",
+        R_world_marker: "np.ndarray",
+        t_world_marker_mm: "np.ndarray",
+    ) -> dict[str, Any]:
+        # Apply extrinsics from a pre-computed marker pose (e.g. averaged
+        # across N frames via bundle PnP) instead of running detect() again.
+        import numpy as np
+
+        marker = ArucoMarker(
+            id=reference_marker_id,
+            corners=np.zeros((4, 2), dtype=np.float32),
+        )
+        marker.rvec_camera = np.asarray(rvec_camera_marker).reshape(3)
+        marker.tvec_camera = np.asarray(tvec_camera_marker).reshape(3)
+        return self._aruco.calibrate_extrinsics(
+            [marker], reference_marker_id, R_world_marker, t_world_marker_mm
+        )
+
+    @property
+    def K(self) -> "np.ndarray | None":
+        return self._aruco.K
+
+    @property
+    def dist(self) -> "np.ndarray | None":
+        return self._aruco.dist
+
+    def detect_from_frame(self, frame: "np.ndarray") -> list[ArucoMarker]:
+        return self._aruco.detect_in_frame(frame)
+
     def is_intrinsics_loaded(self) -> bool:
         return self._aruco.is_intrinsics_loaded()
 
@@ -577,6 +626,39 @@ class UvcCameraVirtual(Camera):
         return self._aruco.calibrate_extrinsics(
             self.detect(), reference_marker_id, R_world_marker, t_world_marker_mm
         )
+
+    def calibrate_extrinsics_from_pose(
+        self,
+        reference_marker_id: int,
+        rvec_camera_marker: "np.ndarray",
+        tvec_camera_marker: "np.ndarray",
+        R_world_marker: "np.ndarray",
+        t_world_marker_mm: "np.ndarray",
+    ) -> dict[str, Any]:
+        # Apply extrinsics from a pre-computed marker pose (e.g. averaged
+        # across N frames via bundle PnP) instead of running detect() again.
+        import numpy as np
+
+        marker = ArucoMarker(
+            id=reference_marker_id,
+            corners=np.zeros((4, 2), dtype=np.float32),
+        )
+        marker.rvec_camera = np.asarray(rvec_camera_marker).reshape(3)
+        marker.tvec_camera = np.asarray(tvec_camera_marker).reshape(3)
+        return self._aruco.calibrate_extrinsics(
+            [marker], reference_marker_id, R_world_marker, t_world_marker_mm
+        )
+
+    @property
+    def K(self) -> "np.ndarray | None":
+        return self._aruco.K
+
+    @property
+    def dist(self) -> "np.ndarray | None":
+        return self._aruco.dist
+
+    def detect_from_frame(self, frame: "np.ndarray") -> list[ArucoMarker]:
+        return self._aruco.detect_in_frame(frame)
 
     def is_intrinsics_loaded(self) -> bool:
         return self._aruco.is_intrinsics_loaded()
