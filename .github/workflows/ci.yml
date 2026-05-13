@@ -29,8 +29,11 @@ jobs:
           enable-cache: true
 
       # Skip the rpi extra: gpiod / smbus2 / rpi-ws281x need real Pi hardware.
+      # Include the camera extra: opencv-*-python-headless ships aarch64
+      # manylinux wheels, and tests/test_camera.py exercises the UvcCamera
+      # virtual replay path + ChArUco calibration round-trip via cv2.
       - name: Sync dev dependencies
-        run: uv sync --group dev
+        run: uv sync --group dev --extra camera
 
       - name: Pytest
         run: uv run pytest -q
