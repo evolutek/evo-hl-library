@@ -37,8 +37,8 @@ if TYPE_CHECKING:
 
 
 DEFAULT_FOURCC = "MJPG"
-DEFAULT_WIDTH = 1280
-DEFAULT_HEIGHT = 720
+DEFAULT_WIDTH = 1920
+DEFAULT_HEIGHT = 1080
 
 
 def _v4l2_set_ctrl(device: str, ctrl: str, value: int) -> tuple[bool, str]:
@@ -49,6 +49,15 @@ def _v4l2_set_ctrl(device: str, ctrl: str, value: int) -> tuple[bool, str]:
         text=True,
     )
     return result.returncode == 0, (result.stderr or "").strip()
+
+
+def _v4l2_has_ctrl(device: str, ctrl: str) -> bool:
+    result = subprocess.run(
+        ["v4l2-ctl", "-d", device, "--list-ctrls"],
+        capture_output=True,
+        text=True,
+    )
+    return result.returncode == 0 and ctrl in result.stdout
 
 
 class _ArucoState:
@@ -280,12 +289,19 @@ class UvcCamera(Camera):
 
         # AF must be locked before VideoCapture grabs its first buffer,
         # otherwise focal length floats and any K calibrated downstream is invalid.
-        af_value = 1 if self._autofocus else 0
-        ok, err = _v4l2_set_ctrl(self._device, "focus_automatic_continuous", af_value)
-        if not ok:
+        # Fixed-focus lenses don't expose this control at all (e.g. U20CAM-1080p).
+        if _v4l2_has_ctrl(self._device, "focus_automatic_continuous"):
+            af_value = 1 if self._autofocus else 0
+            ok, err = _v4l2_set_ctrl(self._device, "focus_automatic_continuous", af_value)
+            if not ok:
+                self._log.warning(
+                    f"UvcCamera '{self.name}': could not set focus_automatic_continuous "
+                    f"on {self._device}: {err}"
+                )
+        elif self._autofocus:
             self._log.warning(
-                f"UvcCamera '{self.name}': could not set focus_automatic_continuous "
-                f"on {self._device}: {err}"
+                f"UvcCamera '{self.name}': autofocus requested but {self._device} "
+                f"has no focus_automatic_continuous control (fixed-focus lens)"
             )
         if self._focus is not None and not self._autofocus:
             _v4l2_set_ctrl(self._device, "focus_absolute", self._focus)
