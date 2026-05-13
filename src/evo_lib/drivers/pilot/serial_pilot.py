@@ -22,6 +22,7 @@ from evo_lib.drivers.pilot.protocol import (
     Commands,
     Errors,
     build_packet,
+    INIT_PACKET
 )
 from evo_lib.drivers.pilot.virtual import DifferentialPilotVirtual, HolonomicPilotVirtual
 from evo_lib.event import Event
@@ -49,6 +50,27 @@ class DifferentialSerialPilotConfig:
     diam_left: float | None = None
     diam_right: float | None = None
     spacing: float | None = None
+
+    rot_accel: float | None = None
+    rot_decel: float | None = None
+    rot_max_speed: float | None = None
+
+    trsl_accel: float | None = None
+    trsl_decel: float | None = None
+    trsl_max_speed: float | None = None
+
+    trsl_p: float | None = None
+    trsl_i: float | None = None
+    trsl_d: float | None = None
+
+    rot_p: float | None = None
+    rot_i: float | None = None
+    rot_d: float | None = None
+
+    max_delta_rot: float | None = None
+    max_delta_trsl: float | None = None
+
+    telemetry_interval: float | None = None
 
 
 class DifferentialSerialPilot(DifferentialPilot):
@@ -78,12 +100,8 @@ class DifferentialSerialPilot(DifferentialPilot):
         self._rx_buffer = bytearray()
         self._response_event = threading.Event()
         self._response_data: tuple = ()
-<<<<<<< HEAD
         self._pose_or_velocity_update_event = Event[Pose2D, Vect2D]()
-=======
-        self._pose_or_velocity_update_event: Event[Pose2D, Vect2D] = Event()
         self._config = config
->>>>>>> 6bd9da4 (feat: Add config parameters for differential pilot and add optional argtype)
 
     def init(self) -> Task[()]:
         self._running = True
@@ -91,11 +109,8 @@ class DifferentialSerialPilot(DifferentialPilot):
         self._reader_thread.start()
 
         # Send init packet
-        # with self._lock:
-<<<<<<< HEAD
-        #     self._bus.write_sync(INIT_PACKET)
-=======
-        #     self._bus.write(INIT_PACKET)
+        with self._lock:
+            self._bus.write_sync(INIT_PACKET)
 
         # Set initial config
         if self._config.diam_left is not None or self._config.diam_right is not None or self._config.spacing is not None:
@@ -103,7 +118,11 @@ class DifferentialSerialPilot(DifferentialPilot):
                 return ImmediateErrorTask(ValueError("diam_left, diam_right, and spacing must all be specified or all be None"))
             self.set_wheels(self._config.diam_left, self._config.diam_right, self._config.spacing).wait()
 
->>>>>>> 6bd9da4 (feat: Add config parameters for differential pilot and add optional argtype)
+        if self._config.telemetry_interval is not None:
+            self.set_telemetry(int(self._config.telemetry_interval * 1000)).wait()
+
+        #if self._config.trls_p is not None or :
+
         self._log.info(f"DifferentialSerialPilot '{self.name}' initialized")
 
         return ImmediateResultTask()
@@ -154,24 +173,26 @@ class DifferentialSerialPilot(DifferentialPilot):
         raise NotImplementedError("follow_path not implemented yet")
 
     def stop(self) -> Task[()]:
-        self._send_command(Commands.STOP_ASAP, 0.0, 0.0)
+        self._send_command(Commands.STOP_ASAP, 0.0, 0.0).wait()
         if self._move_task is not None:
             self._move_task.complete(PilotMoveStatus.CANCELLED)
             self._move_task = None
         return ImmediateResultTask()
 
+    def _move_trsl(self, dest: float, acc: float, dec: float, maxspeed: float, sens: int) -> Task[()]:
+        return self._send_command(Commands.MOVE_TRSL, dest, acc, dec, maxspeed, sens)
+
     def free(self) -> Task[()]:
-        self._send_command(Commands.FREE)
-        return ImmediateResultTask()
+        return self._send_command(Commands.FREE)
 
     def unfree(self) -> Task[()]:
         """Re-enable motors after a free() call."""
-        self._send_command(Commands.UNFREE)
+        #self._send_command(Commands.UNFREE).wait()
+        self._move_trsl(0, 1, 1, 1, 1).wait()
         return ImmediateResultTask()
 
     def match_begin(self) -> Task[()]:
-        self._send_command(Commands.MATCH_BEGIN)
-        return ImmediateResultTask()
+        return self._send_command(Commands.MATCH_BEGIN)
 
     @commands.register(args=[], result=[])
     def reset(self) -> Task[()]:
@@ -180,7 +201,7 @@ class DifferentialSerialPilot(DifferentialPilot):
         Cancels any in-flight move locally because the board is about to
         restart and won't ACK or report MOVE_END for ongoing trajectories.
         """
-        self._send_command(Commands.RESET)
+        self._send_command(Commands.RESET).wait()
         if self._move_task is not None:
             self._move_task.complete(PilotMoveStatus.CANCELLED)
             self._move_task = None
@@ -336,8 +357,7 @@ class DifferentialSerialPilot(DifferentialPilot):
             offset: distance offset from wall (mm)
             set_position: whether to update position after recalibration (0 or 1)
         """
-        self._send_command(Commands.RECALAGE, direction, offset, set_position)
-        return ImmediateResultTask()
+        return self._send_command(Commands.RECALAGE, direction, offset, set_position)
 
     @commands.register(
         args=[],
