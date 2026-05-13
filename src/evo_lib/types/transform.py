@@ -16,8 +16,8 @@ class Transform2D(ABC):
                 [
                     ("type", ArgTypes.String(choices=["identity", "mirror", "rigid"])),
                     ("offset", Vect2D.ArgType()),
-                    ("mirror_x", ArgTypes.Bool()),
-                    ("mirror_y", ArgTypes.Bool()),
+                    # ("mirror_x", ArgTypes.Bool()),
+                    # ("mirror_y", ArgTypes.Bool()),
                     ("angle", ArgTypes.F32()),
                 ],
             )
