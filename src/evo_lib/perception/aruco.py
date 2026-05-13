@@ -210,6 +210,7 @@ class ArucoState:
         charuco_square_mm: float,
         charuco_marker_mm: float,
         calibration_path: str | None,
+        tag_sizes_mm: dict[int, float] | None = None,
     ):
         self.marker_size_mm = marker_size_mm
         self.dictionary_name = dictionary
@@ -220,17 +221,20 @@ class ArucoState:
             charuco_marker_mm,
         )
         self.calibration_path = calibration_path
+        # Per-id marker size lookup; defaults to marker_size_mm when unset. The
+        # application layer (e.g. omnissiah) owns domain tables like Eurobot's.
+        self.tag_sizes_mm: dict[int, float] = dict(tag_sizes_mm) if tag_sizes_mm else {}
         self.K = None
         self.dist = None
         self.image_size: tuple[int, int] | None = None
         self.R_robot_camera = None
         self.t_robot_camera = None
-        self._obj_pts_cache: dict[float, "np.ndarray"] = {
+        self._obj_pts_cache: dict[float, np.ndarray] = {
             marker_size_mm: _marker_object_points(marker_size_mm)
         }
         self._detector_handle = None
 
-    def _obj_pts_for(self, size_mm: float) -> "np.ndarray":
+    def _obj_pts_for(self, size_mm: float) -> np.ndarray:
         cached = self._obj_pts_cache.get(size_mm)
         if cached is None:
             cached = _marker_object_points(size_mm)
@@ -238,9 +242,7 @@ class ArucoState:
         return cached
 
     def _size_for_id(self, marker_id: int) -> float:
-        from evo_lib.types import EUROBOT_TAG_SIZES_MM
-
-        return EUROBOT_TAG_SIZES_MM.get(marker_id, self.marker_size_mm)
+        return self.tag_sizes_mm.get(marker_id, self.marker_size_mm)
 
     def detector(self) -> Any:
         import cv2

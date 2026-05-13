@@ -26,7 +26,7 @@ from evo_lib.interfaces.camera import (
 )
 from evo_lib.logger import Logger
 from evo_lib.perception.aruco import ArucoState, CharucoCalibrationSession
-from evo_lib.task import ImmediateResultTask, Task
+from evo_lib.task import ImmediateErrorTask, ImmediateResultTask, Task
 
 if TYPE_CHECKING:
     import numpy as np
@@ -35,6 +35,7 @@ if TYPE_CHECKING:
 DEFAULT_FOURCC = "MJPG"
 DEFAULT_WIDTH = 1920
 DEFAULT_HEIGHT = 1080
+DEFAULT_READER_FPS = 200
 
 
 def _v4l2_set_ctrl(device: str, ctrl: str, value: int) -> tuple[bool, str]:
@@ -79,6 +80,8 @@ class _AbstractUvcCamera(Camera):
         charuco_squares_y: int = DEFAULT_CHARUCO_SQUARES_Y,
         charuco_square_mm: float = DEFAULT_CHARUCO_SQUARE_MM,
         charuco_marker_mm: float = DEFAULT_CHARUCO_MARKER_MM,
+        reader_fps: int = DEFAULT_READER_FPS,
+        tag_sizes_mm: dict[int, float] | None = None,
     ):
         super().__init__(name)
         self._log = logger
@@ -89,6 +92,7 @@ class _AbstractUvcCamera(Camera):
         self._focus = focus
         self._autofocus = autofocus
         self._settings = dict(settings) if settings else {}
+        self._reader_fps = reader_fps
         self._aruco = ArucoState(
             marker_size_mm=marker_size_mm,
             dictionary=dictionary,
@@ -97,8 +101,13 @@ class _AbstractUvcCamera(Camera):
             charuco_square_mm=charuco_square_mm,
             charuco_marker_mm=charuco_marker_mm,
             calibration_path=calibration_path,
+            tag_sizes_mm=tag_sizes_mm,
         )
         self._init_state()
+
+    def set_tag_sizes_mm(self, tag_sizes_mm: dict[int, float]) -> None:
+        """Inject a per-id marker size table (e.g. Eurobot tag set). Application-level."""
+        self._aruco.tag_sizes_mm.update(tag_sizes_mm)
 
     def _init_state(self) -> None:
         """Hook for subclasses to initialize their private V4L2/replay state."""
@@ -109,7 +118,7 @@ class _AbstractUvcCamera(Camera):
     def close(self) -> None:
         raise NotImplementedError
 
-    def capture(self) -> "np.ndarray":
+    def capture(self) -> np.ndarray:
         raise NotImplementedError
 
     def set_focus(self, value: int) -> Task[()]:
@@ -130,8 +139,8 @@ class _AbstractUvcCamera(Camera):
     def calibrate_extrinsics(
         self,
         reference_marker_id: int,
-        R_robot_marker: "np.ndarray",
-        t_robot_marker_mm: "np.ndarray",
+        R_robot_marker: np.ndarray,
+        t_robot_marker_mm: np.ndarray,
     ) -> dict[str, Any]:
         return self._aruco.calibrate_extrinsics(
             self.detect(), reference_marker_id, R_robot_marker, t_robot_marker_mm
@@ -147,11 +156,11 @@ class _AbstractUvcCamera(Camera):
         self._aruco.save(path)
 
     @property
-    def K(self) -> "np.ndarray | None":
+    def K(self) -> np.ndarray | None:
         return self._aruco.K
 
     @property
-    def dist(self) -> "np.ndarray | None":
+    def dist(self) -> np.ndarray | None:
         return self._aruco.dist
 
     @property
@@ -167,10 +176,10 @@ class UvcCamera(_AbstractUvcCamera):
     def _init_state(self) -> None:
         self._cap = None
         self._lock = threading.Lock()
-        # Background reader: see frame_capture.md.
+        # Background reader: see docs/glossary/architecture/camera_frame_capture.md.
         self._read_thread: threading.Thread | None = None
         self._read_stop = threading.Event()
-        self._latest_frame: "np.ndarray | None" = None
+        self._latest_frame: np.ndarray | None = None
         self._latest_frame_lock = threading.Lock()
 
     def init(self) -> Task[()]:
@@ -203,7 +212,9 @@ class UvcCamera(_AbstractUvcCamera):
 
         self._cap = cv2.VideoCapture(self._device, cv2.CAP_V4L2)
         if not self._cap.isOpened():
-            raise RuntimeError(f"UvcCamera '{self.name}': failed to open {self._device}")
+            return ImmediateErrorTask(
+                RuntimeError(f"UvcCamera '{self.name}': failed to open {self._device}")
+            )
 
         # FOURCC before size: UVC's resolution table is format-dependent.
         self._cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*self._fourcc))
@@ -222,15 +233,17 @@ class UvcCamera(_AbstractUvcCamera):
             f"calibration={'loaded' if loaded else 'absent'})"
         )
         self._read_stop.clear()
+        # Non-daemon: close() is responsible for stopping the thread cleanly.
         self._read_thread = threading.Thread(
             target=self._read_loop,
             name=f"uvc-read-{self.name}",
-            daemon=True,
+            daemon=False,
         )
         self._read_thread.start()
         return ImmediateResultTask()
 
     def _read_loop(self) -> None:
+        idle_backoff_s = 1.0 / max(self._reader_fps, 1)
         while not self._read_stop.is_set():
             with self._lock:
                 cap = self._cap
@@ -244,7 +257,7 @@ class UvcCamera(_AbstractUvcCamera):
                 with self._latest_frame_lock:
                     self._latest_frame = frame
             else:
-                time.sleep(0.005)
+                time.sleep(idle_backoff_s)
 
     def close(self) -> None:
         self._read_stop.set()
@@ -259,7 +272,7 @@ class UvcCamera(_AbstractUvcCamera):
             self._latest_frame = None
         self._log.info(f"UvcCamera '{self.name}' closed")
 
-    def capture(self) -> "np.ndarray":
+    def capture(self) -> np.ndarray:
         if self._cap is None:
             raise RuntimeError(f"UvcCamera '{self.name}' not opened")
         deadline = time.monotonic() + 1.0
@@ -299,7 +312,7 @@ class UvcCameraVirtual(_AbstractUvcCamera):
 
     def _init_state(self) -> None:
         self._frames: list[str] = []
-        self._injected_frames: list["np.ndarray"] | None = None
+        self._injected_frames: list[np.ndarray] | None = None
         self._injected_markers: list[ArucoMarker] | None = None
         self._cursor = 0
         self._lock = threading.Lock()
@@ -329,7 +342,7 @@ class UvcCameraVirtual(_AbstractUvcCamera):
         self._opened = False
         self._log.info(f"UvcCameraVirtual '{self.name}' closed")
 
-    def capture(self) -> "np.ndarray":
+    def capture(self) -> np.ndarray:
         if not self._opened:
             raise RuntimeError(f"UvcCameraVirtual '{self.name}' not opened")
         import numpy as np
@@ -365,7 +378,7 @@ class UvcCameraVirtual(_AbstractUvcCamera):
 
     # Simulation helpers
 
-    def inject_frames(self, frames: list["np.ndarray"]) -> None:
+    def inject_frames(self, frames: list[np.ndarray]) -> None:
         self._injected_frames = list(frames)
         self._frames = []
         self._cursor = 0
@@ -383,23 +396,6 @@ class UvcCameraVirtual(_AbstractUvcCamera):
         return dict(self._settings)
 
 
-def _add_camera_args(defn: DriverInitArgsDefinition) -> DriverInitArgsDefinition:
-    defn.add_required("device", ArgTypes.String())
-    defn.add_optional("width", ArgTypes.U32(), DEFAULT_WIDTH)
-    defn.add_optional("height", ArgTypes.U32(), DEFAULT_HEIGHT)
-    defn.add_optional("fourcc", ArgTypes.String(), DEFAULT_FOURCC)
-    defn.add_optional("focus", ArgTypes.I32(), -1)  # -1 = no override
-    defn.add_optional("autofocus", ArgTypes.Bool(), False)
-    defn.add_optional("marker_size_mm", ArgTypes.F32(), 32.0)
-    defn.add_optional("dictionary", ArgTypes.String(), DEFAULT_ARUCO_DICTIONARY)
-    defn.add_optional("calibration_path", ArgTypes.String(), "")
-    defn.add_optional("charuco_squares_x", ArgTypes.U32(), DEFAULT_CHARUCO_SQUARES_X)
-    defn.add_optional("charuco_squares_y", ArgTypes.U32(), DEFAULT_CHARUCO_SQUARES_Y)
-    defn.add_optional("charuco_square_mm", ArgTypes.F32(), DEFAULT_CHARUCO_SQUARE_MM)
-    defn.add_optional("charuco_marker_mm", ArgTypes.F32(), DEFAULT_CHARUCO_MARKER_MM)
-    return defn
-
-
 class _UvcCameraDefinitionBase(DriverDefinition):
     _camera_cls: type[_AbstractUvcCamera] = _AbstractUvcCamera
 
@@ -408,7 +404,22 @@ class _UvcCameraDefinitionBase(DriverDefinition):
         self._logger = logger
 
     def get_init_args_definition(self) -> DriverInitArgsDefinition:
-        return _add_camera_args(DriverInitArgsDefinition())
+        defn = DriverInitArgsDefinition()
+        defn.add_required("device", ArgTypes.String())
+        defn.add_optional("width", ArgTypes.U32(), DEFAULT_WIDTH)
+        defn.add_optional("height", ArgTypes.U32(), DEFAULT_HEIGHT)
+        defn.add_optional("fourcc", ArgTypes.String(), DEFAULT_FOURCC)
+        defn.add_optional("focus", ArgTypes.I32(), -1)  # -1 = no override
+        defn.add_optional("autofocus", ArgTypes.Bool(), False)
+        defn.add_optional("marker_size_mm", ArgTypes.F32(), 32.0)
+        defn.add_optional("dictionary", ArgTypes.String(), DEFAULT_ARUCO_DICTIONARY)
+        defn.add_optional("calibration_path", ArgTypes.String(), "")
+        defn.add_optional("charuco_squares_x", ArgTypes.U32(), DEFAULT_CHARUCO_SQUARES_X)
+        defn.add_optional("charuco_squares_y", ArgTypes.U32(), DEFAULT_CHARUCO_SQUARES_Y)
+        defn.add_optional("charuco_square_mm", ArgTypes.F32(), DEFAULT_CHARUCO_SQUARE_MM)
+        defn.add_optional("charuco_marker_mm", ArgTypes.F32(), DEFAULT_CHARUCO_MARKER_MM)
+        defn.add_optional("reader_fps", ArgTypes.U32(), DEFAULT_READER_FPS)
+        return defn
 
     def create(self, args: DriverInitArgs) -> _AbstractUvcCamera:
         focus_arg = args.get("focus")
@@ -431,6 +442,7 @@ class _UvcCameraDefinitionBase(DriverDefinition):
             charuco_squares_y=args.get("charuco_squares_y"),
             charuco_square_mm=args.get("charuco_square_mm"),
             charuco_marker_mm=args.get("charuco_marker_mm"),
+            reader_fps=args.get("reader_fps"),
         )
 
 
