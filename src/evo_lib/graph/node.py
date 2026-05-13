@@ -50,13 +50,15 @@ class FlowInput(Endpoint):
         self._state: FlowEndpointState = FlowEndpointState.WAITING
         self._nb_ignored_input_connections: int = 0
         self._nb_runned_input_connections: int = 0
-        self._last_run_source: FlowOutput | None = None
+        # Sources that fired this input, in run order. Last element is the most
+        # recent — useful for debug logs that want to show fan-in provenance.
+        self._run_sources: list[FlowOutput] = []
 
     def reset(self) -> None:
         self._state = FlowEndpointState.WAITING
         self._nb_ignored_input_connections = 0
         self._nb_runned_input_connections = 0
-        self._last_run_source = None
+        self._run_sources = []
 
     def get_connections(self) -> list[FlowOutput]:
         return self._connections
@@ -77,7 +79,7 @@ class FlowInput(Endpoint):
 
     def run(self, source: FlowOutput) -> None:
         self._nb_runned_input_connections += 1
-        self._last_run_source = source
+        self._run_sources.append(source)
         self._update_state()
 
     def ignore(self, source: FlowOutput) -> None:
@@ -449,9 +451,11 @@ class Node(ABC):
             if fi._state != FlowEndpointState.RUNNED:
                 continue
             label = fi.get_name()
-            src = fi._last_run_source
-            if src is not None:
-                label += f"←{src.get_node().get_name()}.{src.get_name()}"
+            if fi._run_sources:
+                srcs = ", ".join(
+                    f"{s.get_node().get_name()}.{s.get_name()}" for s in fi._run_sources
+                )
+                label += f"←[{srcs}]"
             parts.append(label)
         if not parts:
             return ""
