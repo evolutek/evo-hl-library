@@ -13,7 +13,7 @@ registers callbacks. Supports progress tracking and cancellation.
 
 import threading
 from abc import ABC, abstractmethod
-from typing import Callable
+from typing import Callable, Any
 
 
 class TaskCancelledError(Exception):
@@ -81,7 +81,7 @@ class Task[*T](ABC):
         return self
 
     @staticmethod
-    def wait_all(*tasks: Task[Any]) -> None:
+    def wait_all(*tasks: Task[*tuple[Any, ...]]) -> None:
         errors: list[Exception] = []
         for task in tasks:
             try:
