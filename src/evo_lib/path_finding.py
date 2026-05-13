@@ -1,6 +1,7 @@
 import heapq
 import math
 from abc import ABC, abstractmethod
+import threading
 from typing import Optional
 
 import numpy as np
@@ -71,6 +72,17 @@ class PolygoneShape(Shape):
         # because it's used by find_coutour_paths
         self.points = points
         self._update()
+
+    @staticmethode
+    def create_regular(radius: float, vertexes: int) -> PolygoneShape:
+        angle_step = 2 * math.pi / vertexes
+        points = []
+        for i in range(vertexes):
+            angle = i * angle_step
+            x = radius * math.cos(angle)
+            y = radius * math.sin(angle)
+            points.append(Vect2D(x, y))
+        return PolygoneShape(points)
 
     def _update(self) -> None:
         self.polygone = shapely.Polygon([(v.x, v.y) for v in self.points])
@@ -286,8 +298,24 @@ class PathFindingMap:
     def __init__(self):
         self.shapes: list[Shape] = []
         self.border_shape: Shape | None = None
+        self.lock = threading.Lock()
+
+    def lock(self) -> None:
+        self.lock.acquire()
+
+    def unlock(self) -> None:
+        self.lock.release()
+
+    def _check_lock(self) -> None:
+        if self.lock.locked():
+            raise RuntimeError("PathFindingPath modification require lock not be acquired")
+
+    def clear_shapes(self) -> None:
+        self._check_lock()
+        self.shapes = []
 
     def add_shape(self, polygone: Shape) -> None:
+        self._check_lock()
         self.shapes.append(polygone)
 
     def has_clear_line_of_sight(
