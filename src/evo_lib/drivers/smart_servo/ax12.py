@@ -452,6 +452,7 @@ class AX12(SmartServo):
         bus: AX12Bus,
         servo_id: int,
         goal_reached_tolerance: int = 10,
+        poll_frequency: float = 30,
     ):
         super().__init__(name)
         self._log = logger
@@ -459,6 +460,7 @@ class AX12(SmartServo):
         self._bus = bus
         self._id = servo_id
         self._goal_reached_tolerance = goal_reached_tolerance
+        self._poll_interval = 1 / poll_frequency
         bus.register_servo(self)
 
     @property
@@ -510,7 +512,7 @@ class AX12(SmartServo):
                 break  # If we're close enough, return
             if remaining_distance * move_direction < 0:
                 break  # If we go beyond the target, return
-            time.sleep(1 / 30)
+            time.sleep(self._poll_interval)
 
     def move_to(
         self,
