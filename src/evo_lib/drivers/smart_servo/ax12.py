@@ -73,7 +73,8 @@ _HEADER_B1 = 0xFF
 # motor load can drop a packet every few hundred transactions.
 _DEFAULT_RETRIES = 3
 _DEFAULT_RETRY_DELAY = 0.025
-_DEFAULT_MAX_REQUESTS_PER_SECOND = 50
+_DEFAULT_READ_TIMEOUT = 0.05
+_DEFAULT_MAX_REQUESTS_PER_SECOND = 500
 # USB2AX (Xevelabs, the standard Evolutek dongle) does not echo TX on RX: it
 # handles half-duplex direction internally in its ATmega firmware. Only the
 # older USB2Dynamixel (FT232 + external tri-state) echoes. Default to no-echo
@@ -217,6 +218,7 @@ class AX12Bus(InterfaceHolder):
         retries: int = _DEFAULT_RETRIES,
         retry_delay: float = _DEFAULT_RETRY_DELAY,
         max_requests_per_second: int = _DEFAULT_MAX_REQUESTS_PER_SECOND,
+        read_timeout: float = _DEFAULT_READ_TIMEOUT,
         echo: bool = _DEFAULT_ECHO,
     ):
         super().__init__(name)
@@ -228,9 +230,9 @@ class AX12Bus(InterfaceHolder):
         self._retries = retries
         self._min_retry_interval = retry_delay
         self._min_requests_interval = 1 / max_requests_per_second
+        self._read_timeout = read_timeout
         self._echo = echo
         self._request_lock = threading.Lock()
-        self._read_write_lock = threading.Lock()
         self._servos: dict[int, AX12] = {}
         self._queued_requests: Queue[tuple[DelayedTask[Any], Callable[[], Any]]] = Queue()
         self._pending_request: DelayedTask[Any] | None = None
@@ -265,23 +267,24 @@ class AX12Bus(InterfaceHolder):
 
     def write_register(self, servo_id: int, register: int, data: bytes) -> Task[()]:
         """Send a WRITE instruction. Broadcast (0xFE) gets no status reply."""
-        with self._read_write_lock:
-            return self._request(lambda: self._do_write(servo_id, register, data))
+        return self._request(lambda: self._do_write(servo_id, register, data))
 
     def read_register(self, servo_id: int, register: int, count: int) -> Task[bytes]:
         """Send a READ instruction and return the payload bytes."""
-        with self._read_write_lock:
-            return self._request(lambda: self._do_read(servo_id, register, count))
+        return self._request(lambda: self._do_read(servo_id, register, count))
 
     def _on_request_done(self) -> None:
+        #print("AX12 request done")
         self._scheduler.schedule_after(self._min_requests_interval, 0, self._handle_next_request)
 
     def _handle_request(self, request_task: DelayedTask[Any], op: Callable[[], Any]) -> None:
+        #print("AX12 request started")
         op_task = self._thread_pool.exec(self._request_sync, op)
         op_task.on_done(self._on_request_done)
         op_task.chain(request_task)
 
-    def _handle_next_request(self):
+    def _handle_next_request(self) -> None:
+        #print("AX12 handle next request")
         op = None
         with self._request_lock:
             try:
@@ -324,7 +327,16 @@ class AX12Bus(InterfaceHolder):
         while True:
             try:
                 return op()
+            except TimeoutError as err:
+                self._log.warning(f"AX12Bus error (TimeoutError): {err}")
+                self._bus.reset_input_buffer()
+                if attempts >= self._retries:
+                    raise
+                attempts += 1
+                self._log.debug(f"AX12Bus '{self.name}' retry {attempts}/{self._retries}: {err}")
+                time.sleep(self._min_retry_interval)
             except DynamixelServoError as err:
+                self._log.warning(f"AX12Bus error (DynamixelServoError): {err}")
                 if not isinstance(err, PacketChecksumError):
                     raise
                 self._bus.reset_input_buffer()
@@ -334,6 +346,7 @@ class AX12Bus(InterfaceHolder):
                 self._log.debug(f"AX12Bus '{self.name}' retry {attempts}/{self._retries}: {err}")
                 time.sleep(self._min_retry_interval)
             except OSError as err:
+                self._log.warning(f"AX12Bus error (OSError): {err}")
                 self._bus.reset_input_buffer()
                 if attempts >= self._retries:
                     raise
@@ -388,17 +401,17 @@ class AX12Bus(InterfaceHolder):
         """
         self._bus.write_sync(packet)
         if self._echo:
-            _ = self._bus.read_exactly_sync(len(packet))
+            _ = self._bus.read_exactly_sync(len(packet), timeout=self._read_timeout)
 
     def _read_status(self, expected_id: int) -> bytes:
         """Read and validate a Dynamixel 1.0 status packet.
 
         Returns the parameter bytes (excluding error and checksum).
         """
-        header = self._bus.read_exactly_sync(2)
+        header = self._bus.read_exactly_sync(2, timeout=self._read_timeout)
         if header[0] != _HEADER_B0 or header[1] != _HEADER_B1:
             raise DynamixelBusError(f"invalid header {bytes(header)!r}")
-        id_len = self._bus.read_exactly_sync(2)
+        id_len = self._bus.read_exactly_sync(2, timeout=self._read_timeout)
         resp_id, resp_length = id_len[0], id_len[1]
         # Detect a crossed reply (servo X answers a request addressed to Y —
         # happens after a prior timeout leaves a stale status in the buffer).
@@ -410,7 +423,7 @@ class AX12Bus(InterfaceHolder):
         # a faulty servo making us block on the serial timeout.
         if resp_length < 2 or resp_length > 8:
             raise DynamixelBusError(f"implausible status length {resp_length}")
-        payload = self._bus.read_exactly_sync(resp_length)
+        payload = self._bus.read_exactly_sync(resp_length, timeout=self._read_timeout)
         cs = resp_id + resp_length
         for b in payload[:-1]:
             cs += b
@@ -485,7 +498,7 @@ class AX12(SmartServo):
 
         (current_position,) = self.get_position(ServoAngleUnit.NATIVE).wait()
         wait_position = current_position + (raw_position - current_position) * wait_multiplier
-        move_direction = 1 if wait_position > current_position else -1
+        move_direction = 1 if raw_position > current_position else -1
 
         start_time = time.time()
         while True:
@@ -497,6 +510,7 @@ class AX12(SmartServo):
                 break  # If we're close enough, return
             if remaining_distance * move_direction < 0:
                 break  # If we go beyond the target, return
+            time.sleep(1 / 30)
 
     def move_to(
         self,
