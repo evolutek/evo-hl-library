@@ -51,12 +51,12 @@ class DifferentialSerialPilotConfig:
     diam_right: float | None = None
     spacing: float | None = None
 
-    rot_accel: float | None = None
-    rot_decel: float | None = None
+    rot_max_accel: float | None = None
+    rot_max_decel: float | None = None
     rot_max_speed: float | None = None
 
-    trsl_accel: float | None = None
-    trsl_decel: float | None = None
+    trsl_max_accel: float | None = None
+    trsl_max_decel: float | None = None
     trsl_max_speed: float | None = None
 
     trsl_p: float | None = None
@@ -121,7 +121,32 @@ class DifferentialSerialPilot(DifferentialPilot):
         if self._config.telemetry_interval is not None:
             self.set_telemetry(int(self._config.telemetry_interval * 1000)).wait()
 
-        #if self._config.trls_p is not None or :
+        if self._config.trsl_p is not None or self._config.trsl_i is not None or self._config.trsl_d is not None:
+            if self._config.trsl_p is None or self._config.trsl_i is None or self._config.trsl_d is None:
+                return ImmediateErrorTask(ValueError("trsl_p, trsl_i, and trsl_d must all be specified or all be None"))
+            self.set_pid_trsl(self._config.trsl_p, self._config.trsl_i, self._config.trsl_d).wait()
+
+        if self._config.rot_p is not None or self._config.rot_i is not None or self._config.rot_d is not None:
+            if self._config.rot_p is None or self._config.rot_i is None or self._config.rot_d is None:
+                return ImmediateErrorTask(ValueError("rot_p, rot_i, and rot_d must all be specified or all be None"))
+            self.set_pid_rot(self._config.rot_p, self._config.rot_i, self._config.rot_d).wait()
+
+        if self._config.trsl_max_accel is not None or self._config.trsl_max_decel is not None or self._config.trsl_max_speed is not None or self._config.rot_max_accel is not None or self._config.rot_max_decel is not None or self._config.rot_max_speed is not None:
+            if self._config.trsl_max_accel is None or self._config.trsl_max_decel is None or self._config.trsl_max_speed is None or self._config.rot_max_accel is None or self._config.rot_max_decel is None or self._config.rot_max_speed is None:
+                return ImmediateErrorTask(ValueError("trsl_max_accel, trsl_max_decel, trsl_max_speed, rot_max_accel, rot_max_decel, and rot_max_speed must all be specified or all be None"))
+            self.set_speeds(
+                self._config.trsl_max_accel,
+                self._config.trsl_max_decel,
+                self._config.trsl_max_speed,
+                self._config.rot_max_accel,
+                self._config.rot_max_decel,
+                self._config.rot_max_speed,
+            ).wait()
+
+        if self._config.max_delta_rot is not None or self._config.max_delta_trsl is not None:
+            if self._config.max_delta_rot is None or self._config.max_delta_trsl is None:
+                return ImmediateErrorTask(ValueError("max_delta_rot and max_delta_trsl must both be specified or both be None"))
+            self.set_delta_max(self._config.max_delta_trsl, self._config.max_delta_rot).wait()
 
         self._log.info(f"DifferentialSerialPilot '{self.name}' initialized")
 
@@ -565,9 +590,30 @@ class DifferentialSerialPilotDefinition(DriverDefinition):
     def get_init_args_definition(self) -> DriverInitArgsDefinition:
         defn = DriverInitArgsDefinition()
         defn.add_required("serial", ArgTypes.Component(Serial, self._peripherals))
+
         defn.add_optional("diam_left", ArgTypes.Optional(ArgTypes.F32()), None)
         defn.add_optional("diam_right", ArgTypes.Optional(ArgTypes.F32()), None)
         defn.add_optional("spacing", ArgTypes.Optional(ArgTypes.F32()), None)
+
+        defn.add_optional("max_delta_trsl", ArgTypes.Optional(ArgTypes.F32()), None)
+        defn.add_optional("max_delta_rot", ArgTypes.Optional(ArgTypes.F32()), None)
+
+        defn.add_optional("trsl_p", ArgTypes.Optional(ArgTypes.F32()), None)
+        defn.add_optional("trsl_i", ArgTypes.Optional(ArgTypes.F32()), None)
+        defn.add_optional("trsl_d", ArgTypes.Optional(ArgTypes.F32()), None)
+
+        defn.add_optional("rot_p", ArgTypes.Optional(ArgTypes.F32()), None)
+        defn.add_optional("rot_i", ArgTypes.Optional(ArgTypes.F32()), None)
+        defn.add_optional("rot_d", ArgTypes.Optional(ArgTypes.F32()), None)
+
+        defn.add_optional("trsl_max_accel", ArgTypes.Optional(ArgTypes.F32()), None)
+        defn.add_optional("trsl_max_decel", ArgTypes.Optional(ArgTypes.F32()), None)
+        defn.add_optional("trsl_max_speed", ArgTypes.Optional(ArgTypes.F32()), None)
+
+        defn.add_optional("rot_max_accel", ArgTypes.Optional(ArgTypes.F32()), None)
+        defn.add_optional("rot_max_decel", ArgTypes.Optional(ArgTypes.F32()), None)
+        defn.add_optional("rot_max_speed", ArgTypes.Optional(ArgTypes.F32()), None)
+
         return defn
 
     def create(self, args: DriverInitArgs) -> DifferentialSerialPilot:
@@ -575,6 +621,25 @@ class DifferentialSerialPilotDefinition(DriverDefinition):
             diam_left=args.get("diam_left"),
             diam_right=args.get("diam_right"),
             spacing=args.get("spacing"),
+
+            trsl_max_accel=args.get("trsl_max_accel"),
+            trsl_max_decel=args.get("trsl_max_decel"),
+            trsl_max_speed=args.get("trsl_max_speed"),
+
+            rot_max_accel=args.get("rot_max_accel"),
+            rot_max_decel=args.get("rot_max_decel"),
+            rot_max_speed=args.get("rot_max_speed"),
+
+            trsl_p=args.get("trsl_p"),
+            trsl_i=args.get("trsl_i"),
+            trsl_d=args.get("trsl_d"),
+
+            rot_p=args.get("rot_p"),
+            rot_i=args.get("rot_i"),
+            rot_d=args.get("rot_d"),
+
+            max_delta_trsl=args.get("max_delta_trsl"),
+            max_delta_rot=args.get("max_delta_rot"),
         )
         return DifferentialSerialPilot(
             name=args.get_name(),
