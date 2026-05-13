@@ -5,6 +5,7 @@ Robot code depends on these interfaces, never on concrete drivers.
 """
 
 from evo_lib.interfaces.analog_input import AnalogInput
+from evo_lib.interfaces.camera import ArucoMarker, Camera
 from evo_lib.interfaces.color_sensor import ColorSensor
 from evo_lib.interfaces.gpio import GPIO, GPIODirection, GPIOEdge
 from evo_lib.interfaces.i2c import I2C
@@ -23,6 +24,8 @@ from evo_lib.interfaces.smart_servo import SmartServo
 
 __all__ = [
     "AnalogInput",
+    "ArucoMarker",
+    "Camera",
     "ColorSensor",
     "DifferentialPilot",
     "GPIO",
