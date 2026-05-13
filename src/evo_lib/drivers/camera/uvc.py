@@ -291,7 +291,9 @@ class _ArucoState:
 
         import json5
 
-        os.makedirs(os.path.dirname(target), exist_ok=True)
+        parent = os.path.dirname(target)
+        if parent:
+            os.makedirs(parent, exist_ok=True)
         payload: dict[str, Any] = {}
         if self.K is not None and self.dist is not None:
             payload["intrinsics"] = {
