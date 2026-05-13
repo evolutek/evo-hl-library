@@ -117,6 +117,32 @@ class Pilot(Placable):
         """
         return ImmediateResultTask()
 
+    @commands.register(
+        args=[
+            ("direction", ArgTypes.U8()),
+            ("offset", ArgTypes.F32()),
+            ("set_position", ArgTypes.U8()),
+        ],
+        result=[],
+    )
+    def recalibrate(
+        self, direction: int, offset: float, set_position: int = 1
+    ) -> "Task[()]":
+        """Wall recalibration: drive into a known wall and reset the pose.
+
+        Args:
+            direction:    wall direction (firmware-defined enum, typically 0/1)
+            offset:       distance offset from the wall (mm)
+            set_position: 1 to update the internal pose after the touch, 0 to
+                          only update orientation
+
+        Default: no-op. Pilots backed by a firmware exposing a wall-recal
+        command (e.g. SerialPilot) override this to run it on the MCU.
+        Virtual pilots cannot reproduce the physical contact, so the no-op
+        default keeps simulations and dry-runs from blocking.
+        """
+        return ImmediateResultTask()
+
     @abstractmethod
     @commands.register(
         args=[

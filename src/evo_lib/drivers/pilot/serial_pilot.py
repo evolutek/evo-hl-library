@@ -293,21 +293,11 @@ class DifferentialSerialPilot(DifferentialPilot):
         self._send_command(Commands.SET_TELEMETRY, interval_ms).wait()
         return ImmediateResultTask()
 
-    @commands.register(
-        args=[
-            ("direction", ArgTypes.U8()),
-            ("offset", ArgTypes.F32()),
-            ("set_position", ArgTypes.U8()),
-        ],
-        result=[],
-    )
     def recalibrate(self, direction: int, offset: float, set_position: int = 1) -> Task[()]:
-        """Recalibrate against a wall.
+        """Override of Pilot.recalibrate — drives the firmware RECALAGE command.
 
-        Args:
-            direction: wall direction (0 or 1)
-            offset: distance offset from wall (mm)
-            set_position: whether to update position after recalibration (0 or 1)
+        Command registration lives in the Pilot interface (default impl is
+        no-op). See evo_lib.interfaces.pilot.Pilot.recalibrate for arg docs.
         """
         self._send_command(Commands.RECALAGE, direction, offset, set_position)
         return ImmediateResultTask()
