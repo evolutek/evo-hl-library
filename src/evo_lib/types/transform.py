@@ -8,6 +8,30 @@ from evo_lib.types.vect import Vect2D
 
 
 class Transform2D(ABC):
+    class ArgType(ArgTypes.Object["Transform2D"]):
+        def __init__(self):
+            # TODO: Use subargs here (on the "type" field)
+            super().__init__(
+                "Transform2D",
+                [
+                    ("type", ArgTypes.String(choices=["identity", "mirror", "rigid"])),
+                    ("offset", Vect2D.ArgType()),
+                    ("mirror_x", ArgTypes.Bool()),
+                    ("mirror_y", ArgTypes.Bool()),
+                    ("angle", ArgTypes.F32()),
+                ],
+            )
+
+        def convert(self, v: dict[str, Any]) -> Transform2D:
+            if v["type"] == "identity":
+                return IdentityTransform2D()
+            elif v["type"] == "mirror":
+                return MirrorTransform2D(v["offset"], v["mirror_x"], v["mirror_y"])
+            elif v["type"] == "rigid":
+                return RigidTransform2D(v["offset"], v["angle"])
+            else:
+                raise ValueError(f"Unknown transform type: {v['type']}")
+
     @abstractmethod
     def apply_to_point(self, point: Vect2D) -> None:
         pass
@@ -42,7 +66,7 @@ class MirrorTransform2D(Transform2D):
             super().__init__(
                 "MirrorTransform2D",
                 [
-                    ("offset", ArgTypes.F32()),
+                    ("offset", Vect2D.ArgType()),
                     ("mirror_x", ArgTypes.Bool()),
                     ("mirror_y", ArgTypes.Bool()),
                 ],
@@ -75,6 +99,19 @@ class MirrorTransform2D(Transform2D):
 
 
 class RigidTransform2D(Transform2D):
+    class ArgType(ArgTypes.Object["RigidTransform2D"]):
+        def __init__(self):
+            super().__init__(
+                "RigidTransform2D",
+                [
+                    ("offset", Vect2D.ArgType()),
+                    ("angle", ArgTypes.F32()),
+                ],
+            )
+
+        def convert(self, v: dict[str, Any]) -> RigidTransform2D:
+            return RigidTransform2D(v["offset"], v["angle"])
+
     def __init__(self,
         offset: Vect2D,
         angle: float
