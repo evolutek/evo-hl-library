@@ -380,6 +380,10 @@ class Color:
     def from_hex(cls, value: int, *, name: str | None = None) -> "Color":
         return cls(hex_=ColorHex(value), name=name)
 
+    @staticmethod
+    def from_name(value: str) -> Color | None:
+        return PURE_COLORS.get(NamedColor(value.capitalize()))
+
     # ── Lazy derived properties ──────────────────────────────────────────
     @property
     def rgbc(self) -> ColorRGBC:
