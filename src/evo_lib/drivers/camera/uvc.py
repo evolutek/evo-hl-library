@@ -176,7 +176,7 @@ class UvcCamera(_AbstractUvcCamera):
     def _init_state(self) -> None:
         self._cap = None
         self._lock = threading.Lock()
-        # Background reader: see docs/glossary/architecture/camera_frame_capture.md.
+        # Background reader: see docs/camera_frame_capture.md.
         self._read_thread: threading.Thread | None = None
         self._read_stop = threading.Event()
         self._latest_frame: np.ndarray | None = None
