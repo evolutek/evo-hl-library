@@ -382,7 +382,7 @@ class Color:
 
     @staticmethod
     def from_name(value: str) -> Color | None:
-        return PURE_COLORS.get(NamedColor(value.capitalize()))
+        return PURE_COLORS.get(NamedColor[value.capitalize()])
 
     # ── Lazy derived properties ──────────────────────────────────────────
     @property

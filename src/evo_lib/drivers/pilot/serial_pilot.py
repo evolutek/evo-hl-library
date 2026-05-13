@@ -40,6 +40,8 @@ from evo_lib.registry import Registry
 from evo_lib.task import DelayedTask, ImmediateErrorTask, ImmediateResultTask, Task
 from evo_lib.types.pose import Pose2D
 from evo_lib.types.vect import Vect2D
+from evo_lib.types.transform import Transform2D, IdentityTransform2D
+
 
 _ACK_TIMEOUT = 1.0
 _RESPONSE_TIMEOUT = 1.0
@@ -83,7 +85,8 @@ class DifferentialSerialPilot(DifferentialPilot):
         name: str,
         logger: Logger,
         bus: Serial,
-        config: DifferentialSerialPilotConfig
+        config: DifferentialSerialPilotConfig,
+        transform: Transform2D | None = None,
     ):
         super().__init__(name)
         self._bus = bus
@@ -93,7 +96,7 @@ class DifferentialSerialPilot(DifferentialPilot):
         self._move_task: DelayedTask[PilotMoveStatus] | None = None
         self._reader_thread: threading.Thread | None = None
         self._running = False
-        self._last_position: Pose2D = Pose2D()
+        self._last_pose: Pose2D = Pose2D()
         self._last_speed: float = 0
         self._last_velocity: Vect2D = Vect2D(0, 0)
         self._moving = False
@@ -102,6 +105,7 @@ class DifferentialSerialPilot(DifferentialPilot):
         self._response_data: tuple = ()
         self._pose_or_velocity_update_event = Event[Pose2D, Vect2D]()
         self._config = config
+        self._transform: Transform2D = transform if transform is not None else IdentityTransform2D()
 
     def _initial_config(self) -> None:
         if self._config.diam_left is not None or self._config.diam_right is not None or self._config.spacing is not None:
@@ -165,7 +169,9 @@ class DifferentialSerialPilot(DifferentialPilot):
     # Movement commands
 
     def go_to(self, x: float, y: float) -> Task[PilotMoveStatus]:
-        return self._send_move(Commands.GOTO_XY, x, y)
+        p = Vect2D(x, y)
+        self._transform.apply_to_point(p)
+        return self._send_move(Commands.GOTO_XY, p.x, p.y)
 
     def go_to_then_head_to(self, x: float, y: float, heading: float) -> Task[PilotMoveStatus]:
         raise NotImplementedError("go_to_then_head_to not implemented yet")
@@ -179,20 +185,21 @@ class DifferentialSerialPilot(DifferentialPilot):
         raise NotImplementedError("go_to_then_look_at not implemented yet")
 
     def forward(self, distance: float) -> Task[PilotMoveStatus]:
-        target = self._last_position + Pose2D.from_polar(distance, self._last_position.heading)
+        target = self._last_pose + Pose2D.from_polar(distance, self._last_pose.heading)
         return self.go_to(target.x, target.y)
 
     def head_to(self, heading: float) -> Task[PilotMoveStatus]:
+        heading = self._transform.apply_to_angle(heading)
         return self._send_move(Commands.GOTO_THETA, heading)
 
     def look_at(self, x: float, y: float) -> Task[PilotMoveStatus]:
-        dx = x - self._last_position[0]
-        dy = y - self._last_position[1]
+        dx = x - self._last_pose.position.x
+        dy = y - self._last_pose.position.y
         heading = math.atan2(dy, dx)
         return self.head_to(heading)
 
     def rotate(self, angle: float) -> Task[PilotMoveStatus]:
-        target = self._last_position.heading + angle
+        target = self._last_pose.heading + angle
         return self.head_to(target)
 
     def follow_path(self, waypoints: list[DifferentialPilotWaypoint]) -> Task[PilotMoveStatus]:
@@ -242,22 +249,22 @@ class DifferentialSerialPilot(DifferentialPilot):
         return self._pose_or_velocity_update_event
 
     def get_velocity(self) -> Task[Vect2D]:
-        raise NotImplementedError("DifferentialSerialPilot.get_velocity not implemented")
+        return ImmediateResultTask(self._last_velocity)
 
     def get_pose(self) -> Task[Pose2D]:
         """Return the last known position from telemetry (x, y, theta)."""
-        return ImmediateResultTask(self._last_position)
+        return ImmediateResultTask(self._last_pose)
 
     def get_pose_and_velocity(self) -> Task[Pose2D, Vect2D]:
         """Return the last known position from telemetry (x, y, theta)."""
-        return ImmediateResultTask(self._last_position, self._last_velocity)
+        return ImmediateResultTask(self._last_pose, self._last_velocity)
 
     def set_pose(self, pose: Pose2D) -> Task[()]:
         """Set the robot's absolute position on the board."""
         self._send_command(Commands.SET_X, pose.x).wait()
         self._send_command(Commands.SET_Y, pose.y).wait()
         self._send_command(Commands.SET_THETA, pose.heading).wait()
-        self._last_position = pose.copy()
+        self._last_pose = pose.copy()
         return ImmediateResultTask()
 
     # SerialPilot specific commands
@@ -561,11 +568,11 @@ class DifferentialSerialPilot(DifferentialPilot):
             # Format: bbffff (counter, cmdid, x, y, theta, speed)
             x, y, theta, speed = struct.unpack("=ffff", payload)
             #self._log.debug(f"Telemetry: x={x}, y={y}, theta={math.degrees(theta)}°, speed={speed}")
-            self._last_position.x = x
-            self._last_position.y = y
-            self._last_position.heading = theta
+            self._last_pose.x = x
+            self._last_pose.y = y
+            self._last_pose.heading = theta
             self._last_speed = speed
-            self._pose_or_velocity_update_event.trigger(self._last_position, self._last_velocity)
+            self._pose_or_velocity_update_event.trigger(self._last_pose, self._last_velocity)
         elif cmd == Commands.GET_TRAVEL_THETA:
             # Format: f(travel_theta)
             (travel_theta,) = struct.unpack("=f", payload)
@@ -629,6 +636,8 @@ class DifferentialSerialPilotDefinition(DriverDefinition):
         defn.add_optional("rot_max_decel", ArgTypes.Optional(ArgTypes.F32()), None)
         defn.add_optional("rot_max_speed", ArgTypes.Optional(ArgTypes.F32()), None)
 
+        defn.add_optional("transform", Transform2D.ArgType(), IdentityTransform2D())
+
         return defn
 
     def create(self, args: DriverInitArgs) -> DifferentialSerialPilot:
@@ -660,7 +669,8 @@ class DifferentialSerialPilotDefinition(DriverDefinition):
             name=args.get_name(),
             logger=self._logger,
             bus=args.get("serial"),
-            config=config
+            config=config,
+            transform=args.get("transform"),
         )
 
 
@@ -694,7 +704,7 @@ class HolonomicSerialPilot(DifferentialSerialPilot, HolonomicPilot):
         )
 
     def go_to_while_rotate(self, x: float, y: float, angle: float) -> Task[PilotMoveStatus]:
-        target_theta = self._last_position[2] + angle
+        target_theta = self._last_pose[2] + angle
         return self._send_move(
             Commands.GLOBAL_GOTO,
             x,
@@ -747,6 +757,7 @@ class HolonomicSerialPilotDefinition(DriverDefinition):
     def get_init_args_definition(self) -> DriverInitArgsDefinition:
         defn = DriverInitArgsDefinition()
         defn.add_required("serial", ArgTypes.Component(Serial, self._peripherals))
+        defn.add_optional("transform", Transform2D.ArgType(), IdentityTransform2D())
         return defn
 
     def create(self, args: DriverInitArgs) -> HolonomicSerialPilot:
@@ -754,6 +765,7 @@ class HolonomicSerialPilotDefinition(DriverDefinition):
             name=args.get_name(),
             logger=self._logger,
             bus=args.get("serial"),
+            transform=args.get("transform"),
         )
 
 
