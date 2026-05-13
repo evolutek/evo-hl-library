@@ -4,10 +4,10 @@ Implements the legacy trajectory manager protocol: binary packets over UART,
 with asynchronous ACKNOWLEDGE/MOVE_BEGIN/MOVE_END events from the board.
 """
 
-from dataclasses import dataclass
 import math
 import struct
 import threading
+from dataclasses import dataclass
 
 from evo_lib.argtypes import ArgTypes
 from evo_lib.driver_definition import (
@@ -17,12 +17,12 @@ from evo_lib.driver_definition import (
     DriverInitArgsDefinition,
 )
 from evo_lib.drivers.pilot.protocol import (
+    INIT_PACKET,
     NO_ACK_COMMANDS,
     RESPONSE_FORMATS,
     Commands,
     Errors,
     build_packet,
-    INIT_PACKET
 )
 from evo_lib.drivers.pilot.virtual import DifferentialPilotVirtual, HolonomicPilotVirtual
 from evo_lib.event import Event
@@ -37,7 +37,7 @@ from evo_lib.interfaces.serial import Serial
 from evo_lib.logger import Logger
 from evo_lib.peripheral import Peripheral
 from evo_lib.registry import Registry
-from evo_lib.task import DelayedTask, ImmediateResultTask, ImmediateErrorTask, Task
+from evo_lib.task import DelayedTask, ImmediateErrorTask, ImmediateResultTask, Task
 from evo_lib.types.pose import Pose2D
 from evo_lib.types.vect import Vect2D
 
@@ -103,18 +103,7 @@ class DifferentialSerialPilot(DifferentialPilot):
         self._pose_or_velocity_update_event = Event[Pose2D, Vect2D]()
         self._config = config
 
-    def init(self) -> Task[()]:
-        self._running = True
-        self._reader_thread = threading.Thread(target=self._reader_loop)
-        self._reader_thread.start()
-
-        # Send init packet
-        with self._lock:
-            self._bus.write_sync(INIT_PACKET)
-
-        self.set_telemetry(0).wait()
-
-        # Set initial config
+    def _initial_config(self) -> None:
         if self._config.diam_left is not None or self._config.diam_right is not None or self._config.spacing is not None:
             if self._config.diam_left is None or self._config.diam_right is None or self._config.spacing is None:
                 return ImmediateErrorTask(ValueError("diam_left, diam_right, and spacing must all be specified or all be None"))
@@ -150,10 +139,18 @@ class DifferentialSerialPilot(DifferentialPilot):
                 return ImmediateErrorTask(ValueError("max_delta_rot and max_delta_trsl must both be specified or both be None"))
             self.set_delta_max(self._config.max_delta_trsl, self._config.max_delta_rot).wait()
 
-        self.set_telemetry(100 if self._config.telemetry_interval is None else self._config.telemetry_interval).wait()
+    def _start_reader_thread(self) -> None:
+        self._running = True
+        self._reader_thread = threading.Thread(target=self._reader_loop)
+        self._reader_thread.start()
 
+    def init(self) -> Task[()]:
+        self._start_reader_thread()
+        # Send init packet
+        with self._lock:
+            self._bus.write_sync(INIT_PACKET)
+        self._initial_config()
         self._log.info(f"DifferentialSerialPilot '{self.name}' initialized")
-
         return ImmediateResultTask()
 
     def close(self) -> None:
@@ -223,9 +220,7 @@ class DifferentialSerialPilot(DifferentialPilot):
 
     def unfree(self) -> Task[()]:
         """Re-enable motors after a free() call."""
-        #self._send_command(Commands.UNFREE).wait()
-        self.move_trsl(0, 1, 1, 1, 1).wait()
-        return ImmediateResultTask()
+        return self._move_trsl(0, 1, 1, 1, 1)
 
     def match_begin(self) -> Task[()]:
         return self._send_command(Commands.MATCH_BEGIN)
@@ -673,6 +668,16 @@ class HolonomicSerialPilot(DifferentialSerialPilot, HolonomicPilot):
     """Holonomic trajectory manager using GLOBAL_GOTO for simultaneous translation+rotation."""
 
     commands = DriverCommands([DifferentialSerialPilot.commands, HolonomicPilot.commands])
+
+    def unfree(self) -> Task[()]:
+        """Re-enable motors after a free() call."""
+        return self._send_command(Commands.UNFREE)
+
+    def init(self) -> Task[()]:
+        self._start_reader_thread()
+        self._initial_config()
+        self._log.info(f"HolonomicSerialPilot '{self.name}' initialized")
+        return ImmediateResultTask()
 
     def go_to_while_head_to(self, x: float, y: float, heading: float) -> Task[PilotMoveStatus]:
         return self._send_move(
