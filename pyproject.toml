@@ -39,6 +39,14 @@ rpi = [
     "python-can>=4.6.1",
 ]
 
+# UVC cameras + ArUco / ChArUco perception. Headless variant (no Qt deps)
+# because the robot runs without a display server. The calibration tool
+# in evo_tools opens its own window and uses the GUI variant on the dev box.
+camera = [
+    "opencv-python-headless>=4.10",
+    "opencv-contrib-python-headless>=4.10",
+]
+
 # -- Development dependencies --
 
 [dependency-groups]
