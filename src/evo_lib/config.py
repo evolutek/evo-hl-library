@@ -51,7 +51,7 @@ class ConfigObject(dict[str, ConfigValue]):
                 f"Expecting a value at '{self._get_key_path(key)}' but nothing found"
             )
         value = self[key]
-        if type(value) not in value_types:
+        if value_types and type(value) not in value_types:
             raise ConfigValidationError(
                 f"Expecting value at '{self._get_key_path(key)}' to be {value_type_name}"
             )
@@ -59,7 +59,7 @@ class ConfigObject(dict[str, ConfigValue]):
             return argtype.value_from_config(value)
         return value
 
-    def get_bool(self, key: str, argtype: "ArgTypes.Bool | None" = None) -> bool:
+    def get_bool(self, key: str, argtype: ArgTypes.Bool | None = None) -> bool:
         return self._get_required(key, [bool], "a boolean", argtype)
 
     def get_str(self, key: str, argtype: ArgTypes.String | None = None) -> str:
@@ -76,6 +76,9 @@ class ConfigObject(dict[str, ConfigValue]):
 
     def get_object(self, key: str, argtype: ArgTypes.Struct | None = None) -> ConfigObject:
         return self._get_required(key, [ConfigObject], "an object/dictionary", argtype)
+
+    def get_value(self, key: str, argtype: ArgType | None = None) -> ConfigValue:
+        return self._get_required(key, [], "a value", argtype)
 
     def _get_optional(
         self, key: str, default: Any, argtype: ArgType | None, getter: Callable
@@ -172,6 +175,9 @@ class ConfigObject(dict[str, ConfigValue]):
 
     def get_object_or(self, key, default, argtype=None):
         return self._get_optional(key, default, argtype, self.get_object)
+
+    def get_value_or(self, key: str, default: Any, argtype: ArgType | None = None) -> ConfigValue:
+        return self._get_optional(key, default, argtype, self.get_value)
 
 
 class ConfigParser(ABC):

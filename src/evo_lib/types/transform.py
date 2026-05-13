@@ -1,6 +1,8 @@
 from abc import ABC, abstractmethod
-from math import cos, sin
+from math import cos, pi, sin
+from typing import Any
 
+from evo_lib.argtypes import ArgTypes
 from evo_lib.types.pose import Pose2D
 from evo_lib.types.vect import Vect2D
 
@@ -34,20 +36,42 @@ class IdentityTransform2D(Transform2D):
         return IdentityTransform2D()
 
 
-class MirrorTransform2D(ABC):
-    def __init__(self, offset: Vect2D, vertical: bool):
-        self._vertical: bool = vertical
+class MirrorTransform2D(Transform2D):
+    class ArgType(ArgTypes.Object["MirrorTransform2D"]):
+        def __init__(self):
+            super().__init__(
+                "MirrorTransform2D",
+                [
+                    ("offset", ArgTypes.F32()),
+                    ("mirror_x", ArgTypes.Bool()),
+                    ("mirror_y", ArgTypes.Bool()),
+                ],
+            )
+
+        def convert(self, v: dict[str, Any]) -> MirrorTransform2D:
+            return MirrorTransform2D(v["offset"], v["mirror_x"], v["mirror_y"])
+
+    def __init__(self, offset: Vect2D, mirror_x: bool, mirror_y: bool):
+        self._mirror_x: bool = mirror_x
+        self._mirror_y: bool = mirror_y
         self._offset = offset.copy()
 
-    def apply(self, point: Vect2D):
-        if self._vertical:
-            point.y *= -1
-        else:
-            point.x *= -1
+    def apply_to_point(self, point: Vect2D):
+        if self._mirror_x:
+            point.x = -point.x
+        if self._mirror_y:
+            point.y = -point.y
         point += self._offset
 
+    def apply_to_angle(self, angle: float) -> float:
+        if self._mirror_x:
+            angle = pi - angle
+        if self._mirror_y:
+            angle = -angle
+        return angle
+
     def copy(self) -> Transform2D:
-        return MirrorTransform2D(self._offset, self._vertical)
+        return MirrorTransform2D(self._offset, self._mirror_x, self._mirror_y)
 
 
 class RigidTransform2D(Transform2D):
