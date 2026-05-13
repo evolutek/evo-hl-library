@@ -112,6 +112,8 @@ class DifferentialSerialPilot(DifferentialPilot):
         with self._lock:
             self._bus.write_sync(INIT_PACKET)
 
+        self.set_telemetry(0).wait()
+
         # Set initial config
         if self._config.diam_left is not None or self._config.diam_right is not None or self._config.spacing is not None:
             if self._config.diam_left is None or self._config.diam_right is None or self._config.spacing is None:
@@ -147,6 +149,8 @@ class DifferentialSerialPilot(DifferentialPilot):
             if self._config.max_delta_rot is None or self._config.max_delta_trsl is None:
                 return ImmediateErrorTask(ValueError("max_delta_rot and max_delta_trsl must both be specified or both be None"))
             self.set_delta_max(self._config.max_delta_trsl, self._config.max_delta_rot).wait()
+
+        self.set_telemetry(100 if self._config.telemetry_interval is None else self._config.telemetry_interval).wait()
 
         self._log.info(f"DifferentialSerialPilot '{self.name}' initialized")
 
@@ -204,7 +208,14 @@ class DifferentialSerialPilot(DifferentialPilot):
             self._move_task = None
         return ImmediateResultTask()
 
-    def _move_trsl(self, dest: float, acc: float, dec: float, maxspeed: float, sens: int) -> Task[()]:
+    @commands.register(args=[
+        ("dest", ArgTypes.F32()),
+        ("acc", ArgTypes.F32()),
+        ("dec", ArgTypes.F32()),
+        ("maxspeed", ArgTypes.F32()),
+        ("sens", ArgTypes.I8()),
+    ], result=[])
+    def move_trsl(self, dest: float, acc: float, dec: float, maxspeed: float, sens: int) -> Task[()]:
         return self._send_command(Commands.MOVE_TRSL, dest, acc, dec, maxspeed, sens)
 
     def free(self) -> Task[()]:
@@ -213,7 +224,7 @@ class DifferentialSerialPilot(DifferentialPilot):
     def unfree(self) -> Task[()]:
         """Re-enable motors after a free() call."""
         #self._send_command(Commands.UNFREE).wait()
-        self._move_trsl(0, 1, 1, 1, 1).wait()
+        self.move_trsl(0, 1, 1, 1, 1).wait()
         return ImmediateResultTask()
 
     def match_begin(self) -> Task[()]:
@@ -527,7 +538,16 @@ class DifferentialSerialPilot(DifferentialPilot):
                 break  # Wait for more bytes
             cmd = self._rx_buffer[1]
             payload = bytes(self._rx_buffer[2:length])
-            self._dispatch(cmd, payload)
+
+            try:
+                self._dispatch(cmd, payload)
+            except Exception as e:
+                if self._running:
+                    self._log.error(f"Pilot reader error on dispatching of command {cmd}: {e}")
+                self._bus.reset_input_buffer()
+                self._rx_buffer.clear()
+                break
+
             del self._rx_buffer[:length]
 
     def _dispatch(self, cmd: int, payload: bytes) -> None:
@@ -583,7 +603,7 @@ class DifferentialSerialPilotDefinition(DriverDefinition):
     """Factory for SerialPilot from config args."""
 
     def __init__(self, logger: Logger, peripherals: Registry[Peripheral]):
-        super().__init__(DifferentialPilot.commands)
+        super().__init__(DifferentialSerialPilot.commands)
         self._logger = logger
         self._peripherals = peripherals
 
