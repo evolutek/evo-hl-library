@@ -176,3 +176,8 @@ def build_packet(command: Commands, *args) -> bytes:
         params = b""
     length = 2 + len(params)  # length byte + command byte + params
     return bytes([length, command]) + params
+
+
+def get_body_size(command: Commands) -> int:
+    """Return the expected body length for a given command."""
+    return struct.calcsize(FORMATS.get(command, ""))
