@@ -92,9 +92,6 @@ class Camera(Placable):
     def is_extrinsics_loaded(self) -> bool: ...
 
     @abstractmethod
-    def load_calibration(self, path: str | None = None) -> bool: ...
-
-    @abstractmethod
     def save_calibration(self, path: str | None = None) -> None: ...
 
     @property
