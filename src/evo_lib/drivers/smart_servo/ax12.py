@@ -501,7 +501,7 @@ class AX12(SmartServo):
     def move_to(
         self,
         position: float,
-        unit: ServoAngleUnit,
+        unit: ServoAngleUnit = ServoAngleUnit.NATIVE,
         wait_multiplier: float = 1.0,
         timeout: float | None = None,
     ) -> Task[()]:
@@ -543,7 +543,7 @@ class AX12(SmartServo):
 
     # --- Speed ---
 
-    def set_speed(self, speed: float, unit: ServoSpeedUnit) -> Task[()]:
+    def set_speed(self, speed: float, unit: ServoSpeedUnit = ServoSpeedUnit.NATIVE) -> Task[()]:
         if unit == ServoSpeedUnit.NATIVE:
             pass  # speed is already in native units (0..1023)
         elif unit == ServoSpeedUnit.RPM:
