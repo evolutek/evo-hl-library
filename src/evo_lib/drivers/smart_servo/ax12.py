@@ -282,26 +282,25 @@ class AX12Bus(InterfaceHolder):
         op_task.chain(request_task)
 
     def _handle_next_request(self):
-        try:
-            request_task, op = self._queued_requests.get(block=False)
-            self._pending_request = request_task
-            self._handle_request(request_task, op)
-        except Empty:
-            with self._request_lock:
+        op = None
+        with self._request_lock:
+            try:
+                self._pending_request, op = self._queued_requests.get(block=False)
+            except Empty:
                 self._pending_request = None
+        if self._pending_request is not None:
+            self._handle_request(self._pending_request, op)
 
     def _handle_next_request_if_needed(self) -> None:
-        request_task = None
         op = None
         with self._request_lock:
             if self._pending_request is None:
                 try:
-                    request_task, op = self._queued_requests.get(block=False)
-                    self._pending_request = request_task
+                    self._pending_request, op = self._queued_requests.get(block=False)
                 except Empty:
                     pass
-        if op is not None and request_task is not None:
-            self._handle_request(request_task, op)
+        if op is not None and self._pending_request is not None:
+            self._handle_request(self._pending_request, op)
 
     def _request[T](self, op: Callable[[], T]) -> Task[T]:
         """Send a WRITE instruction. Broadcast (0xFE) gets no status reply."""
@@ -484,7 +483,7 @@ class AX12(SmartServo):
         if wait_multiplier == 0:
             return
 
-        current_position = self.get_position(ServoAngleUnit.NATIVE).wait()[0]
+        (current_position,) = self.get_position(ServoAngleUnit.NATIVE).wait()
         wait_position = current_position + (raw_position - current_position) * wait_multiplier
         move_direction = 1 if wait_position > current_position else -1
 
