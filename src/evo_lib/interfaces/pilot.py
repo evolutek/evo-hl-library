@@ -79,6 +79,16 @@ class Pilot(Placable):
         """Enable asservissement and keep robot in current position."""
         pass
 
+    @abstractmethod
+    @commands.register(args=[], result=[])
+    def unfree_here(self) -> Task[()]:
+        """Enable asservissement on the just-set theoretical pose.
+
+        Use right after `set_pose()` at match start; the regular `unfree()`
+        adopts the measured pose, which overwrites the init.
+        """
+        pass
+
     @commands.register(args=[], result=[])
     def match_begin(self) -> "Task[()]":
         """Notify the pilot that the match has started."""

@@ -62,6 +62,7 @@ class Commands(IntEnum):
     SET_ROBOT_SIZE_X = 165
     SET_ROBOT_SIZE_Y = 166
     OTOS_CAL = 167  # Optical tracking sensor calibration (holonomic)
+    UNFREE_HERE = 168  # unfree on theoretical pose
 
     # Telemetry
     ACKNOWLEDGE = 200

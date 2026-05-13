@@ -142,6 +142,10 @@ class DifferentialSerialPilot(DifferentialPilot):
         self._send_command(Commands.UNFREE)
         return ImmediateResultTask()
 
+    def unfree_here(self) -> Task[()]:
+        self._send_command(Commands.UNFREE_HERE)
+        return ImmediateResultTask()
+
     def match_begin(self) -> Task[()]:
         self._send_command(Commands.MATCH_BEGIN)
         return ImmediateResultTask()

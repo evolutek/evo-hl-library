@@ -134,6 +134,10 @@ class DifferentialPilotVirtual(DifferentialPilot):
         self._cancel.clear()
         return ImmediateResultTask()
 
+    def unfree_here(self) -> Task[()]:
+        # No measured-vs-theoretical distinction in simulation.
+        return self.unfree()
+
     def reset(self) -> Task[()]:
         # No firmware to reboot in simulation; behave like stop() so a
         # config-level swap real↔virtual keeps consumer call sites valid.
