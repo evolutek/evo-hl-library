@@ -41,8 +41,15 @@ class Transform2D(ABC):
         pass
 
     def apply_to_pose(self, pose: Pose2D) -> None:
-        self.apply_to_point(pose.position)
+        p = pose.position
+        self.apply_to_point(p)
+        pose.x = p.x
+        pose.y = p.y
         pose.heading = self.apply_to_angle(pose.heading)
+
+    @abstractmethod
+    def inversed(self) -> Transform2D:
+        pass
 
     @abstractmethod
     def copy(self) -> Transform2D:
@@ -58,6 +65,12 @@ class IdentityTransform2D(Transform2D):
 
     def copy(self) -> IdentityTransform2D:
         return IdentityTransform2D()
+
+    def inversed(self) -> IdentityTransform2D:
+        return IdentityTransform2D()
+
+    def __str__(self) -> str:
+        return "IdentityTransform2D()"
 
 
 class MirrorTransform2D(Transform2D):
@@ -80,6 +93,9 @@ class MirrorTransform2D(Transform2D):
         self._mirror_y: bool = mirror_y
         self._offset = offset.copy()
 
+    def inversed(self) -> Transform2D:
+        return MirrorTransform2D(-self._offset, not self._mirror_x, not self._mirror_y)
+
     def apply_to_point(self, point: Vect2D):
         if self._mirror_x:
             point.x = -point.x
@@ -96,6 +112,9 @@ class MirrorTransform2D(Transform2D):
 
     def copy(self) -> Transform2D:
         return MirrorTransform2D(self._offset, self._mirror_x, self._mirror_y)
+
+    def __str__(self) -> str:
+        return f"MirrorTransform2D(offset={self._offset}, mirror_x={self._mirror_x}, mirror_y={self._mirror_y})"
 
 
 class RigidTransform2D(Transform2D):
@@ -170,11 +189,17 @@ class RigidTransform2D(Transform2D):
     def translate(self, offset: Vect2D) -> None:
         self.offset += offset
 
-    def __neg__(self):
+    def inversed(self) -> RigidTransform2D:
         a = -self.angle
         x = self.offset.x * self._c + self.offset.y * self._s
         y = -self.offset.x * self._s + self.offset.y * self._c
         return RigidTransform2D(Vect2D(-x, -y), a)
+
+    def __neg__(self):
+        return self.inversed()
+
+    def __str__(self) -> str:
+        return f"RigidTransform2D(offset={self.offset}, angle={self.angle})"
 
 
 class AffineTransform2D(RigidTransform2D):
@@ -202,3 +227,6 @@ class AffineTransform2D(RigidTransform2D):
         point.x *= self.factor.x
         point.y *= self.factor.y
         super().apply_to_point(point)
+
+    def __str__(self) -> str:
+        return f"AffineTransform2D(offset={self.offset}, angle={self.angle}, factor={self.factor})"
