@@ -16,6 +16,8 @@ from evo_lib.driver_definition import (
     DriverInitArgsDefinition,
 )
 from evo_lib.drivers.pwm.virtual import PWMChipVirtual, PWMVirtual
+from evo_lib.event import Event
+from evo_lib.interfaces.gpio import GPIO, GPIOEdge
 from evo_lib.interfaces.i2c import I2C
 from evo_lib.interfaces.pwm import PWM
 from evo_lib.logger import Logger
@@ -42,7 +44,7 @@ _FULL_ON = 0x10  # bit 4 of ON_H
 _FULL_OFF = 0x10  # bit 4 of OFF_H
 
 
-class PCA9685Channel(PWM):
+class PCA9685Channel(PWM, GPIO):
     """A single PWM output channel on a PCA9685 chip.
 
     Read-back commands (`get_duty_cycle`, `get_pulse_width_us`, `is_enabled`)
@@ -51,7 +53,7 @@ class PCA9685Channel(PWM):
     reset, so we memorize the value on write instead.
     """
 
-    commands = DriverCommands(parents=[PWM.commands])
+    commands = DriverCommands(parents=[PWM.commands, GPIO.commands])
 
     def __init__(self, name: str, logger: Logger, chip: PCA9685Chip, channel: int):
         super().__init__(name, commands = PCA9685Channel.commands)
@@ -121,6 +123,22 @@ class PCA9685Channel(PWM):
     )
     def is_enabled(self) -> Task[bool]:
         return ImmediateResultTask(self._last_duty_cycle > 0.0)
+
+    def read(self) -> Task[bool]:
+        """Read current pin state (True = high, False = low)."""
+        raise NotImplementedError()
+
+    def write(self, state: bool) -> Task[()]:
+        """Set the output state (True = high, False = low)."""
+        return self.set_duty_cycle(1.0 if state else 0.0)
+
+    def interrupt(self, edge: GPIOEdge = GPIOEdge.BOTH) -> Event[bool]:
+        """Return an Event that triggers on the given edge.
+
+        The event value is the new pin state.
+        """
+        raise NotImplementedError()
+
 
 
 class PCA9685Chip(InterfaceHolder):
