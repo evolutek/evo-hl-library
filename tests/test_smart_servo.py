@@ -6,6 +6,7 @@ import pytest
 
 from evo_lib.drivers.serial.virtual import SerialVirtual
 from evo_lib.drivers.smart_servo.ax12 import (
+    _MOVING,
     AX12,
     AngleLimitError,
     AX12Bus,
@@ -17,6 +18,7 @@ from evo_lib.drivers.smart_servo.ax12 import (
     OverloadError,
     PacketChecksumError,
     RangeError,
+    StalledError,
     _checksum,
 )
 from evo_lib.interfaces.smart_servo import ServoAngleUnit, ServoSpeedUnit
@@ -230,6 +232,25 @@ class TestAX12WithVirtualBus:
         bus = self._bus(log, thread_pool)
         servo = AX12("s", log, thread_pool, bus, servo_id=3)
         task = servo.move_to(500, ServoAngleUnit.NATIVE, wait_multiplier=0)
+        assert task.is_done()
+
+    def test_wait_raises_stalled_when_servo_reports_not_moving(self, log, thread_pool):
+        bus = self._bus(log, thread_pool)
+        servo = AX12("s", log, thread_pool, bus, servo_id=3, poll_frequency=200)
+        bus.inject_position(3, 100)
+        bus.write_register(3, _MOVING, bytes([0])).wait(timeout=1.0)
+        task = servo.move_to(500, ServoAngleUnit.NATIVE, wait_multiplier=1.0)
+        with pytest.raises(StalledError):
+            task.wait(timeout=1.0)
+
+    def test_close_event_aborts_wait(self, log, thread_pool):
+        bus = self._bus(log, thread_pool)
+        servo = AX12("s", log, thread_pool, bus, servo_id=3, poll_frequency=10)
+        bus.inject_position(3, 100)
+        bus.write_register(3, _MOVING, bytes([1])).wait(timeout=1.0)
+        task = servo.move_to(500, ServoAngleUnit.NATIVE, wait_multiplier=1.0)
+        bus.close()
+        task.wait(timeout=1.0)
         assert task.is_done()
 
     def test_registered_in_subcomponents(self, log, thread_pool):

@@ -38,6 +38,7 @@ from evo_lib.thread_pool import ThreadPoolExecutor
 # Dynamixel 1.0 instructions
 _INST_READ = 0x02
 _INST_WRITE = 0x03
+_INST_SYNC_WRITE = 0x83
 
 # AX-12A factory baudrate (EEPROM default). USB2AX runs the bus at this speed
 # unless explicitly reconfigured — mismatch = silent timeout, not an error.
@@ -54,6 +55,7 @@ _PRESENT_SPEED_L = 38
 _PRESENT_LOAD_L = 40
 _PRESENT_VOLTAGE = 42
 _PRESENT_TEMPERATURE = 43
+_MOVING = 46  # 1 = moving, 0 = stopped (reached or stalled)
 
 # AX-12A constants (datasheet: Dynamixel 1.0 / AX-12A control table)
 _POSITION_MAX = 1023
@@ -166,6 +168,16 @@ class InstructionError(DynamixelServoError):
         super().__init__(servo_id, error_byte, "unknown instruction")
 
 
+class StalledError(OSError):
+    """Servo stopped moving (MOVING=0) without reaching the goal tolerance."""
+
+    def __init__(self, servo_id: int, goal: int, current: int):
+        self.servo_id = servo_id
+        self.goal = goal
+        self.current = current
+        super().__init__(f"AX12 id {servo_id}: stalled at {current}, goal {goal}")
+
+
 # Order matters only for diagnostics when multiple bits are set: we surface
 # the lowest-numbered bit that matched. The error_byte attribute preserves
 # the full mask so callers can inspect all flags.
@@ -237,6 +249,8 @@ class AX12Bus(InterfaceHolder):
         self._queued_requests: Queue[tuple[DelayedTask[Any], Callable[[], Any]]] = Queue()
         self._pending_request: DelayedTask[Any] | None = None
         self._last_request_time = 0
+        # Set by close() so servo poll loops can exit cooperatively.
+        self.close_event = threading.Event()
         # Reusable TX buffer (hot path): avoids per-call bytearray allocation on
         # every write/read. Safe under the bus lock, only one packet is ever
         # being built at a time. Matters on RPi 3 B+ where GC pressure adds up.
@@ -250,6 +264,7 @@ class AX12Bus(InterfaceHolder):
         return ImmediateResultTask()
 
     def close(self) -> None:
+        self.close_event.set()
         self._servos.clear()
         self._log.info(f"AX12Bus '{self.name}' closed")
 
@@ -272,6 +287,33 @@ class AX12Bus(InterfaceHolder):
     def read_register(self, servo_id: int, register: int, count: int) -> Task[bytes]:
         """Send a READ instruction and return the payload bytes."""
         return self._request(lambda: self._do_read(servo_id, register, count))
+
+    def sync_write_register(
+        self,
+        register: int,
+        data_len: int,
+        data_per_id: dict[int, bytes],
+    ) -> Task[()]:
+        """Broadcast a SYNC_WRITE: all servos receive and apply in one frame.
+
+        No status reply (broadcast). Every entry of data_per_id must be of
+        length data_len bytes. Intended for synchronized moves where the
+        wire-time cost of N sequential WRITE+ACK round trips is visible.
+        """
+        return self._request(
+            lambda: self._do_sync_write(register, data_len, data_per_id)
+        )
+
+    def sync_write_word(self, register: int, values: dict[int, int]) -> Task[()]:
+        """Convenience: SYNC_WRITE a 16-bit little-endian value per servo."""
+        data_per_id = {
+            sid: bytes([v & 0xFF, (v >> 8) & 0xFF]) for sid, v in values.items()
+        }
+        return self.sync_write_register(register, 2, data_per_id)
+
+    def sync_write_goal_positions(self, positions: dict[int, int]) -> Task[()]:
+        """SYNC_WRITE goal positions to multiple AX12s — synchronized start."""
+        return self.sync_write_word(_GOAL_POSITION_L, positions)
 
     def _on_request_done(self) -> None:
         #print("AX12 request done")
@@ -375,6 +417,40 @@ class AX12Bus(InterfaceHolder):
         if servo_id != _BROADCAST_ID:
             self._read_status(servo_id)
 
+    def _do_sync_write(
+        self, register: int, data_len: int, data_per_id: dict[int, bytes]
+    ) -> None:
+        n = len(data_per_id)
+        length = (data_len + 1) * n + 4
+        # self._tx_buf is sized for single WRITE; SYNC_WRITE needs more.
+        buf = bytearray(length + 4)
+        buf[0] = _HEADER_B0
+        buf[1] = _HEADER_B1
+        buf[2] = _BROADCAST_ID
+        buf[3] = length
+        buf[4] = _INST_SYNC_WRITE
+        buf[5] = register
+        buf[6] = data_len
+        cs = _BROADCAST_ID + length + _INST_SYNC_WRITE + register + data_len
+        offset = 7
+        for servo_id, data in data_per_id.items():
+            if len(data) != data_len:
+                raise ValueError(
+                    f"sync_write data for id={servo_id} is {len(data)} bytes, expected {data_len}"
+                )
+            buf[offset] = servo_id
+            cs += servo_id
+            offset += 1
+            for b in data:
+                buf[offset] = b
+                cs += b
+                offset += 1
+        buf[offset] = (~cs) & 0xFF
+        size = offset + 1
+        packet = bytes(buf[:size])
+        self._send_and_drop_echo(packet)
+        # SYNC_WRITE is broadcast: no status reply expected.
+
     def _do_read(self, servo_id: int, register: int, count: int) -> bytes:
         length = 4  # instruction + register + count + checksum
         buf = self._tx_buf
@@ -464,6 +540,10 @@ class AX12(SmartServo):
         bus.register_servo(self)
 
     @property
+    def id(self) -> int:
+        return self._id
+
+    @property
     def servo_id(self) -> int:
         return self._id
 
@@ -504,15 +584,24 @@ class AX12(SmartServo):
 
         start_time = time.time()
         while True:
-            if timeout is not None and time.time() - start_time > timeout:
+            if self._bus.close_event.is_set():
+                return
+            elapsed = time.time() - start_time
+            if timeout is not None and elapsed > timeout:
                 raise TimeoutError("Move timed out")
             (current_position,) = self.get_position(ServoAngleUnit.NATIVE).wait()
             remaining_distance = wait_position - current_position
             if abs(remaining_distance) < self._goal_reached_tolerance:
-                break  # If we're close enough, return
+                break
             if remaining_distance * move_direction < 0:
-                break  # If we go beyond the target, return
-            time.sleep(self._poll_interval)
+                break
+            # Skip MOVING on first poll: servo takes a few ms to flip the bit.
+            if elapsed > self._poll_interval:
+                (moving_data,) = self._bus.read_register(self._id, _MOVING, 1).wait()
+                if moving_data[0] == 0:
+                    raise StalledError(self._id, raw_position, current_position)
+            if self._bus.close_event.wait(self._poll_interval):
+                return
 
     def move_to(
         self,
@@ -539,6 +628,22 @@ class AX12(SmartServo):
         if wait_multiplier == 0:
             return ImmediateResultTask()
 
+        return self._thread_pool.exec(
+            lambda: self._wait_move_to_sync(raw_position, wait_multiplier, timeout)
+        )
+
+    def wait_until_position(
+        self,
+        raw_position: int,
+        wait_multiplier: float = 1.0,
+        timeout: float | None = None,
+    ) -> Task[()]:
+        """Poll until the servo reaches raw_position. Does NOT write the goal.
+
+        Companion to AX12Bus.sync_write_goal_positions for synchronized
+        moves: write all goals at once, then wait_until_position on each in
+        parallel.
+        """
         return self._thread_pool.exec(
             lambda: self._wait_move_to_sync(raw_position, wait_multiplier, timeout)
         )
