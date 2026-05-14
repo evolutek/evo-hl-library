@@ -766,6 +766,7 @@ class HolonomicSerialPilotDefinition(DriverDefinition):
             logger=self._logger,
             bus=args.get("serial"),
             transform=args.get("transform"),
+            config=DifferentialSerialPilotConfig(),
         )
 
 
