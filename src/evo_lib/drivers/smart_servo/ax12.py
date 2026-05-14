@@ -315,6 +315,10 @@ class AX12Bus(InterfaceHolder):
         """SYNC_WRITE goal positions to multiple AX12s — synchronized start."""
         return self.sync_write_word(_GOAL_POSITION_L, positions)
 
+    def sync_write_speeds(self, speeds: dict[int, int]) -> Task[()]:
+        """SYNC_WRITE moving speed to multiple AX12s — one frame for the bus."""
+        return self.sync_write_word(_MOVING_SPEED_L, speeds)
+
     def _on_request_done(self) -> None:
         #print("AX12 request done")
         self._scheduler.schedule_after(self._min_requests_interval, 0, self._handle_next_request)
