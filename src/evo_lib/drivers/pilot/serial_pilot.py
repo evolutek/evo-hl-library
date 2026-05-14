@@ -235,6 +235,14 @@ class DifferentialSerialPilot(DifferentialPilot):
     def match_begin(self) -> Task[()]:
         return self._send_command(Commands.MATCH_BEGIN)
 
+    def lidar_on(self) -> Task[()]:
+        self._send_command(Commands.LIDAR_ON)
+        return ImmediateResultTask()
+
+    def lidar_off(self) -> Task[()]:
+        self._send_command(Commands.LIDAR_OFF)
+        return ImmediateResultTask()
+
     @commands.register(args=[], result=[])
     def reset(self) -> Task[()]:
         """Reboot the carte-asserv (HAL_NVIC_SystemReset on the STM32).

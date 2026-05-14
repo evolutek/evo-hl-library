@@ -84,6 +84,16 @@ class Pilot(Placable):
         """Notify the pilot that the match has started."""
         return ImmediateResultTask()
 
+    @commands.register(args=[], result=[])
+    def lidar_on(self) -> "Task[()]":
+        """Enable absolute asservissement (lidar-based localization)."""
+        return ImmediateResultTask()
+
+    @commands.register(args=[], result=[])
+    def lidar_off(self) -> "Task[()]":
+        """Disable absolute asservissement."""
+        return ImmediateResultTask()
+
     @abstractmethod
     def on_pose_or_velocity_update(self) -> Event[Pose2D, Vect2D]:
         pass

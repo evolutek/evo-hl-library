@@ -36,6 +36,8 @@ class Commands(IntEnum):
     STOP_ASAP = 112
     RESET = 113  # Triggers HAL_NVIC_SystemReset() on the STM32; no ACK because the board reboots before it could send one.  # noqa: E501
     MATCH_BEGIN = 114
+    LIDAR_ON = 115
+    LIDAR_OFF = 116
 
     # Events (received from board)
     DEBUG = 126
@@ -113,6 +115,8 @@ FORMATS: dict[Commands, str] = {
     Commands.SET_PWM: "ff",
     Commands.RESET: "",
     Commands.MATCH_BEGIN: "",
+    Commands.LIDAR_ON: "",
+    Commands.LIDAR_OFF: "",
     # Position
     Commands.SET_X: "f",
     Commands.SET_Y: "f",
