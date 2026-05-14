@@ -775,14 +775,18 @@ class HolonomicSerialPilotDefinition(DriverDefinition):
         defn = DriverInitArgsDefinition()
         defn.add_required("serial", ArgTypes.Component(Serial, self._peripherals))
         defn.add_optional("transform", Transform2D.ArgType(), IdentityTransform2D())
+        defn.add_optional("telemetry_interval", ArgTypes.Optional(ArgTypes.F32()), None)
         return defn
 
     def create(self, args: DriverInitArgs) -> HolonomicSerialPilot:
+        config = DifferentialSerialPilotConfig(
+            telemetry_interval=args.get("telemetry_interval"),
+        )
         return HolonomicSerialPilot(
             name=args.get_name(),
             logger=self._logger,
             bus=args.get("serial"),
-            config=DifferentialSerialPilotConfig(),
+            config=config,
             transform=args.get("transform"),
         )
 
