@@ -106,6 +106,7 @@ class DifferentialSerialPilot(DifferentialPilot):
         self._pose_or_velocity_update_event = Event[Pose2D, Vect2D]()
         self._config = config
         self._transform: Transform2D = transform if transform is not None else IdentityTransform2D()
+        self._log.info(f"SerialPilot initialized with transform: {self._transform}")
 
     def _initial_config(self) -> None:
         if self._config.diam_left is not None or self._config.diam_right is not None or self._config.spacing is not None:
@@ -171,6 +172,7 @@ class DifferentialSerialPilot(DifferentialPilot):
     def go_to(self, x: float, y: float) -> Task[PilotMoveStatus]:
         p = Vect2D(x, y)
         self._transform.apply_to_point(p)
+        self._log.debug(f"Pilot go to {p}")
         return self._send_move(Commands.GOTO_XY, p.x, p.y)
 
     def go_to_then_head_to(self, x: float, y: float, heading: float) -> Task[PilotMoveStatus]:
@@ -190,6 +192,7 @@ class DifferentialSerialPilot(DifferentialPilot):
 
     def head_to(self, heading: float) -> Task[PilotMoveStatus]:
         heading = self._transform.apply_to_angle(heading)
+        self._log.debug(f"Pilot head to: {heading}")
         return self._send_move(Commands.GOTO_THETA, heading)
 
     def look_at(self, x: float, y: float) -> Task[PilotMoveStatus]:
@@ -227,7 +230,7 @@ class DifferentialSerialPilot(DifferentialPilot):
 
     def unfree(self) -> Task[()]:
         """Re-enable motors after a free() call."""
-        return self._move_trsl(0, 1, 1, 1, 1)
+        return self.move_trsl(0, 1, 1, 1, 1)
 
     def match_begin(self) -> Task[()]:
         return self._send_command(Commands.MATCH_BEGIN)
@@ -253,18 +256,24 @@ class DifferentialSerialPilot(DifferentialPilot):
 
     def get_pose(self) -> Task[Pose2D]:
         """Return the last known position from telemetry (x, y, theta)."""
-        return ImmediateResultTask(self._last_pose)
+        r = self._last_pose.copy()
+        self._transform.inversed().apply_to_pose(r)
+        return ImmediateResultTask(r)
 
     def get_pose_and_velocity(self) -> Task[Pose2D, Vect2D]:
         """Return the last known position from telemetry (x, y, theta)."""
-        return ImmediateResultTask(self._last_pose, self._last_velocity)
+        (pose,) = self.get_pose().wait()
+        return ImmediateResultTask(pose, self._last_velocity)
 
     def set_pose(self, pose: Pose2D) -> Task[()]:
         """Set the robot's absolute position on the board."""
+        pose = pose.copy()
+        self._transform.apply_to_pose(pose)
         self._send_command(Commands.SET_X, pose.x).wait()
         self._send_command(Commands.SET_Y, pose.y).wait()
         self._send_command(Commands.SET_THETA, pose.heading).wait()
-        self._last_pose = pose.copy()
+        self._last_pose = pose
+        self._log.debug(f"Pilot set pose: {pose}")
         return ImmediateResultTask()
 
     # SerialPilot specific commands
@@ -765,6 +774,7 @@ class HolonomicSerialPilotDefinition(DriverDefinition):
             name=args.get_name(),
             logger=self._logger,
             bus=args.get("serial"),
+            config=DifferentialSerialPilotConfig(),
             transform=args.get("transform"),
             config=DifferentialSerialPilotConfig(),
         )
