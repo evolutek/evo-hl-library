@@ -68,9 +68,9 @@ class ColorRGBC:
     def to_rgb(self) -> "ColorRGB":
         fs = float(self.full_scale) if self.full_scale > 0 else 1.0
         return ColorRGB(
-            min(1.0, self.r / fs),
-            min(1.0, self.g / fs),
-            min(1.0, self.b / fs),
+            min(1.0, self.r / self.c / fs),
+            min(1.0, self.g / self.c / fs),
+            min(1.0, self.b / self.c / fs),
         )
 
     def to_hsv(self) -> "ColorHSV":
@@ -283,12 +283,15 @@ class ColorChroma:
 class ColorHex:
     """A single packed 0xRRGGBB integer. Useful for logs, config, human-facing output."""
 
-    __slots__ = ("value",)
+    __slots__ = ("value", "r", "g", "b",)
 
     def __init__(self, value: int) -> None:
         if not (0 <= value <= 0xFFFFFF):
             raise ValueError(f"ColorHex value must be 0..0xFFFFFF, got 0x{value:X}")
         self.value = value
+        self.r = (self.value >> 16) & 0xFF
+        self.g = (self.value >> 8) & 0xFF
+        self.b = self.value & 0xFF
 
     def __repr__(self) -> str:
         return f"ColorHex(#{self.value:06X})"
@@ -296,20 +299,8 @@ class ColorHex:
     def __eq__(self, other: object) -> bool:
         return isinstance(other, ColorHex) and self.value == other.value
 
-    @property
-    def r8(self) -> int:
-        return (self.value >> 16) & 0xFF
-
-    @property
-    def g8(self) -> int:
-        return (self.value >> 8) & 0xFF
-
-    @property
-    def b8(self) -> int:
-        return self.value & 0xFF
-
     def to_rgb(self) -> ColorRGB:
-        return ColorRGB(self.r8 / 255.0, self.g8 / 255.0, self.b8 / 255.0)
+        return ColorRGB(self.r / 255.0, self.g / 255.0, self.b / 255.0)
 
     def to_hsv(self) -> ColorHSV:
         return self.to_rgb().to_hsv()
@@ -452,6 +443,8 @@ class NamedColor(IntEnum):
     Green = 4
     Blue = 5
     Yellow = 6
+    Cyan = 7
+    Magenta = 8
 
 
 # ── Pure mathematical references ──────────────────────────────────────────
@@ -469,6 +462,8 @@ PURE_COLORS: dict[NamedColor, Color] = {
     NamedColor.Green: Color.from_hex(0x00FF00, name="Green"),
     NamedColor.Blue: Color.from_hex(0x0000FF, name="Blue"),
     NamedColor.Yellow: Color.from_hex(0xFFFF00, name="Yellow"),
+    NamedColor.Cyan: Color.from_hex(0x00FFFF, name="Cyan"),
+    NamedColor.Magenta: Color.from_hex(0xFF00FF, name="Magenta"),
 }
 
 
@@ -500,7 +495,7 @@ class Palette:
         self,
         refs: dict[NamedColor, Color] | None = None,
         min_saturation: float = 0.15,
-        default_method: str = "hsv",
+        default_method: str = "rgbc",
     ) -> None:
         self._refs: dict[NamedColor, Color] = dict(refs) if refs else {}
         self.min_saturation = min_saturation
@@ -531,9 +526,9 @@ class Palette:
             return NamedColor.Unknown
         m = method if method is not None else self.default_method
 
-        if m == "hsv":
+        if m == "hsv": # Probably wrong
             return self._classify_hsv(measured, max_distance)
-        if m == "chroma":
+        if m == "chroma": # Probably wrong
             return self._classify_chroma(measured, max_distance)
         if m == "rgbc":
             return self._classify_rgbc(measured, max_distance)
@@ -583,12 +578,11 @@ class Palette:
         for name, ref in self._refs.items():
             if name is NamedColor.Unknown:
                 continue
-            rref = ref.rgbc
-            dr = rgbc.r - rref.r
-            dg = rgbc.g - rref.g
-            db = rgbc.b - rref.b
-            dc = rgbc.c - rref.c
-            d = dr * dr + dg * dg + db * db + dc * dc
+            rref = ref.rgb
+            dr = (rgbc.r / rgbc.c) - rref.r
+            dg = (rgbc.g / rgbc.c) - rref.g
+            db = (rgbc.b / rgbc.c) - rref.b
+            d = dr + dg + db
             if d < best_dist:
                 best_dist = d
                 best_name = name
