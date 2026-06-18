@@ -9,6 +9,7 @@ from evo_lib.logger import Logger
 from evo_lib.peripheral import Peripheral, Placable
 from evo_lib.registry import Registry
 from evo_lib.task import ImmediateResultTask, Task
+from evo_lib.interfaces import GPIO
 
 
 class Pump(Placable):

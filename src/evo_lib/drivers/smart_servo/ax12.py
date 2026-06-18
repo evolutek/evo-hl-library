@@ -655,6 +655,7 @@ class AX12(SmartServo):
         return data[0] | (data[1] << 8)
 
     def _write_word(self, register: int, value: int) -> None:
+        time.sleep(self._poll_interval)
         self._bus.write_register(
             self._id, register, bytes([value & 0xFF, (value >> 8) & 0xFF])
         ).wait()
@@ -674,6 +675,7 @@ class AX12(SmartServo):
         elif unit == ServoSpeedUnit.RADIANS_PER_SECOND:
             speed = speed * 60 / (math.pi * 2) * _SPEED_MAX / _SPEED_MAX_RPM
         speed = max(0, min(_SPEED_MAX, int(speed)))
+        #time.sleep(self._poll_interval)
         self._write_word(_MOVING_SPEED_L, speed)
         return ImmediateResultTask()
 

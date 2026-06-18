@@ -11,12 +11,12 @@ from evo_lib.task import DelayedTask, Task
 
 
 class SchedulerExecutor(Executor):
-    def __init__(self, scheduler: "Scheduler", priority: int):
-        self.scheduler: "Scheduler" = scheduler
+    def __init__(self, scheduler: Scheduler, priority: int):
+        self.scheduler: Scheduler = scheduler
         self.priority: int = priority
 
-    def exec(self, callback: Callable, args: tuple, kwargs: dict[str,]) -> None:
-        self.scheduler.schedule_now(self.priority, callback, args, kwargs)
+    def exec[T](self, callback: Callable[...,T], *args, **kwargs) -> None:
+        self.scheduler.schedule_now(self.priority, callback, *args, **kwargs)
 
 
 @dataclass(slots=True)

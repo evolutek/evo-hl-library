@@ -187,7 +187,7 @@ class DifferentialSerialPilot(DifferentialPilot):
         raise NotImplementedError("go_to_then_look_at not implemented yet")
 
     def forward(self, distance: float) -> Task[PilotMoveStatus]:
-        target = self._last_pose + Pose2D.from_polar(distance, self._last_pose.heading)
+        target = self._last_pose.position + Vect2D.from_polar(distance, self._last_pose.heading)
         return self.go_to(target.x, target.y)
 
     def head_to(self, heading: float) -> Task[PilotMoveStatus]:
